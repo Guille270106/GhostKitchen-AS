@@ -1,0 +1,704 @@
+openapi: 3.0.3
+info:
+  title: GhostKitchen — Cocina más cercana y platos disponibles
+  version: 1.0.0
+  description: |
+    Capacidad publicada por GhostKitchen para otros grupos de Arquitectura de Software 2026.
+
+    GhostKitchen opera 4 cocinas fantasma en Córdoba (sedes). Desde cada una despachan hasta
+    4 restaurantes, y un pedido puede combinar platos de todos ellos en un solo envío.
+
+    Con una ubicación (latitud y longitud) se puede averiguar **qué sede la atiende y a qué
+    distancia está**, y consultar **qué platos se pueden pedir ahora** en esa sede.
+
+    **Reglas de uso**
+    - Todas las operaciones son de solo lectura (`GET`): son seguras e idempotentes y se pueden reintentar.
+    - Autenticación con el header `X-API-Key` (una clave por grupo consumidor, entregada por privado).
+    - Límite: 60 solicitudes por minuto por clave. Al excederlo se responde `429` con `Retry-After`.
+    - La distancia es en línea recta. Si ninguna sede activa está a menos de 25 km se responde `404 SIN_COBERTURA`.
+    - La disponibilidad (`disponible`) puede tener **hasta 5 segundos de atraso** y **no es una reserva**:
+      mostrarla como orientativa.
+    - Los errores siguen *Problem Details* (RFC 9457) con un campo `code` estable.
+    - Ignorar los campos desconocidos: en versiones `1.x` se pueden agregar campos opcionales.
+
+    Guía completa, ejemplos y política de versionado: `docs/contracts/README.md`.
+  contact:
+    name: Equipo GhostKitchen (ver docs/contracts/README.md, sección Contacto)
+servers:
+  - url: http://localhost:4010
+    description: Mock local (Prism) — `docker compose up contract-mock`
+  - url: http://localhost:8080/public
+    description: Implementación local detrás del gateway (desde la Entrega 2)
+security:
+  - ApiKeyAuth: []
+tags:
+  - name: Sedes
+    description: Las cocinas de GhostKitchen y cuál atiende una ubicación.
+  - name: Platos
+    description: Búsqueda y detalle de platos disponibles en una sede.
+paths:
+  /v1/sedes:
+    get:
+      tags: [Sedes]
+      operationId: listarSedes
+      summary: Listar las sedes
+      description: Devuelve las sedes activas con su ubicación y sus restaurantes. Usar el `id` en las demás operaciones.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Sedes activas.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/X-Correlation-Id'
+            RateLimit-Limit:
+              $ref: '#/components/headers/RateLimit-Limit'
+            RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListaSedes'
+              example:
+                items:
+                  - id: nueva-cordoba
+                    nombre: Cocina Nueva Córdoba
+                    localidad: Nueva Córdoba
+                    direccion: Obispo Trejo 1050
+                    ubicacion: { lat: -31.4262, lng: -64.1883 }
+                    tiempoEntregaMin: 25
+                    tiempoEntregaMax: 35
+                    costoEnvio: 1200
+                    restaurantes:
+                      - { id: r1, nombre: Mostaza }
+                      - { id: r2, nombre: Sushi Club }
+                      - { id: r3, nombre: Kentucky }
+                      - { id: r4, nombre: Grido }
+                  - id: cerro
+                    nombre: Cocina Cerro
+                    localidad: Cerro de las Rosas
+                    direccion: Rafael Núñez 4520
+                    ubicacion: { lat: -31.3682, lng: -64.2318 }
+                    tiempoEntregaMin: 30
+                    tiempoEntregaMax: 40
+                    costoEnvio: 1300
+                    restaurantes:
+                      - { id: r5, nombre: Johnny B. Good }
+                      - { id: r6, nombre: Il Gatto }
+                      - { id: r7, nombre: Green Eat }
+                      - { id: r8, nombre: Havanna }
+                  - id: villa-allende
+                    nombre: Cocina Villa Allende
+                    localidad: Villa Allende
+                    direccion: Av. Goycoechea 680
+                    ubicacion: { lat: -31.2958, lng: -64.2951 }
+                    tiempoEntregaMin: 35
+                    tiempoEntregaMax: 45
+                    costoEnvio: 1500
+                    restaurantes:
+                      - { id: r9, nombre: Big Pons }
+                      - { id: r10, nombre: KFC }
+                      - { id: r11, nombre: El Club de la Milanesa }
+                      - { id: r12, nombre: "Dunkin' Donuts" }
+                  - id: barrio-jardin
+                    nombre: Cocina Barrio Jardín
+                    localidad: Barrio Jardín
+                    direccion: Av. Richieri 3150
+                    ubicacion: { lat: -31.4531, lng: -64.1824 }
+                    tiempoEntregaMin: 30
+                    tiempoEntregaMax: 40
+                    costoEnvio: 1100
+                    restaurantes:
+                      - { id: r13, nombre: Dean & Dennys }
+                      - { id: r14, nombre: Sushi Pop }
+                      - { id: r15, nombre: La Cabrera }
+                      - { id: r16, nombre: Café Martínez }
+        '401':
+          $ref: '#/components/responses/NoAutorizado'
+        '429':
+          $ref: '#/components/responses/LimiteExcedido'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+
+  /v1/sedes/cercana:
+    get:
+      tags: [Sedes]
+      operationId: buscarSedeCercana
+      summary: Sede más cercana a una ubicación
+      description: |
+        Devuelve la sede activa más cercana (distancia en línea recta) y a cuántos km está.
+        Si ninguna está a menos de 25 km responde `404 SIN_COBERTURA`.
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          description: Latitud en grados decimales (WGS84).
+          schema:
+            type: number
+            minimum: -90
+            maximum: 90
+          example: -31.333
+        - name: lng
+          in: query
+          required: true
+          description: Longitud en grados decimales (WGS84).
+          schema:
+            type: number
+            minimum: -180
+            maximum: 180
+          example: -64.255
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Sede más cercana.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/X-Correlation-Id'
+            RateLimit-Limit:
+              $ref: '#/components/headers/RateLimit-Limit'
+            RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SedeCercana'
+              example:
+                distanciaKm: 4.5
+                sede:
+                  id: cerro
+                  nombre: Cocina Cerro
+                  localidad: Cerro de las Rosas
+                  direccion: Rafael Núñez 4520
+                  ubicacion: { lat: -31.3682, lng: -64.2318 }
+                  tiempoEntregaMin: 30
+                  tiempoEntregaMax: 40
+                  costoEnvio: 1300
+                  restaurantes:
+                    - { id: r5, nombre: Johnny B. Good }
+                    - { id: r6, nombre: Il Gatto }
+                    - { id: r7, nombre: Green Eat }
+                    - { id: r8, nombre: Havanna }
+        '400':
+          $ref: '#/components/responses/ParametroInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutorizado'
+        '404':
+          description: Ninguna sede activa está a menos de 25 km.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+              example:
+                type: https://ghostkitchen.dev/errores/sin-cobertura
+                title: Sin cobertura
+                status: 404
+                code: SIN_COBERTURA
+                detail: No hay sedes activas a menos de 25 km de esa ubicación.
+                correlationId: 7d1c2a90-3f4e-4b4a-9a55-1f0a2c8e6b11
+        '429':
+          $ref: '#/components/responses/LimiteExcedido'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+
+  /v1/sedes/{sedeId}/platos:
+    get:
+      tags: [Platos]
+      operationId: buscarPlatos
+      summary: Buscar platos de una sede
+      description: |
+        Busca platos activos de todos los restaurantes de la sede. Por defecto devuelve solo los
+        platos con stock disponible (`soloDisponibles=true`), ordenados por relevancia.
+      parameters:
+        - $ref: '#/components/parameters/SedeId'
+        - name: q
+          in: query
+          description: Texto libre. Busca en nombre, descripción, restaurante y categoría (ignora mayúsculas y acentos).
+          schema:
+            type: string
+            maxLength: 100
+          example: burger
+        - name: categoria
+          in: query
+          description: Categoría exacta del plato.
+          schema:
+            type: string
+            example: Hamburguesas
+        - name: etiqueta
+          in: query
+          description: Restricción alimentaria o característica.
+          schema:
+            $ref: '#/components/schemas/Etiqueta'
+        - name: restauranteId
+          in: query
+          description: Limitar a un restaurante de la sede.
+          schema:
+            type: string
+            example: r1
+        - name: precioMax
+          in: query
+          description: Precio máximo en pesos (ARS), inclusive.
+          schema:
+            type: integer
+            minimum: 1
+            example: 15000
+        - name: soloDisponibles
+          in: query
+          description: Si es `false`, incluye también los platos sin stock (con `disponible=false`).
+          schema:
+            type: boolean
+            default: true
+        - name: orden
+          in: query
+          description: Criterio de orden.
+          schema:
+            type: string
+            enum: [relevancia, precio_asc, precio_desc]
+            default: relevancia
+        - name: page
+          in: query
+          description: Número de página, desde 1.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          description: Resultados por página.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Página de resultados.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/X-Correlation-Id'
+            RateLimit-Limit:
+              $ref: '#/components/headers/RateLimit-Limit'
+            RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaPlatos'
+              example:
+                sede:
+                  id: nueva-cordoba
+                  nombre: Cocina Nueva Córdoba
+                items:
+                  - id: p1
+                    nombre: Mega doble
+                    descripcion: Dos medallones de carne, doble cheddar y la salsa de la casa.
+                    categoria: Hamburguesas
+                    etiquetas: []
+                    precio: 12900
+                    moneda: ARS
+                    fotoUrl: https://images.unsplash.com/photo-1610440042657-612c34d95e9f
+                    disponible: true
+                    restaurante: { id: r1, nombre: Mostaza }
+                    sede: { id: nueva-cordoba, nombre: Cocina Nueva Córdoba }
+                    actualizadoEn: '2026-10-09T18:42:10Z'
+                  - id: p2
+                    nombre: Cheese bacon
+                    descripcion: Medallón de carne, cheddar y panceta crocante.
+                    categoria: Hamburguesas
+                    etiquetas: []
+                    precio: 13400
+                    moneda: ARS
+                    fotoUrl: https://images.unsplash.com/photo-1571091718767-18b5b1457add
+                    disponible: true
+                    restaurante: { id: r1, nombre: Mostaza }
+                    sede: { id: nueva-cordoba, nombre: Cocina Nueva Córdoba }
+                    actualizadoEn: '2026-10-09T18:41:55Z'
+                page: 1
+                pageSize: 20
+                total: 2
+                totalPages: 1
+        '400':
+          $ref: '#/components/responses/ParametroInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutorizado'
+        '404':
+          description: La sede no existe o no está activa.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+              example:
+                type: https://ghostkitchen.dev/errores/sede-no-encontrada
+                title: Sede no encontrada
+                status: 404
+                code: SEDE_NO_ENCONTRADA
+                detail: No existe la sede 'rio-cuarto' o no está activa.
+                correlationId: 7d1c2a90-3f4e-4b4a-9a55-1f0a2c8e6b11
+        '429':
+          $ref: '#/components/responses/LimiteExcedido'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+
+  /v1/platos/{platoId}:
+    get:
+      tags: [Platos]
+      operationId: obtenerPlato
+      summary: Obtener el detalle de un plato
+      description: Devuelve un plato activo con su disponibilidad actual (con hasta 5 s de atraso).
+      parameters:
+        - name: platoId
+          in: path
+          required: true
+          description: Identificador del plato.
+          schema:
+            type: string
+          example: p5
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Detalle del plato.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/X-Correlation-Id'
+            RateLimit-Limit:
+              $ref: '#/components/headers/RateLimit-Limit'
+            RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plato'
+              example:
+                id: p5
+                nombre: Salmón roll x 10
+                descripcion: Rolls de salmón rosado y arroz de sushi.
+                categoria: Sushi
+                etiquetas: [Sin TACC]
+                precio: 15500
+                moneda: ARS
+                fotoUrl: https://images.unsplash.com/photo-1576866206724-c696f4c9fa06
+                disponible: false
+                restaurante: { id: r2, nombre: Sushi Club }
+                sede: { id: nueva-cordoba, nombre: Cocina Nueva Córdoba }
+                actualizadoEn: '2026-10-09T18:43:02Z'
+        '401':
+          $ref: '#/components/responses/NoAutorizado'
+        '404':
+          description: El plato no existe o está desactivado.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+              example:
+                type: https://ghostkitchen.dev/errores/plato-no-encontrado
+                title: Plato no encontrado
+                status: 404
+                code: PLATO_NO_ENCONTRADO
+                detail: El plato 'p999' no existe o fue desactivado.
+                correlationId: 7d1c2a90-3f4e-4b4a-9a55-1f0a2c8e6b11
+        '429':
+          $ref: '#/components/responses/LimiteExcedido'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Clave entregada a cada grupo consumidor. No compartirla ni versionarla.
+
+  parameters:
+    SedeId:
+      name: sedeId
+      in: path
+      required: true
+      description: Identificador de la sede (ver `listarSedes` o `buscarSedeCercana`).
+      schema:
+        type: string
+        pattern: '^[a-z0-9-]+$'
+      example: nueva-cordoba
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      description: Identificador para seguir la solicitud en nuestros logs. Si no se envía, se genera uno.
+      schema:
+        type: string
+        maxLength: 64
+      example: 7d1c2a90-3f4e-4b4a-9a55-1f0a2c8e6b11
+
+  headers:
+    X-Correlation-Id:
+      description: El identificador recibido o uno generado por GhostKitchen.
+      schema:
+        type: string
+      example: 7d1c2a90-3f4e-4b4a-9a55-1f0a2c8e6b11
+    RateLimit-Limit:
+      description: Solicitudes permitidas por minuto para la clave.
+      schema:
+        type: integer
+      example: 60
+    RateLimit-Remaining:
+      description: Solicitudes restantes en la ventana actual.
+      schema:
+        type: integer
+      example: 57
+    Retry-After:
+      description: Segundos que conviene esperar antes de reintentar.
+      schema:
+        type: integer
+      example: 12
+
+  schemas:
+    Etiqueta:
+      type: string
+      enum: [Vegano, Vegetariano, Sin TACC, Picante]
+
+    Ubicacion:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat:
+          type: number
+          example: -31.4262
+        lng:
+          type: number
+          example: -64.1883
+
+    RestauranteRef:
+      type: object
+      description: Restaurante (marca) que despacha desde la sede.
+      required: [id, nombre]
+      properties:
+        id:
+          type: string
+        nombre:
+          type: string
+
+    SedeRef:
+      type: object
+      required: [id, nombre]
+      properties:
+        id:
+          type: string
+        nombre:
+          type: string
+
+    Sede:
+      type: object
+      description: Cocina fantasma. Un pedido puede combinar platos de todos sus restaurantes.
+      required: [id, nombre, localidad, direccion, ubicacion, tiempoEntregaMin, tiempoEntregaMax, costoEnvio, restaurantes]
+      properties:
+        id:
+          type: string
+          example: nueva-cordoba
+        nombre:
+          type: string
+          example: Cocina Nueva Córdoba
+        localidad:
+          type: string
+          example: Nueva Córdoba
+        direccion:
+          type: string
+        ubicacion:
+          $ref: '#/components/schemas/Ubicacion'
+        tiempoEntregaMin:
+          type: integer
+          description: Minutos estimados (mínimo).
+        tiempoEntregaMax:
+          type: integer
+          description: Minutos estimados (máximo).
+        costoEnvio:
+          type: integer
+          description: Costo de envío en ARS.
+        restaurantes:
+          type: array
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/RestauranteRef'
+
+    ListaSedes:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Sede'
+
+    SedeCercana:
+      type: object
+      required: [sede, distanciaKm]
+      properties:
+        sede:
+          $ref: '#/components/schemas/Sede'
+        distanciaKm:
+          type: number
+          description: Distancia en línea recta, redondeada a 0,1 km.
+          example: 4.5
+
+    Plato:
+      type: object
+      required: [id, nombre, categoria, etiquetas, precio, moneda, disponible, restaurante, sede, actualizadoEn]
+      properties:
+        id:
+          type: string
+        nombre:
+          type: string
+        descripcion:
+          type: string
+        categoria:
+          type: string
+        etiquetas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Etiqueta'
+        precio:
+          type: integer
+          minimum: 0
+          description: Precio en la moneda indicada, sin decimales.
+        moneda:
+          type: string
+          enum: [ARS]
+        fotoUrl:
+          type: string
+          format: uri
+        disponible:
+          type: boolean
+          description: |
+            `true` si al momento de `actualizadoEn` había stock de todos los ingredientes.
+            Puede tener hasta 5 s de atraso y no reserva nada.
+        restaurante:
+          $ref: '#/components/schemas/RestauranteRef'
+        sede:
+          $ref: '#/components/schemas/SedeRef'
+        actualizadoEn:
+          type: string
+          format: date-time
+          description: Momento de la última actualización del dato en el índice (UTC).
+
+    PaginaPlatos:
+      type: object
+      required: [sede, items, page, pageSize, total, totalPages]
+      properties:
+        sede:
+          $ref: '#/components/schemas/SedeRef'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Plato'
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 50
+        total:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+
+    Problema:
+      type: object
+      description: Error en formato Problem Details (RFC 9457).
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        code:
+          type: string
+          description: Código estable para usar en la lógica del consumidor.
+          enum:
+            - PARAMETRO_INVALIDO
+            - API_KEY_INVALIDA
+            - SEDE_NO_ENCONTRADA
+            - PLATO_NO_ENCONTRADO
+            - SIN_COBERTURA
+            - LIMITE_EXCEDIDO
+            - SERVICIO_NO_DISPONIBLE
+        detail:
+          type: string
+        correlationId:
+          type: string
+        errores:
+          type: array
+          description: Detalle por parámetro (solo en 400).
+          items:
+            type: object
+            properties:
+              parametro:
+                type: string
+              mensaje:
+                type: string
+
+  responses:
+    ParametroInvalido:
+      description: Algún parámetro no cumple el contrato. No reintentar sin corregirlo.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://ghostkitchen.dev/errores/parametro-invalido
+            title: Parámetro inválido
+            status: 400
+            code: PARAMETRO_INVALIDO
+            detail: Hay parámetros con valores no permitidos.
+            correlationId: 7d1c2a90-3f4e-4b4a-9a55-1f0a2c8e6b11
+            errores:
+              - parametro: lat
+                mensaje: Debe estar entre -90 y 90.
+    NoAutorizado:
+      description: Falta el header `X-API-Key` o la clave no es válida. No reintentar.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://ghostkitchen.dev/errores/api-key-invalida
+            title: API key inválida
+            status: 401
+            code: API_KEY_INVALIDA
+            detail: Enviá una clave válida en el header X-API-Key.
+    LimiteExcedido:
+      description: Se superaron las 60 solicitudes por minuto. Reintentar después de `Retry-After` segundos.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/Retry-After'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://ghostkitchen.dev/errores/limite-excedido
+            title: Límite de uso excedido
+            status: 429
+            code: LIMITE_EXCEDIDO
+            detail: Superaste 60 solicitudes por minuto. Reintentá en 12 segundos.
+    NoDisponible:
+      description: |
+        La búsqueda no está disponible temporalmente. Se puede reintentar con backoff
+        (por ejemplo 1 s, 2 s, 4 s) respetando `Retry-After` si viene.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/Retry-After'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://ghostkitchen.dev/errores/servicio-no-disponible
+            title: Servicio no disponible
+            status: 503
+            code: SERVICIO_NO_DISPONIBLE
+            detail: La búsqueda de platos no está disponible en este momento.
