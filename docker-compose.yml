@@ -9,7 +9,7 @@ services:
   contract-mock:
     image: stoplight/prism:5
     container_name: ghostkitchen-contract-mock
-    command: mock -h 0.0.0.0 -p 4010 /contracts/v1/openapi.yaml
+    command: mock -h 0.0.0.0 -p 4010 -m false /contracts/v1/openapi.yaml
     volumes:
       - ./docs/contracts:/contracts:ro
     ports:
