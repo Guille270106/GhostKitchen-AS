@@ -1,0 +1,16 @@
+# Puesta en marcha local de GhostKitchen: `docker compose up`
+#
+# Estado (Entrega 1):
+#   - contract-mock: mock de la capacidad publicada, servido desde el contrato OpenAPI.
+# El frontend, el API Gateway, los microservicios, las bases de datos, RabbitMQ, Solr y la
+# observabilidad se agregan en las próximas entregas (ver docs/ARCHITECTURE.md, sección 11).
+# Los secretos se van a leer de un archivo .env que no se versiona (ver .env.example).
+services:
+  contract-mock:
+    image: stoplight/prism:5
+    container_name: ghostkitchen-contract-mock
+    command: mock -h 0.0.0.0 -p 4010 /contracts/v1/openapi.yaml
+    volumes:
+      - ./docs/contracts:/contracts:ro
+    ports:
+      - "4010:4010"
