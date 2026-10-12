@@ -45,7 +45,7 @@ Así cumplimos con una base **relacional (MySQL)** y una **no relacional (MongoD
   -- si no cambió ninguna fila, no alcanza: se deshace todo
   ```
   Como la base controla esto, si dos personas quieren el último plato a la vez, solo una lo consigue.
-- **Qué guarda:** ingredientes (total y reservado), recetas, reservas con su vencimiento, el historial de movimientos (reposiciones, mermas, descuentos y devoluciones), y una copia de la localidad de cada cocina y de la cocina de cada plato.
+- **Qué guarda:** ingredientes (total y reservado), recetas, reservas con su vencimiento, el historial de movimientos (reposiciones, mermas, descuentos y devoluciones), y una referencia de identidad y estado de cada cocina y de la cocina de cada plato.
 
 #### Pedidos → MySQL
 
@@ -60,7 +60,7 @@ Así cumplimos con una base **relacional (MySQL)** y una **no relacional (MongoD
 
 #### Catálogo → MongoDB + Memcached
 
-- **Qué pasa:** se lee mucho ("el menú de esta cocina", "este plato") y cambia poco (solo el admin).
+- **Qué pasa:** se lee mucho ("el menú de esta cocina", "este plato") y cambia por Admin (cocinas/restaurantes) y por Cocina (platos propios).
 - **Por qué MongoDB:** una cocina con sus restaurantes es un documento: se lee siempre junta y tiene como máximo 4 restaurantes, así que los guardamos adentro de la cocina (Clase 2). Además, el límite de 4 se controla en **una sola operación** sobre ese documento, sin transacciones. Los platos van en otra colección, porque se consultan solos y son muchos.
 - **Caché:** Memcached guarda las lecturas más comunes para no ir siempre a la base. Lo comparten las 2 copias de Catálogo. No es la fuente de la verdad: si se borra, no se pierde nada (Clase 3).
 
@@ -70,7 +70,7 @@ Así cumplimos con una base **relacional (MySQL)** y una **no relacional (MongoD
 
 #### Búsqueda → Solr
 
-- Es un motor de búsqueda: encuentra platos por texto, filtra, ordena y también calcula distancias (para la cocina más cercana).
+- Es un motor de búsqueda: encuentra platos por texto, filtra, ordena y también calcula distancias (para la cocina más cercana). Las dos ubicaciones externas de proximidad no se indexan ni guardan: Go calcula su distancia en la solicitud.
 - Los índices de platos y cocinas son **copias** y se reconstruyen por las API de Catálogo e Inventario. Las zonas (barrios y ciudades con su ubicación) son datos de referencia propios de Búsqueda, cargados al iniciar; se restauran desde esa carga inicial.
 
 ### Cómo se organiza cada base
