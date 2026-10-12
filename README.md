@@ -11,15 +11,10 @@ El objetivo del diseño es que **nunca se venda un plato si no hay ingredientes 
 
 Proyecto del Práctico Integrador de **Arquitectura de Software 2026** (UCC).
 
-**Integrantes:** Lucía, Guillermina y Valentina. **Repositorio público:** URL pendiente de informar. La carpeta de trabajo revisada todavía no tiene metadatos Git; verificar el acceso de la cátedra antes de entregar.
+**Integrantes:** Lucía, Guillermina y Valentina.
 
-> **Estado (Entrega 1 — 9/10/2026): diseño y contrato con mock.**
-> -  Alcance, reglas de negocio y criterios de aceptación ([SPEC.md](SPEC.md)).
-> -  Arquitectura: diagramas de contexto y contenedores, límites de los servicios y propiedad de los datos ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)).
-> -  Capacidad seleccionada, con contrato OpenAPI versionado y mock configurado con Prism ([docs/contracts](docs/contracts/README.md)).
-> -  Decisiones D1 y D8, y versiones iniciales de D3 y D5 ([docs/adr](docs/adr/README.md)).
-> -  Estructura inicial de los servicios y sus dependencias ([services/](services/README.md)).
-> -  Implementación de los microservicios, gateway, bases de datos, mensajería y frontend: desde la Entrega 2.
+**Repositorio público:** [GhostKitchen-AS](https://github.com/Guille270106/GhostKitchen-AS).
+
 
 ## Tabla de contenidos
 
