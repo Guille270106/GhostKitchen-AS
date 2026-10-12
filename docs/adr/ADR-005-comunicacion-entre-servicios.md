@@ -78,7 +78,7 @@ Cada servicio que escucha tiene **su propia cola**. Si un servicio tiene varias 
 | Cola | Qué mensajes recibe | Para qué |
 | --- | --- | --- |
 | `busqueda.indexador` | `cocina.*`, `plato.*`, `disponibilidad.cambiada` | Mantener la búsqueda al día |
-| `inventario.referencias` | `cocina.*`, `plato.*` | Saber la localidad de cada cocina y de qué cocina es cada plato |
+| `inventario.referencias` | `cocina.*`, `plato.*` | Conocer identidad y estado de cada cocina y de qué cocina es cada plato para validar referencias |
 | `pedidos.reservas` | `reserva.vencida` | Marcar el carrito como vencido |
 | `notificaciones.mailer` | `pedido.estado_cambiado` | Mandar el mail |
 

@@ -10,7 +10,7 @@ Se encarga de las cuentas y del login. Puerto **8081**. Lo programamos en la Ent
 
 - Registra al cliente con nombre, correo, contraseña y dirección. **No pide localidad**, porque el cliente puede pedir a distintas cocinas en distintos momentos.
 - Hace el login y entrega un **token** (JWT). Cuando alguien quiere hacer algo privado, el gateway le pregunta a este servicio si el token es válido.
-- Maneja los tres roles: cliente, cocina y admin.
+- Maneja los tres roles: cliente, cocina y admin. Admin administra cocinas, restaurantes y cuentas y consulta métricas; Cocina administra sus propios platos, pedidos e inventario, incluidas recetas, reposiciones y mermas. Conservamos la cocina asignada en el token, sin agregar otro rol.
 - Recuerda **qué cocina eligió el cliente**, para mostrársela la próxima vez. El cliente la puede cambiar cuando quiera.
 - Crea la cuenta Cocina cuando el admin da de alta una cocina (solo si la cocina es de su localidad).
 - Las cuentas de admin se cargan al iniciar el sistema: no se pueden registrar solas.

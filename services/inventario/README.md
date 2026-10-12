@@ -13,7 +13,7 @@ Dice **con qué se hace cada plato y si alcanza**. Puerto **8084**. Es uno de lo
 - **Reserva** los ingredientes cuando el cliente agrega un plato: **todos o ninguno**, por 10 minutos.
 - Ajusta o libera la reserva cuando el cliente cambia el carrito, y la **libera sola** cuando pasan los 10 minutos.
 - **Descuenta** el stock cuando se confirma el pedido y lo **devuelve** si se cancela.
-- Permite **reponer** stock y registrar **mermas** (ingredientes que se perdieron o vencieron).
+- El **rol Cocina** administra ingredientes, recetas, reposiciones, mermas y stock solo de su cocina asignada. El admin no administra el inventario.
 - Avisa cuando un plato pasa a estar disponible o deja de estarlo.
 
 ## Qué datos guarda (MySQL)
@@ -24,7 +24,7 @@ Dice **con qué se hace cada plato y si alcanza**. Puerto **8084**. Es uno de lo
 | `receta_item` | Qué ingrediente y cuánto usa cada plato |
 | `reserva` / `reserva_item` | Cada reserva, su estado, cuándo vence y cuánto aparta de cada ingrediente |
 | `movimiento` | El historial: reposiciones, mermas, descuentos y devoluciones |
-| `cocina_ref` / `plato_ref` | Una copia, que llega por mensajes, de la localidad de cada cocina y de la cocina de cada plato |
+| `cocina_ref` / `plato_ref` | Una copia, que llega por mensajes, de la identidad y estado de cada cocina y de la cocina de cada plato |
 | `idempotencia` · `outbox` · `mensaje_procesado` | Para no repetir operaciones, no perder mensajes y no procesar dos veces el mismo mensaje |
 
 ## Cómo se organiza por dentro: hexagonal liviano
@@ -64,13 +64,13 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 | `POST /reservas/{id}/consumir` | Pedidos | Descontar el stock al confirmar |
 | `POST /consumos/{pedidoId}/devolver` | Pedidos | Devolver el stock al cancelar |
 | `GET /reservas/{id}` · `GET /consumos/{pedidoId}` | Pedidos | Preguntar si algo se hizo, cuando no hubo respuesta a tiempo |
-| `GET`/`POST /admin/cocinas/{id}/ingredientes` | admin | Ver el stock y cargar ingredientes |
-| `POST /admin/ingredientes/{id}/reposiciones` · `/mermas` | admin | Reponer o registrar mermas |
-| `PUT /admin/platos/{id}/receta` | admin | Cargar la receta de un plato |
+| `GET`/`POST /cocina/ingredientes` | cocina | Ver el stock y cargar ingredientes |
+| `POST /cocina/ingredientes/{id}/reposiciones` · `/mermas` | cocina | Reponer o registrar mermas |
+| `PUT /cocina/platos/{id}/receta` | cocina | Cargar la receta de un plato |
 | `GET /cocina/recetas` | cocina | Ver las recetas de su cocina |
 | `GET /platos/disponibilidad` | Búsqueda | Reconstruir la búsqueda |
 
-**Permisos:** el admin solo toca cocinas de su localidad, y una cocina solo ve sus propias recetas.
+**Permisos:** solo Cocina administra inventario y recetas de su cocina asignada en el token verificado. Inventario comprueba la pertenencia del ingrediente o plato, sin confiar en una cocina enviada por el cliente. Admin recibe 403; recursos de otra cocina, 404. Las reservas y consumos son operaciones internas solicitadas por Pedidos.
 
 ## Mensajes
 
@@ -81,7 +81,7 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 
 | Escucha | Para qué |
 | --- | --- |
-| `cocina.*` | Saber la localidad de cada cocina |
+| `cocina.*` | Conocer identidad y estado de cada cocina |
 | `plato.*` | Saber de qué cocina es cada plato y si sigue activo |
 
 ## Con quién habla
@@ -107,6 +107,7 @@ Una devolución usa las cantidades efectivamente descontadas, no una receta que 
 
 ## Pruebas previstas
 
+- Admin rechazado con 403; Cocina sin acceso a ingredientes, movimientos o recetas ajenos (404), aunque manipule IDs o headers.
 - Recetas con ingredientes de otra cocina, cantidades inválidas y mermas que comprometen reservas.
 - Reservas simultáneas del último plato contra MySQL real: ninguna sobreventa y ninguna reserva parcial.
 - Descuento y vencimiento concurrentes; repetir reservas, descuentos y devoluciones con la misma clave.

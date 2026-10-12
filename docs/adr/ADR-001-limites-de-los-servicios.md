@@ -33,7 +33,7 @@ Separamos el sistema en **6 microservicios** y un **API Gateway (NGINX)**. Cada 
 | --- | --- | --- | --- |
 | **Usuarios** | Registro, login y roles | Usuarios, contraseñas encriptadas, dirección, rol, cocina elegida por el cliente, cocina de cada cuenta Cocina, localidad de cada admin | Cocinas, pedidos |
 | **Catálogo** | Qué se vende y a qué precio | Cocinas (dirección, ubicación, tiempo estimado de entrega, costo de envío), restaurantes (máx. 4 por cocina) y platos (con su foto) | Recetas, stock |
-| **Búsqueda** | Encontrar platos y la cocina más cercana | Las **zonas** (barrios con su ubicación, cargadas al iniciar). Todo lo demás son **copias** de datos, armadas para buscar | Platos, cocinas y stock originales |
+| **Búsqueda** | Encontrar platos y la cocina más cercana; comparar una sede externa con el cliente sin guardar coordenadas | Las **zonas** (barrios con su ubicación, cargadas al iniciar). Todo lo demás son **copias** de datos, armadas para buscar | Platos, cocinas y stock originales |
 | **Inventario** | Con qué se hace cada plato y si alcanza | Ingredientes, stock (total y reservado), **recetas**, reservas (con los ingredientes y cantidades que apartó cada una) y movimientos (reposiciones, mermas, descuentos, devoluciones) | Platos (solo guarda su ID y su cocina), pedidos |
 | **Pedidos** | La compra | Carritos, confirmaciones en curso, pedidos e historial de estados | Stock, datos de la cuenta del cliente |
 | **Notificaciones** | Los mails | Qué mails mandó y cuáles faltan | El estado del pedido |
@@ -75,7 +75,7 @@ Separar los datos obliga a que algunos servicios guarden **copias** de datos aje
 | Nombre y precio del plato, nombre del restaurante | Pedidos (en cada ítem) | Catálogo | Se copia **una vez**, al agregar al carrito | Es lo que queremos: el pedido conserva el precio que vio el cliente (RN15) |
 | Mail del cliente | Pedidos (en cada pedido) | Usuarios | Viene en el token al confirmar | El mail va al correo que tenía al pedir |
 | Localidad de la cocina | Pedidos (en cada pedido) | Catálogo | Se copia al crear el pedido, junto con los datos de los platos | Las métricas del admin usan la localidad que tenía la cocina cuando se hizo el pedido |
-| Localidad de cada cocina | Inventario | Catálogo | Mensajes `cocina.*` | Inventario **rechaza** los cambios del admin sobre esa cocina hasta tenerla: nunca permite por las dudas |
+| Localidad de cada cocina | Inventario | Catálogo | Mensajes `cocina.*` | Inventario valida referencias; los permisos operativos se basan en la cocina asignada al rol Cocina y la pertenencia del recurso |
 | De qué cocina es cada plato | Inventario | Catálogo | Mensajes `plato.*` | No se puede cargar la receta de ese plato hasta que llegue |
 | Platos, sedes y disponibilidad | Búsqueda (índice de Solr) | Catálogo e Inventario | Mensajes, con hasta 5 s de atraso; se puede reconstruir por API | La disponibilidad es orientativa (RN21): al reservar, Inventario controla el stock real |
 | Mail del cliente y estado del pedido | Notificaciones | Pedidos | Mensaje `pedido.estado_cambiado` | No aplica: cada mensaje describe un cambio que ya pasó |
@@ -103,7 +103,7 @@ El que cocina todo es la cocina; los restaurantes son solo marcas. El pedido tie
 | **Solo 3 servicios** (usuarios, catálogo con stock, pedidos con mails) | Menos trabajo | Mezcla cosas que se usan muy distinto; si falla el mail, afecta a los pedidos | La descartamos |
 | **Recetas en Catálogo** | El plato y su receta juntos | Inventario necesitaría una copia de la receta, que podría estar desactualizada justo al reservar | La descartamos |
 | **Stock en Catálogo** | Todo en un lugar | Una base pensada para leer, usada para algo que cambia todo el tiempo | La descartamos |
-| **Stock en Pedidos** | Reservar y confirmar en una sola operación | Pedidos haría todo; el admin cargaría stock en el servicio de los clientes | La descartamos |
+| **Stock en Pedidos** | Reservar y confirmar en una sola operación | Pedidos haría todo; el personal de cocina cargaría stock en el servicio de los clientes | La descartamos |
 | **Búsqueda dentro de Catálogo** | Un servicio menos | Las búsquedas competirían con la administración del catálogo, y el índice necesita datos de Catálogo **y** de Inventario, así que no es de ninguno de los dos. Separada, crece sola y si se cae no afecta a los pedidos (Clase 5) | La descartamos |
 | **Un pedido por restaurante** | Cada marca maneja lo suyo | Los restaurantes no tienen gente propia: cocina todo la cocina | La descartamos |
 | **Mails dentro de Pedidos** | Un servicio menos | Si falla el correo, afecta a la confirmación de pedidos | La descartamos, pero es el **plan B** si nos cuesta mucho mantener 6 servicios |
@@ -132,7 +132,7 @@ El que cocina todo es la cocina; los restaurantes son solo marcas. El pedido tie
 | --- | --- |
 | Que Pedidos empiece a saber de stock | Pedidos solo dice "reservá / descontá / devolvé"; las reglas están en Inventario |
 | Que el gateway termine teniendo lógica del negocio | El gateway solo rutea, verifica el login, limita y reparte la carga |
-| Que Inventario use una localidad vieja o que todavía no le llegó | Cada mensaje `cocina.*` trae una versión, e Inventario solo guarda una versión más nueva que la que tiene. Si no tiene la localidad de una cocina, **rechaza** los cambios del admin sobre ella. El *seed* carga las 4 cocinas al iniciar |
+| Que Inventario use una localidad vieja o que todavía no le llegó | Cada mensaje `cocina.*` trae una versión, e Inventario solo guarda una versión más nueva que la que tiene. Si le falta una referencia para validar el recurso, **rechaza** los cambios del personal de cocina hasta verificar su pertenencia. El *seed* carga las 4 cocinas al iniciar |
 
 ## Cómo lo vamos a validar
 
@@ -147,3 +147,8 @@ El que cocina todo es la cocina; los restaurantes son solo marcas. El pedido tie
 - Clase 5: el índice de búsqueda como copia derivada de los datos.
 - Clase 6: el gateway como única entrada; quién es se verifica en el borde, qué puede hacer lo decide cada servicio.
 - Clase 7: fallas parciales y aislamiento.
+## Ajuste de roles de Entrega 1 — 12/10/2026
+
+Admin mantiene estructura y cuentas de su localidad (HU14–HU16) y consulta métricas (HU22). Cocina mantiene su menú e inventario (HU17–HU21), pedidos (HU23–HU25) e historial (HU27). HU26 se elimina porque queda integrada en HU18. Quien trabaja en cocina conoce platos y stock real; el admin administra estructura y no es cuello de botella para el trabajo diario.
+
+Se conservan los seis servicios, las bases y los eventos. Catálogo valida cocina_id para platos; Inventario para ingredientes, recetas y movimientos. Admin no administra menú ni stock. Rol incorrecto: 403; recurso de otra cocina: 404. El precio permanece congelado al agregar al carrito (RN15), y las reservas conservan sus ingredientes aunque cambie una receta.

@@ -25,9 +25,10 @@ El gateway **no tiene reglas del negocio**: solo manda, verifica, limita y repar
 | Registro y login en `/api/v1/auth/` | Usuarios | Pública; la verificación del token es interna |
 | `/api/v1/usuarios/` y `/api/v1/admin/cuentas-cocina` | Usuarios | Token; el servicio controla los permisos |
 | `/api/v1/cocinas`, menú de `/api/v1/cocinas/{id}/platos` y detalle de `/api/v1/platos/{id}` | Catálogo | Pública |
-| Administración de cocinas, restaurantes y platos | Catálogo | Token de admin |
-| `/api/v1/platos/buscar` y `/api/v1/zonas` | Búsqueda | Pública |
-| Recetas, ingredientes, reposiciones y mermas | Inventario | Token; permisos según rol y localidad/cocina |
+| Administración de cocinas y restaurantes | Catálogo | Token de admin; localidad validada por Catálogo |
+| `/api/v1/cocina/restaurantes/{restauranteId}/platos` y `/api/v1/cocina/platos/{id}` | Catálogo | Token de Cocina; pertenencia validada por Catálogo |
+| `/api/v1/platos/buscar`, `/api/v1/platos/sugerencias` y `/api/v1/zonas` | Búsqueda | Pública |
+| Recetas, ingredientes, reposiciones y mermas | Inventario | Token de Cocina; Inventario valida la cocina asignada y rechaza al admin |
 | Carrito, pedidos, tablero de cocina y métricas de negocio | Pedidos | Token; permisos sobre sus propios datos |
 | `/public/v1/` | Búsqueda | `X-API-Key` |
 | `/internal/` | No se reenvía desde la entrada pública | Responde `404` |
@@ -43,6 +44,8 @@ La entrada interna de Catálogo se expone únicamente en la red de Docker y comp
 | Usuarios | La verificación espera hasta 300 ms sin reintentar; se impide el acceso privado, mientras las rutas públicas siguen disponibles |
 | Un servicio de destino | Falla su ruta; el gateway no presenta una lista vacía ni simula una operación exitosa |
 | Una instancia de Catálogo | El balanceo deja temporalmente de usarla tras detectar fallas y conserva la otra instancia |
+
+`POST /public/v1/proximidad` se dirige a Búsqueda conservando el cuerpo JSON y eliminando `/public`. Compara ubicacionCliente, ubicacionSede, radioKm e incluirDarkKitchen; no guarda coordenadas externas. El límite del cuerpo es 64 KiB (413 si se supera); la API key y los límites son los mismos que en GET. No se registran cuerpos con coordenadas.
 
 El gateway no reintenta operaciones que cambian datos. Los reintentos seguros de lectura deben respetar el plazo total de la solicitud ([ADR-005](../docs/adr/ADR-005-comunicacion-entre-servicios.md)). El formato final de errores, los límites de espera y la recuperación de instancias se precisarán al configurar NGINX.
 
@@ -60,5 +63,6 @@ El gateway no reintenta operaciones que cambian datos. Los reintentos seguros de
 - Las rutas superpuestas llegan al servicio correcto; las rutas internas no son accesibles desde la entrada pública.
 - Token inválido, Usuarios caído y headers de identidad falsificados no permiten acceso privado.
 - API key inválida produce `401`; superar el límite produce `429` con `Retry-After`.
+- Proximidad conserva método y JSON, respeta 64 KiB y no registra coordenadas; las rutas `/api/v1/cocina/ingredientes` y de recetas llegan a Inventario.
 - Reparto de solicitudes entre ambas instancias de Catálogo y continuidad de las lecturas al detener una.
 - El gateway no repite escrituras; los logs permiten identificar la instancia y seguir el `X-Correlation-Id`.
