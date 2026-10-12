@@ -1,6 +1,6 @@
 # SPEC: alcance y requisitos de GhostKitchen
 
-> **Versión:** Entrega 1 (9/10/2026). **Forma de trabajo:** Scrum, con la cátedra como Product Owner.
+> **Versión:** Entrega 1 (9/10/2026), revisada el 12/10/2026. **Forma de trabajo:** Scrum, con la cátedra como Product Owner.
 > Acá definimos qué tiene que hacer el sistema. Como trabajamos con Scrum, lo escribimos como **historias de usuario (HU)** con criterios de aceptación, más **reglas de negocio (RN)** numeradas, para poder nombrarlas en el backlog, en los tests y en los ADR. Cómo está armado el sistema está en [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## 1. Problema y objetivo
@@ -51,8 +51,8 @@ El sistema tiene **4 cocinas**, una por localidad. Cada una tiene como **máximo
 | Rol | Quién es | Cómo se crea |
 | --- | --- | --- |
 | **Cliente** | Persona que compra | Se registra solo |
-| **Admin de cocina** | Maneja las cocinas de su localidad | Se carga al iniciar el sistema (no se puede registrar solo) |
-| **Cocina** | Cuenta del personal que prepara los pedidos de una cocina | La crea el admin y la asocia a una cocina de su localidad |
+| **Admin de cocina** | Administra cocinas, restaurantes, cuentas y métricas de su localidad; no menú, stock ni pedidos | Se carga al iniciar el sistema (no se puede registrar solo) |
+| **Cocina** | Cuenta del personal que prepara pedidos y administra platos y recetas, ingredientes, stock, reposiciones y mermas de su propia cocina | La crea el admin y la asocia a una cocina de su localidad |
 | **Grupo consumidor** | Sistema de otro grupo | Usa lo que publicamos con una API key ([contrato](docs/contracts/README.md)) |
 
 ## 5. Alcance
@@ -102,6 +102,8 @@ El sistema tiene **4 cocinas**, una por localidad. Cada una tiene como **máximo
 | **RN21** | La disponibilidad que muestra la búsqueda es **orientativa** (puede tener hasta 5 s de atraso). El control real se hace al reservar. |
 | **RN22** | El cliente **no tiene localidad**: elige la cocina desde la que pide y puede cambiarla cuando quiera. El admin solo maneja cocinas de su localidad. |
 | **RN23** | El acceso se controla por **rol, cocina y localidad del admin** (ver la sección 9). |
+| **RN25** | Cocina administra platos, recetas, ingredientes, stock, reposiciones y mermas solo de su cocina asignada. Admin administra estructura y cuentas de su localidad y consulta métricas; no menú, inventario ni pedidos. |
+| **RN26** | La consulta recibe ubicacionCliente, ubicacionSede (externa), radioKm > 0 y hasta 500 e incluirDarkKitchen=false. Compara esas dos ubicaciones en línea recta sin guardarlas. Con true también busca nuestra cocina más cercana al cliente con radio efectivo min(radioKm, 25). |
 | **RN24** | Una cocina **cubre hasta 25 km** en línea recta desde su ubicación. Si ninguna cocina activa está a menos de 25 km de una ubicación, la consulta de cocina más cercana responde que **no hay cobertura**. Al cliente se le siguen mostrando las 4 cocinas para que elija una a mano (RN22). |
 
 ### Qué pasa al agregar un plato al carrito
@@ -133,7 +135,7 @@ El sistema tiene **4 cocinas**, una por localidad. Cada una tiene como **máximo
 | `ACEPTADO` | La cocina lo tomó | `EN_PREPARACION` | Cocina |
 | `EN_PREPARACION` | Se está preparando | `LISTO` | Cocina |
 | `LISTO` | Terminado | `EN_CAMINO` | Cocina |
-| `EN_CAMINO` | Se le dio al repartidor | `ENTREGADO` | Cocina |
+| `EN_CAMINO` | Se le dio al repartidor | `ENTREGADO` | Cliente |
 | `ENTREGADO` | El cliente lo recibió | — | Cliente |
 | `CANCELADO` | Lo canceló el cliente o lo rechazó la cocina; volvieron los ingredientes | — | Cliente / Cocina |
 
@@ -164,6 +166,8 @@ Como cliente quiero elegir desde qué cocina pedir, y ver sus restaurantes.
 
 **HU04 · Buscar platos** (M · P)
 Como cliente quiero buscar platos por texto y filtrarlos.
+- [ ] Ignora mayúsculas y acentos; si no hay resultados normales, admite una edición en términos de al menos cinco letras; usa sinónimos configurados como burger/hamburguesa.
+- [ ] Desde tres caracteres ofrece hasta cinco nombres distintos de platos activos de mi cocina; seleccionar una sugerencia ejecuta la búsqueda, no reserva.
 - [ ] Solo aparecen platos activos de la cocina elegida.
 - [ ] Puedo filtrar por restaurante, categoría, etiqueta (vegano, sin TACC…), precio máximo y disponibilidad.
 - [ ] Puedo ordenar por relevancia o por precio, y los resultados vienen en páginas.
@@ -221,17 +225,23 @@ Como cliente quiero confirmar mi carrito antes de que venza.
 - [ ] De cada cocina cargo nombre, dirección, ubicación (latitud y longitud), tiempo estimado de entrega (mínimo y máximo, en minutos) y costo de envío. Ninguno puede quedar vacío y el costo de envío no puede ser negativo.
 
 **HU15 · Crear la cuenta de una cocina** (M · P)
-- [ ] Creo una cuenta con rol Cocina asociada a una cocina de mi localidad. Esa cuenta solo ve los pedidos de esa cocina.
+- [ ] Creo una cuenta con rol Cocina asociada a una cocina de mi localidad. Esa cuenta solo opera el menú, los pedidos y el inventario de esa cocina (RN25).
 
 **HU16 · Manejar restaurantes** (M · P)
 - [ ] Puedo crear, modificar y desactivar restaurantes dentro de una cocina.
 - [ ] Se rechaza el quinto restaurante y no se puede repetir uno en la misma cocina (RN20).
 
-**HU17 · Manejar platos** (M · E2)
-- [ ] Puedo crear, modificar y desactivar platos con nombre, descripción, categoría, precio, etiquetas y una foto opcional (RN19).
+**HU22 · Ver métricas** (S · P)
+- [ ] Veo cuántos pedidos tuvo cada cocina de mi localidad.
 
-**HU18 · Cargar recetas** (M · E2)
-- [ ] Le asigno a cada plato sus ingredientes y cantidades.
+### 8.3 Cocina
+
+**HU17 · Manejar platos** (M · E2)
+- [ ] Puedo crear, modificar y desactivar platos de los restaurantes de mi cocina con nombre, descripción, categoría, precio, etiquetas y una foto opcional (RN19).
+- [ ] Admin no administra platos (403); Cocina no opera platos ni restaurantes ajenos (404).
+
+**HU18 · Cargar y ver recetas** (M · E2)
+- [ ] Cargo y consulto recetas de los platos de mi cocina; asigno sus ingredientes y cantidades.
 - [ ] Se rechaza un ingrediente de otra cocina o una cantidad menor o igual a 0 (RN18).
 
 **HU19 · Cargar ingredientes** (M · E2)
@@ -242,12 +252,7 @@ Como cliente quiero confirmar mi carrito antes de que venza.
 - [ ] Una merma baja el total, pero nunca por debajo de lo reservado.
 
 **HU21 · Ver el stock** (M · E2)
-- [ ] Veo el total, lo reservado y lo disponible de cada ingrediente de mis cocinas.
-
-**HU22 · Ver métricas** (S · P)
-- [ ] Veo cuántos pedidos tuvo cada cocina de mi localidad.
-
-### 8.3 Cocina
+- [ ] Veo el total, lo reservado y lo disponible de cada ingrediente de mi cocina asignada.
 
 **HU23 · Ver los pedidos de mi cocina** (M · E2)
 - [ ] Solo veo pedidos de mi cocina, con los platos y cantidades agrupados por restaurante (una bolsa por marca).
@@ -259,21 +264,21 @@ Como cliente quiero confirmar mi carrito antes de que venza.
 **HU25 · Avanzar el pedido** (M · E2)
 - [ ] ACEPTADO → EN_PREPARACION → LISTO → EN_CAMINO. Cualquier otro salto se rechaza (RN13).
 
-**HU26 · Ver recetas** (S · P)
-- [ ] Veo las recetas de los platos de mi cocina para organizar la preparación.
-
 **HU27 · Ver el historial** (S · P)
 - [ ] Veo los pedidos anteriores de mi cocina y sus cambios de estado (RN16).
 
 ### 8.4 Integración con otros grupos
 
-**HU28 · Publicar "Cocina más cercana y platos disponibles"** (M · E2 con mock; P en la nube)
-Como sistema de otro grupo quiero mandar una ubicación y saber qué cocina de GhostKitchen me queda más cerca, y qué platos se pueden pedir ahí.
+**HU28 · Publicar cocinas, platos y proximidad de sedes externas** (M · E2 con mock; P en la nube)
+Como sistema de otro grupo quiero enviar la ubicación de una sede propia y la del cliente, definir qué radio considero cercano y saber si puedo ofrecer esa sede; opcionalmente quiero ofrecer una cocina GhostKitchen cercana al cliente.
 - [x] El contrato está en `docs/contracts/`, con versión, operaciones, errores y ejemplos.
-- [x] Hay un mock funcionando desde la Entrega 1.
+- [x] Hay un mock desde la Entrega 1; la ampliación 1.1.0 también devuelve ejemplos, no cálculos reales.
 - [ ] Es **solo de lectura**: desde afuera no se puede reservar, tocar el stock ni crear pedidos.
-- [ ] Si ninguna cocina activa está a menos de 25 km de la ubicación enviada, responde `404 SIN_COBERTURA` (RN24).
+- [ ] En `GET /v1/sedes/cercana`, si no hay una cocina activa dentro de 25 km, responde `404 SIN_COBERTURA` (RN24). El POST informa sus resultados en 200, aunque estén fuera de rango.
 - [ ] Cada cocina se informa con su dirección, ubicación, tiempo estimado de entrega, costo de envío y restaurantes.
+- [ ] `POST /v1/proximidad` compara ubicacionCliente y ubicacionSede; devuelve distanciaKm y dentroDelRango para esa sede. Fuera de rango responde 200 con false. Coordenadas/radio inválidos, campos faltantes o booleano como texto responden 400. No recibe listas (RN26).
+- [ ] `incluirDarkKitchen=false` por defecto; con true informa por separado nuestra cocina más cercana al cliente, con radio min(radioKm, 25 km).
+- [ ] No se guardan ubicaciones externas. El consumidor convierte direcciones a coordenadas y selecciona la sede a comparar. Empates entre cocinas propias se resuelven por ID.
 - [ ] Está en una URL pública (Entrega 2).
 
 **HU29 · Usar lo que publica el grupo proveedor** (M · P)
@@ -285,9 +290,10 @@ Como sistema de otro grupo quiero mandar una ubicación y saber qué cocina de G
 | Regla | Si alguien intenta lo contrario… |
 | --- | --- |
 | Un cliente solo ve y cambia su carrito y sus pedidos | Ver el pedido de otro cliente → 404 |
-| Un admin solo maneja cocinas, restaurantes, platos, recetas, ingredientes y stock de su localidad | Cambiar un plato de otra localidad → 403 |
+| Un admin solo administra cocinas, restaurantes y cuentas de su localidad y consulta métricas; no menú, inventario ni pedidos | Otra localidad o administrar platos/inventario → 403 |
 | Un admin solo crea cuentas Cocina para cocinas de su localidad | → 403 |
 | Una cuenta Cocina solo ve y cambia los pedidos de su cocina | Aceptar un pedido de otra cocina → 404 |
+| Cocina solo administra platos, recetas, ingredientes y stock de su cocina; admin no tiene ese permiso | Admin → 403; recursos de otra cocina → 404 |
 
 ## 10. Atributos de calidad
 
@@ -302,7 +308,7 @@ Como sistema de otro grupo quiero mandar una ubicación y saber qué cocina de G
 | Que no se pierda nada | Se cae RabbitMQ o un servicio que escucha mensajes | No se pierde ningún pedido, devolución ni mail |
 | Seguridad | Una cocina quiere ver pedidos de otra | No puede; las contraseñas van encriptadas y las claves no están en el repo |
 | Encontrar errores rápido | Falla la confirmación de un pedido | Encontramos la causa en menos de 10 min mirando el tablero y los logs |
-| Calidad del código | Reglas del negocio | Tests unitarios que cubran al menos el 70 % |
+| Calidad del código | Reglas del negocio | Tests unitarios de reglas relevantes; meta inicial del grupo: al menos 70 % de cobertura (no es un porcentaje fijado por el enunciado) |
 
 ## 11. Cuándo algo está terminado (Definition of Done)
 
@@ -330,4 +336,4 @@ Como sistema de otro grupo quiero mandar una ubicación y saber qué cocina de G
 | ¿Los 10 minutos se reinician al agregar platos? | No se reinician |
 | ¿El cliente puede cancelar? ¿Hasta cuándo? | Sí, hasta que la cocina acepta |
 | ¿Hace falta simular el pago? | No, queda fuera de alcance |
-| ¿Qué publicamos y qué consumimos? | Publicamos "cocina más cercana y platos disponibles" ([contrato](docs/contracts/README.md)). Lo que consumimos lo asigna la cátedra |
+| ¿Qué publicamos y qué consumimos? | Publicamos "cocinas, platos y proximidad de sedes externas" ([contrato](docs/contracts/README.md)). Lo que consumimos lo asigna la cátedra |

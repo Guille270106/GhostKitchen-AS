@@ -52,7 +52,7 @@ Proyecto del Práctico Integrador de **Arquitectura de Software 2026** (UCC).
 4. Al confirmar, se descuentan esos ingredientes del stock y se crea **un único pedido**.
 5. La **cocina** recibe el pedido completo, con los platos agrupados por restaurante (una bolsa por marca). Lo acepta o lo rechaza y lo avanza: aceptado → en preparación → listo → en camino. El cliente confirma la entrega. Si la cocina rechaza o el cliente cancela (solo antes de que se acepte), el pedido se cancela y vuelven los ingredientes.
 6. Cada cambio de estado se avisa al cliente por mail.
-7. El **admin** gestiona las cocinas de su localidad, sus restaurantes, los platos con su receta y el stock de ingredientes.
+7. El **admin** gestiona cocinas, restaurantes y cuentas de su localidad y consulta métricas. El **personal de cada cocina** administra sus propios platos, ingredientes, recetas, stock, reposiciones y mermas, además de los pedidos.
 
 ## Arquitectura
 
@@ -62,7 +62,7 @@ Diseñamos el sistema con **6 microservicios en Go** y un **API Gateway** (NGINX
 | --- | --- | --- | --- | --- |
 | Usuarios | Registro, login y roles; recuerda la cocina elegida | MySQL | Capas | 8081 |
 | Catálogo (2 copias) | Cocinas, restaurantes y platos: qué se vende y a qué precio | MongoDB + Memcached | Capas + caché | 8082 |
-| Búsqueda | Buscar platos, sugerir la **cocina más cercana** y atender lo que publicamos | Solr | Capas | 8083 |
+| Búsqueda | Buscar platos, sugerir la **cocina más cercana**, calcular proximidad externa y atender lo que publicamos | Solr | Capas | 8083 |
 | **Inventario** | Ingredientes, stock, recetas y reservas de 10 minutos | MySQL | **Hexagonal** | 8084 |
 | **Pedidos** | Carrito, pedido, estados y la confirmación con Inventario y el proveedor | MySQL | **Hexagonal + DDD** | 8085 |
 | Notificaciones | Un mail por cada cambio de estado | MongoDB | Capas | 8086 |
@@ -71,11 +71,11 @@ Los servicios se comunican de dos formas:
 - **llamadas directas (HTTP)** cuando necesitamos la respuesta en el momento, por ejemplo para reservar stock. Siempre con un tiempo máximo de espera y sin repetir operaciones si se reintenta;
 - **mensajes (RabbitMQ)** para lo que puede hacerse un rato después: los mails, actualizar la búsqueda y avisar que venció una reserva.
 
-Los diagramas, qué datos guarda cada servicio y cómo funciona cada paso están en **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+Las imágenes de los diagramas están únicamente en **`docs/diagrams/`**. Qué datos guarda cada servicio y cómo funciona cada paso se explica en **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 ## Capacidad publicada para otros grupos
 
-**Cocina más cercana y platos disponibles:** otro grupo nos manda una ubicación y le decimos qué cocina le queda más cerca y a cuántos km. Después puede ver qué platos se pueden pedir ahora en esa cocina, con filtros, orden y páginas.
+**Cocinas, platos y proximidad de sedes externas:** otro grupo nos manda una ubicación y le decimos qué cocina le queda más cerca y a cuántos km. Después puede ver qué platos se pueden pedir ahora en esa cocina, con filtros, orden y páginas. La ampliación 1.1.0 agrega `POST /v1/proximidad`: ubicacionCliente, ubicacionSede y radioKm para comparar si la sede externa está cerca. incluirDarkKitchen=true consulta además nuestra cocina más cercana al cliente. No se guardan las ubicaciones ni se selecciona entre varias sedes externas.
 
 - Contrato OpenAPI v1: [docs/contracts/v1/openapi.yaml](docs/contracts/v1/openapi.yaml)
 - Guía para el consumidor (autenticación, errores, ejemplos, versionado): [docs/contracts/README.md](docs/contracts/README.md)
@@ -89,8 +89,8 @@ Los diagramas, qué datos guarda cada servicio y cómo funciona cada paso están
 - Go + Gin para los microservicios
 - NGINX como API Gateway y para repartir la carga
 - MySQL, MongoDB, Solr (búsqueda), Memcached (caché) y RabbitMQ (mensajes)
-- Monitoreo: Prometheus, Grafana, Loki y Jaeger
-- Tests: los de Go, testcontainers (tests contra bases reales) y k6 (tests de carga)
+- Monitoreo previsto: logs con un mismo identificador para seguir cada pedido, métricas con Prometheus y un tablero en Grafana. La configuración queda para Entrega 2.
+- Pruebas previstas: tests de Go para las reglas; integración con bases y RabbitMQ reales en Docker Compose; pruebas de contrato y de carga. La herramienta de carga se definirá al implementar.
 
 **Frontend (Entrega 2):** React + Vite.
 

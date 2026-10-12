@@ -6,7 +6,7 @@ Cada carpeta es un servicio aparte: va a tener su propio código, su `Dockerfile
 | --- | --- | --- | --- | --- |
 | [usuarios](usuarios/README.md) | Registro, login y roles; recuerda la cocina elegida | MySQL | Capas | 8081 |
 | [catalogo](catalogo/README.md) | Cocinas, restaurantes y platos: qué se vende y a qué precio | MongoDB + Memcached | Capas + caché | 8082 (2 copias) |
-| [busqueda](busqueda/README.md) | Buscar platos, sugerir la cocina más cercana y atender lo que publicamos | Solr | Capas (entra por HTTP y por mensajes) | 8083 |
+| [busqueda](busqueda/README.md) | Buscar platos, sugerir la cocina más cercana, calcular proximidad externa y atender lo que publicamos | Solr | Capas (entra por HTTP y por mensajes) | 8083 |
 | [inventario](inventario/README.md) | Ingredientes, stock, recetas y reservas de 10 minutos | MySQL | Hexagonal liviano | 8084 |
 | [pedidos](pedidos/README.md) | Carrito, pedido, estados y la confirmación con Inventario y el proveedor | MySQL | Hexagonal + DDD | 8085 |
 | [notificaciones](notificaciones/README.md) | Un mail por cada cambio de estado del pedido | MongoDB | Capas (entra por mensajes) | 8086 |
@@ -15,20 +15,7 @@ El gateway (NGINX, puerto 8080) está explicado en [`gateway/`](../gateway/READM
 
 ## Quién depende de quién
 
-```mermaid
-flowchart LR
-    gateway --> usuarios & catalogo & busqueda & inventario & pedidos
-    usuarios -->|HTTP| catalogo
-    pedidos -->|HTTP| catalogo
-    pedidos -->|HTTP| inventario
-    busqueda -->|"HTTP, solo reconstrucción"| catalogo & inventario
-    pedidos -->|HTTP| proveedor[Grupo proveedor]
-    catalogo -. mensajes .-> busqueda
-    catalogo -. mensajes .-> inventario
-    inventario -. mensajes .-> busqueda
-    inventario -. mensajes .-> pedidos
-    pedidos -. mensajes .-> notificaciones
-```
+Las imágenes de contexto y contenedores están en `docs/diagrams/`. Las dependencias se describen a continuación.
 
 - No hay llamadas en círculo: Pedidos llama a Catálogo e Inventario, Usuarios a Catálogo y Búsqueda a Catálogo e Inventario solo para reconstruir el índice; ninguno llama de vuelta.
 - Los mensajes van por RabbitMQ. El detalle está en el [ADR-005](../docs/adr/ADR-005-comunicacion-entre-servicios.md).

@@ -1,7 +1,7 @@
 # ADR-008 — Lo que publicamos para otro grupo
 
 - **Estado:** Aceptada
-- **Fecha:** 2026-10-09
+- **Fecha:** 2026-10-09; ampliada el 2026-10-12
 - **Responsable:** Lucía Rucci
 - **Decisión del enunciado:** D8 (diseño, publicación, compatibilidad y versionado de la capacidad que ofrecemos a otro grupo)
 - **Relacionado con:** [contrato](../contracts/v1/openapi.yaml) · [guía para el otro grupo](../contracts/README.md) · [CHANGELOG](../contracts/CHANGELOG.md) · [ADR-001](ADR-001-limites-de-los-servicios.md) · [ARCHITECTURE](../ARCHITECTURE.md) (sección 9)
@@ -21,7 +21,7 @@ Todavía no sabemos qué grupo nos va a usar ni de qué es su sistema. Por eso b
 
 ## Decisión
 
-### Qué publicamos: "Cocina más cercana y platos disponibles"
+### Qué publicamos: "Cocinas, platos y proximidad de sedes externas"
 
 Con una ubicación (latitud y longitud), el otro sistema puede saber **qué cocina nuestra le queda más cerca y a cuántos km**, y después ver **qué platos se pueden pedir ahora** en esa cocina, con filtros y orden.
 
@@ -40,6 +40,14 @@ Ejemplos de cómo lo podría usar:
 | `buscarPlatos` | `GET /v1/sedes/{sedeId}/platos` | Los platos de una cocina, con filtros, orden y páginas |
 | `obtenerPlato` | `GET /v1/platos/{platoId}` | El detalle de un plato y si está disponible |
 
+### Ampliación compatible 1.1.0: comparar sede externa y cliente
+
+POST /v1/proximidad recibe ubicacionCliente, ubicacionSede, radioKm > 0 y hasta 500 e incluirDarkKitchen=false. Un gimnasio compara una sede seleccionada con su cliente; una aerolínea compara un aeropuerto adecuado con su cliente. No recibe listas ni administra lugares externos.
+
+Haversine en Go calcula distancia en línea recta y rango inclusivo; la aplicación ofrece su sede si dentroDelRango=true. Con true, Solr consulta además nuestra cocina más cercana al cliente, independientemente del resultado externo, con radio min(radioKm, 25). FUERA_RANGO y SIN_SEDES son resultados 200; caída de Solr con la opción activada es 503. Con false no depende de Solr.
+
+Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción), sin crear ni guardar recursos. Cuerpo máximo 64 KiB. El consumidor convierte direcciones a coordenadas; no agregamos geocodificación ni rutas por calles. Esta precisión reemplaza el borrador local de listas de sedes, antes de publicar 1.1.0; no cambia los cuatro GET públicos de 1.0.0. La arquitectura y los servicios siguen iguales.
+
 ### Quién la atiende: Búsqueda
 
 - Búsqueda ya tiene en su índice **la ubicación de las sedes y los platos con su disponibilidad**: no hace falta un servicio nuevo ni consultar a varios servicios en cada solicitud.
@@ -49,7 +57,7 @@ Ejemplos de cómo lo podría usar:
 ### Cómo es el contrato
 
 - **Formato:** **OpenAPI 3.0** en YAML (`docs/contracts/v1/openapi.yaml`). Es un estándar: con ese archivo se pueden generar clientes, un mock y tests.
-- **Solo lectura:** todas las operaciones son `GET`, así que el otro grupo puede reintentar sin miedo (Clase 7). **No publicamos reservas ni pedidos**, para que nadie de afuera pueda tocar el stock.
+- **Solo lectura:** los cuatro GET y el nuevo POST de cálculo no modifican recursos ni guardan destinos; los reintentos transitorios se permiten según el contrato (Clase 7). **No publicamos reservas ni pedidos**, para que nadie de afuera pueda tocar el stock.
 - **Cocina más cercana:** la calcula Solr con la distancia en línea recta. Si ninguna cocina está a menos de 25 km, responde `404 SIN_COBERTURA` (RN24), para no sugerir una cocina que no llega.
 - **Autenticación:** cada grupo recibe **su propia API key** por un canal privado y la manda en el header `X-API-Key`. Así podemos saber quién la usa, limitarla o darla de baja. La controla el gateway (Clase 6).
 - **Límite de uso:** 60 pedidos por minuto por clave. Si se pasa, responde `429` y le dice cuánto esperar (Clase 6).
@@ -60,6 +68,7 @@ Ejemplos de cómo lo podría usar:
   | 400 | `PARAMETRO_INVALIDO` |
   | 401 | `API_KEY_INVALIDA` |
   | 404 | `SEDE_NO_ENCONTRADA`, `PLATO_NO_ENCONTRADO`, `SIN_COBERTURA` |
+  | 413 | `SOLICITUD_DEMASIADO_GRANDE` (solo proximidad, cuerpo mayor de 64 KiB) |
   | 429 | `LIMITE_EXCEDIDO` |
   | 503 | `SERVICIO_NO_DISPONIBLE` |
 
@@ -102,7 +111,7 @@ Ejemplos de cómo lo podría usar:
 
 - El otro grupo puede empezar hoy con el mock, sin preguntarnos nada que no esté en el contrato.
 - Con solo una ubicación, cualquier sistema puede sumar "dónde pedir comida cerca".
-- Como todo es `GET`, el otro grupo puede reintentar y cachear sin riesgo.
+- Las consultas no modifican recursos. La proximidad externa puede repetirse; no se cachea compartidamente su cuerpo con coordenadas.
 - Publicamos la búsqueda y no las bases, así protegemos el stock y no cargamos la parte que vende.
 
 **Lo que aceptamos**
@@ -116,6 +125,7 @@ Ejemplos de cómo lo podría usar:
 ## Cómo lo vamos a validar
 
 - **Entrega 1:** contrato validado con `swagger-cli` 4.0.4 y mock probado con Prism 5.16.0. Las cuatro operaciones y los errores documentados (404, 429, 503, latitud inválida y falta de API key) responden; cómo probarlo está en la [guía del contrato](../contracts/README.md#probar-sin-esperar-al-backend-mock). Que Prism arranque, por sí solo, no sustituye la validación formal de OpenAPI.
+- **Ampliación 1.1.0:** validar formalmente OpenAPI y los ejemplos del nuevo POST; comprobar 200, validaciones estructurales y errores simulados. Las reglas de distancia, rango inclusivo, comparación con el cliente y cobertura se prueban con la implementación real.
 - **Entrega 2:** la versión real pasa un test que la compara con el contrato y está en una URL pública.
 - **Durante la integración:** si el otro grupo nos pide un cambio, lo anotamos acá con la versión nueva.
 

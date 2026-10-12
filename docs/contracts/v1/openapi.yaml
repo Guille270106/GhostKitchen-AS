@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
-  title: GhostKitchen — Cocina más cercana y platos disponibles
-  version: 1.0.0
+  title: GhostKitchen — Cocinas, platos y proximidad de sedes externas
+  version: 1.1.0
   description: |
     Capacidad publicada por GhostKitchen para otros grupos de Arquitectura de Software 2026.
 
@@ -12,10 +12,10 @@ info:
     distancia está**, y consultar **qué platos se pueden pedir ahora** en esa sede.
 
     **Reglas de uso**
-    - Todas las operaciones son de solo lectura (`GET`): son seguras e idempotentes y se pueden reintentar.
+    - Las cuatro consultas GET se conservan. POST /v1/proximidad solo calcula: no guarda destinos ni crea recursos; el mismo cuerpo produce la misma comparación cliente-sede. Puede reintentarse tras errores transitorios.
     - Autenticación con el header `X-API-Key` (una clave por grupo consumidor, entregada por privado).
     - Límite: 60 solicitudes por minuto por clave. Al excederlo se responde `429` con `Retry-After`.
-    - La distancia es en línea recta. Si ninguna sede activa está a menos de 25 km se responde `404 SIN_COBERTURA`.
+    - La distancia es en línea recta. GET /v1/sedes/cercana mantiene 404 SIN_COBERTURA fuera de 25 km. POST /v1/proximidad informa el rango en su respuesta 200.
     - La disponibilidad (`disponible`) puede tener **hasta 5 segundos de atraso** y **no es una reserva**:
       mostrarla como orientativa.
     - Los errores siguen *Problem Details* (RFC 9457) con un campo `code` estable.
@@ -36,6 +36,8 @@ tags:
     description: Las cocinas de GhostKitchen y cuál atiende una ubicación.
   - name: Platos
     description: Búsqueda y detalle de platos disponibles en una sede.
+  - name: Proximidad
+    description: Comparación de una sede externa con el cliente, sin persistir ubicaciones.
 paths:
   /v1/sedes:
     get:
@@ -401,6 +403,112 @@ paths:
         '503':
           $ref: '#/components/responses/NoDisponible'
 
+  /v1/proximidad:
+    post:
+      tags: [Proximidad]
+      operationId: calcularProximidad
+      summary: Comparar la sede del consumidor con la ubicación del cliente
+      description: |
+        Recibe DOS ubicaciones: ubicacionCliente y ubicacionSede (del consumidor),
+        un radioKm configurable e incluirDarkKitchen (false por defecto).
+        Calcula la distancia Haversine cliente-sede en línea recta; dentroDelRango=true
+        permite al consumidor ofrecer su sede. No elige entre listas ni geocodifica direcciones.
+        Compara la distancia sin redondear con el radio inclusivo y muestra km con tres decimales.
+        No crea sedes, pedidos ni reservas, ni guarda/indexa coordenadas externas.
+        Con false, darkKitchen=null y no depende de Solr.
+        Con true consulta además nuestra cocina activa más cercana AL CLIENTE, no a la sede externa;
+        aplica min(radioKm, 25). La cocina puede estar en rango aunque la sede externa esté lejos.
+        Empates entre cocinas propias se resuelven por ID lexicográfico.
+        FUERA_RANGO y SIN_SEDES son resultados 200. Caída de Solr con esa opción: 503.
+        El gateway limita el cuerpo a 64 KiB y no registra las coordenadas.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsultaProximidad'
+            example:
+              ubicacionCliente: { lat: -31.4262, lng: -64.1883 }
+              ubicacionSede: { lat: -31.4262, lng: -64.1883 }
+              radioKm: 5
+              incluirDarkKitchen: true
+      responses:
+        '200':
+          description: Comparación de la sede enviada, incluso fuera del rango; cocina propia opcional.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/X-Correlation-Id'
+            RateLimit-Limit:
+              $ref: '#/components/headers/RateLimit-Limit'
+            RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoProximidad'
+              examples:
+                conDarkKitchen:
+                  summary: Sede y cocina cerca del cliente
+                  value:
+                    radioKm: 5
+                    sedeExterna: { distanciaKm: 0, dentroDelRango: true }
+                    darkKitchen:
+                      estado: EN_RANGO
+                      sede: { id: nueva-cordoba, nombre: Cocina Nueva Córdoba }
+                      distanciaKm: 0
+                      radioAplicadoKm: 5
+                      dentroDelRango: true
+                soloSede:
+                  summary: Sin consultar nuestras cocinas
+                  value:
+                    radioKm: 5
+                    sedeExterna: { distanciaKm: 0, dentroDelRango: true }
+                    darkKitchen: null
+                sedeLejosCocinaCerca:
+                  summary: La sede externa está lejos, pero la cocina propia puede ofrecerse
+                  value:
+                    radioKm: 5
+                    sedeExterna: { distanciaKm: 8, dentroDelRango: false }
+                    darkKitchen:
+                      estado: EN_RANGO
+                      sede: { id: nueva-cordoba, nombre: Cocina Nueva Córdoba }
+                      distanciaKm: 0
+                      radioAplicadoKm: 5
+                      dentroDelRango: true
+                sinCocinas:
+                  summary: No hay cocinas activas; la sede externa se sigue informando
+                  value:
+                    radioKm: 5
+                    sedeExterna: { distanciaKm: 0, dentroDelRango: true }
+                    darkKitchen:
+                      estado: SIN_SEDES
+                      sede: null
+                      distanciaKm: null
+                      radioAplicadoKm: 5
+                      dentroDelRango: false
+        '400':
+          $ref: '#/components/responses/ParametroInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutorizado'
+        '413':
+          description: El cuerpo supera 64 KiB. Reducir los datos antes de reintentar.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemaProximidad'
+              example:
+                type: https://ghostkitchen.dev/errores/solicitud-demasiado-grande
+                title: Solicitud demasiado grande
+                status: 413
+                code: SOLICITUD_DEMASIADO_GRANDE
+                detail: El cuerpo JSON no puede superar 64 KiB.
+        '429':
+          $ref: '#/components/responses/LimiteExcedido'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -452,6 +560,108 @@ components:
       example: 12
 
   schemas:
+    CoordenadasConsulta:
+      type: object
+      additionalProperties: false
+      required: [lat, lng]
+      properties:
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+
+    ConsultaProximidad:
+      type: object
+      additionalProperties: false
+      required: [ubicacionCliente, ubicacionSede, radioKm]
+      properties:
+        ubicacionCliente:
+          $ref: '#/components/schemas/CoordenadasConsulta'
+        ubicacionSede:
+          $ref: '#/components/schemas/CoordenadasConsulta'
+        radioKm:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 500
+        incluirDarkKitchen:
+          type: boolean
+          default: false
+
+    ResultadoProximidad:
+      type: object
+      required: [radioKm, sedeExterna, darkKitchen]
+      properties:
+        radioKm:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 500
+        sedeExterna:
+          type: object
+          required: [distanciaKm, dentroDelRango]
+          properties:
+            distanciaKm:
+              type: number
+              minimum: 0
+              description: Distancia cliente-sede en línea recta, km con hasta tres decimales.
+            dentroDelRango:
+              type: boolean
+              description: True cuando la distancia sin redondear es menor o igual que radioKm.
+        darkKitchen:
+          type: object
+          nullable: true
+          description: Null cuando no se solicitó. SIN_SEDES usa sede=null, distanciaKm=null y dentroDelRango=false.
+          required: [estado, sede, distanciaKm, radioAplicadoKm, dentroDelRango]
+          properties:
+            estado:
+              type: string
+              enum: [EN_RANGO, FUERA_RANGO, SIN_SEDES]
+            sede:
+              type: object
+              nullable: true
+              required: [id, nombre]
+              properties:
+                id:
+                  type: string
+                nombre:
+                  type: string
+            distanciaKm:
+              type: number
+              nullable: true
+              minimum: 0
+            radioAplicadoKm:
+              type: number
+              minimum: 0
+              exclusiveMinimum: true
+              maximum: 25
+            dentroDelRango:
+              type: boolean
+
+    ProblemaProximidad:
+      type: object
+      required: [type, title, status, code, detail]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+          enum: [413]
+        code:
+          type: string
+          enum: [SOLICITUD_DEMASIADO_GRANDE]
+        detail:
+          type: string
+        correlationId:
+          type: string
+
     Etiqueta:
       type: string
       enum: [Vegano, Vegetariano, Sin TACC, Picante]
