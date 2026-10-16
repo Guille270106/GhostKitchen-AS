@@ -2,7 +2,20 @@
 
 **Responsable:** Guillermina Sánchez (índice y búsqueda) · Lucía Rucci (capacidad publicada).
 
-> Entrega 1: diseño preliminar; todavía no hay implementación. Las carpetas, rutas, configuración y pruebas indicadas son previstas para el desarrollo desde la Entrega 2.
+> **Entrega 2:** funcionando la **capacidad publicada** completa (`/v1/sedes`, `/v1/sedes/cercana`, `/v1/sedes/{sedeId}/platos`, `/v1/platos/{platoId}` y `POST /v1/proximidad`) sobre Solr, detrás del gateway con API key. Por ahora el índice se llena con **datos iniciales** (4 cocinas y 64 platos inventados); el lector de mensajes de Catálogo e Inventario, la búsqueda del frontend (`/platos/buscar`, sugerencias, zonas) y la reconstrucción llegan con esos servicios.
+
+## Cómo levantarlo y probarlo
+
+1. Copiar `.env.example` como `.env` y completar `PUBLIC_API_KEYS` con una clave de prueba, por ejemplo `PUBLIC_API_KEYS=clave-local`. **No subir el `.env`.**
+2. Desde la raíz del repo: `docker compose up --build`. La primera vez tarda porque descarga Solr y compila el servicio. Búsqueda espera a que Solr arranque, crea los campos que faltan y carga los datos iniciales (en el log aparece `índice listo`).
+3. Probar por el gateway:
+   ```powershell
+   curl.exe -H "X-API-Key: clave-local" http://localhost:8080/public/v1/sedes
+   .\scripts\probar-api-publica.ps1 -Clave clave-local
+   ```
+4. Tests: desde `services/busqueda`, `go test ./... -cover`. No necesitan Docker: usan un repositorio en memoria y un Solr simulado.
+
+El panel de Solr queda en http://localhost:8983 (solo para desarrollo). Búsqueda no publica su puerto: desde afuera se entra por el gateway.
 
 Sirve para **encontrar platos** y la **cocina más cercana**. También atiende **lo que publicamos para otro grupo**. Puerto **8083**. Lo programamos en la Entrega 2.
 
@@ -50,15 +63,23 @@ Esta ampliación se define para el frontend. La API pública mantiene su contrat
 Usamos capas, pero el servicio recibe trabajo por **dos lados**: por HTTP (las búsquedas) y por RabbitMQ (los mensajes que lo mantienen al día).
 
 ```
-cmd/api/               arranca el servidor HTTP y el lector de mensajes
-internal/handlers/     entrada 1: rutas HTTP
-internal/indexer/      entrada 2: lee los mensajes y actualiza Solr
-internal/services/     arma las búsquedas, filtros, orden y distancia
-internal/repositories/ acceso a Solr
-internal/domain/       cómo es un plato, una cocina y una zona en la búsqueda
-internal/clients/      para pedirle datos a Catálogo e Inventario al reconstruir
-solr/                  configuración de cada índice
+cmd/api/                       arranca el servidor HTTP y prepara el índice
+internal/handlers/             entrada 1: rutas HTTP, validación y errores Problem Details
+internal/services/             reglas: sede cercana, cobertura de 25 km, búsqueda de platos, proximidad
+internal/repositories/         interfaces Lector e Indexador
+internal/repositories/solr/    implementación sobre Solr (consultas, esquema, carga)
+internal/repositories/memoria/ implementación en memoria, solo para tests
+internal/domain/               cómo es un plato y una sede en la búsqueda, y sus errores
+internal/geo/                  distancia Haversine
+internal/seed/                 datos iniciales (4 cocinas, 64 platos) mientras no llegan mensajes
+internal/middleware/           X-Correlation-Id y log JSON de cada solicitud
+internal/router/               arma Gin con middleware y rutas
+internal/config/               variables de entorno
 ```
+
+Previsto para cuando existan Catálogo, Inventario y RabbitMQ: `internal/indexer/` (entrada 2, lector de mensajes) e `internal/clients/` (reconstrucción por API).
+
+**Esquema de Solr:** no hay archivos de configuración aparte. Al arrancar, Búsqueda usa la Schema API para crear los campos que falten en los cores `cocinas` y `platos`, y un tipo de texto `text_gk` que pasa a minúsculas y quita acentos (así `CAFE` encuentra `Café`). Es idempotente: se puede ejecutar en cada arranque.
 
 ## Rutas
 
@@ -72,6 +93,10 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 | `POST /v1/proximidad` | el gateway para el otro grupo (API key) | Proximidad externa y cocina opcional; contrato 1.1.0 |
 | `GET /v1/...` | el gateway, para el otro grupo (con API key) | Lo que publicamos: ver el [contrato](../../docs/contracts/v1/openapi.yaml). El gateway expone `/public/v1/...` y elimina `/public` al reenviar |
 | `POST /internal/reindexar` | operación técnica autorizada en la red interna | Reconstruir la búsqueda desde cero |
+| `GET /internal/apikey/verificar` | el gateway (`auth_request`) | Verificar la `X-API-Key` antes de dejar pasar una solicitud a `/public/v1`: 204 válida, 401 inválida |
+| `GET /health` y `GET /ready` | Docker y el gateway | `/health`: el proceso está vivo. `/ready`: el índice está preparado y Solr responde (503 si no) |
+
+Implementadas en la Entrega 2: las rutas `/v1/...`, `POST /v1/proximidad`, `/internal/apikey/verificar`, `/health` y `/ready`. Las demás llegan con el frontend y con Catálogo e Inventario.
 
 ## Proximidad externa prevista
 
@@ -105,9 +130,28 @@ La versión se compara por fuente: Catálogo actualiza datos comerciales e Inven
 
 Las llamadas de reconstrucción admiten hasta 5 s por intento y tres reintentos: son trabajo de fondo, separado del plazo de 3 s de una solicitud de usuario ([ADR-005](../../docs/adr/ADR-005-comunicacion-entre-servicios.md)). Los índices `platos` y `cocinas` se reconstruyen desde sus fuentes; `zonas` se restaura desde su carga inicial propia. El término público `sede` no cambia el nombre interno del índice `cocinas`.
 
-## Configuración prevista
+## Configuración
 
-Al implementar se definirán el puerto, las direcciones de Solr, RabbitMQ y las API internas de Catálogo e Inventario. El radio de cobertura de la API publicada es 25 km, según el [contrato v1](../../docs/contracts/v1/openapi.yaml). Las claves de consumidores se validan en el gateway mediante `PUBLIC_API_KEYS`; no se incorporan al índice.
+| Variable | Por defecto | Para qué |
+| --- | --- | --- |
+| `PORT` | `8083` | Puerto HTTP |
+| `SOLR_URL` | `http://solr:8983/solr` | Dirección de Solr |
+| `SOLR_TIMEOUT_MS` | `2000` | Tiempo máximo de cada llamada a Solr |
+| `PUBLIC_API_KEYS` | vacío | Claves de los grupos consumidores, separadas por coma. Vacío = se rechazan todas |
+| `SEED_AL_INICIAR` | `true` | Cargar los datos iniciales al arrancar |
+
+Más adelante se suman las direcciones de RabbitMQ y de las API internas de Catálogo e Inventario. El radio de cobertura de la API publicada es 25 km, según el [contrato v1](../../docs/contracts/v1/openapi.yaml). Las claves de consumidores se validan en el gateway mediante `PUBLIC_API_KEYS`; no se incorporan al índice.
+
+## Pruebas implementadas (Entrega 2)
+
+`go test ./... -cover` (sin Docker):
+
+- **Servicios:** cocina más cercana y `SIN_COBERTURA` (> 25 km), sedes inexistentes, solo disponibles y páginas, platos desactivados, falla del índice que no se disimula. Proximidad: 0 km, límite inclusivo sin redondear, `incluirDarkKitchen=false` sin Solr, Solr caído con `true` (503), cocina cerca del cliente aunque la sede esté lejos, radio aplicado `min(radioKm, 25)`, `FUERA_RANGO`, `SIN_SEDES` y empate por id.
+- **Handlers:** respuestas y errores de las 5 operaciones con Problem Details, validaciones (booleano como texto, listas, campos extra, radio 0 o 501, coordenadas, cuerpo vacío o doble, más de 64 KiB), `X-Correlation-Id` recibido o generado, verificación de API key (incluida la falla cerrada sin claves) y `/ready`.
+- **Repositorio Solr** contra un Solr simulado: consulta geoespacial, filtros y orden, escape de texto, esquema que solo agrega lo que falta, documentos guardados y errores de Solr como 503.
+- **Datos iniciales:** 4 cocinas, 64 platos sin ids repetidos, carga idempotente y el plato `p5` igual al ejemplo del contrato.
+
+Las respuestas se validaron contra el OpenAPI 1.1.0 con los datos en memoria, y el gateway se probó con `scripts/probar-api-publica.ps1` (401, 413, 429 y 503 con Problem Details). Queda pendiente sumar a la suite una prueba de integración contra un Solr real.
 
 ## Pruebas previstas
 
