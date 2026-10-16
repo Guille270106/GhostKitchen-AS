@@ -14,7 +14,8 @@ type Config struct {
 	SolrURL       string        // SOLR_URL (http://solr:8983/solr)
 	SolrTimeout   time.Duration // SOLR_TIMEOUT_MS (2000)
 	APIKeys       []string      // PUBLIC_API_KEYS, separadas por coma. Vacío = nadie entra.
-	SeedAlIniciar bool          // SEED_AL_INICIAR (true)
+	SeedAlIniciar bool          // SEED_AL_INICIAR (true): solo si no hay CATALOGO_URL
+	CatalogoURL   string        // CATALOGO_URL (http://catalogo:8082). Si está, el índice se arma desde Catálogo
 }
 
 // Cargar lee las variables de entorno con sus valores por defecto.
@@ -25,6 +26,7 @@ func Cargar() Config {
 		SolrTimeout:   time.Duration(entero("SOLR_TIMEOUT_MS", 2000)) * time.Millisecond,
 		APIKeys:       lista(os.Getenv("PUBLIC_API_KEYS")),
 		SeedAlIniciar: valor("SEED_AL_INICIAR", "true") == "true",
+		CatalogoURL:   strings.TrimSpace(os.Getenv("CATALOGO_URL")),
 	}
 }
 
