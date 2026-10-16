@@ -10,6 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+
+	"ghostkitchen/busqueda/internal/trazas"
 )
 
 // HeaderCorrelacion es el header que acompaña una solicitud por todos los servicios.
@@ -33,6 +35,7 @@ func Correlacion() gin.HandlerFunc {
 		c.Set(claveCorrelacion, id)
 		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), claveContexto{}, id))
 		c.Header(HeaderCorrelacion, id)
+		trazas.MarcarCorrelacion(c.Request.Context(), id)
 		c.Next()
 	}
 }
@@ -53,7 +56,8 @@ func IDDesdeContexto(ctx context.Context) string {
 }
 
 // Log escribe una línea JSON por solicitud. Registra la ruta sin parámetros ni cuerpo:
-// así no quedan coordenadas ni claves en los logs.
+// así no quedan coordenadas ni claves en los logs. Incluye correlation_id (el id de negocio
+// que viaja en X-Correlation-Id) y trace_id/span_id (para abrir la traza en Jaeger).
 func Log(log *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		inicio := time.Now()
@@ -72,6 +76,9 @@ func Log(log *slog.Logger) gin.HandlerFunc {
 			slog.String("ruta", ruta),
 			slog.Int("estado", c.Writer.Status()),
 			slog.Float64("duracion_ms", float64(time.Since(inicio).Microseconds())/1000),
+		}
+		if traceID, spanID := trazas.IDs(c.Request.Context()); traceID != "" {
+			attrs = append(attrs, slog.String("trace_id", traceID), slog.String("span_id", spanID))
 		}
 		if len(c.Errors) > 0 {
 			attrs = append(attrs, slog.String("error", c.Errors.String()))

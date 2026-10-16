@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"ghostkitchen/busqueda/internal/domain"
 	"ghostkitchen/busqueda/internal/middleware"
 )
@@ -67,8 +69,16 @@ type Catalogo struct {
 // NuevoCatalogo crea el cliente. base es, por ejemplo, http://catalogo:8082.
 func NuevoCatalogo(base string) *Catalogo {
 	return &Catalogo{
-		base:      strings.TrimRight(base, "/"),
-		http:      &http.Client{Timeout: 5 * time.Second},
+		base: strings.TrimRight(base, "/"),
+		// otelhttp crea un span por llamada y agrega el header traceparent: así la traza
+		// sigue en Catálogo. Los parámetros de estas rutas (page, pageSize) no son sensibles.
+		http: &http.Client{
+			Timeout: 5 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport,
+				otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+					return "catalogo " + r.Method + " " + r.URL.Path
+				})),
+		},
 		reintento: []time.Duration{500 * time.Millisecond, time.Second, 2 * time.Second},
 	}
 }

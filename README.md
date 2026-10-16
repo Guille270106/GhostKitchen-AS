@@ -24,6 +24,7 @@ Proyecto del Práctico Integrador de **Arquitectura de Software 2026** (UCC).
 - [Capacidad publicada para otros grupos](#capacidad-publicada-para-otros-grupos)
 - [Tecnologías](#tecnologías)
 - [Cómo ejecutarlo](#cómo-ejecutarlo)
+- [Logs y trazas](#logs-y-trazas)
 - [Estructura del repositorio](#estructura-del-repositorio)
 - [Forma de trabajo](#forma-de-trabajo)
 - [Documentación](#documentación)
@@ -84,7 +85,7 @@ Las imágenes de los diagramas están únicamente en **`docs/diagrams/`**. Qué 
 - Go + Gin para los microservicios
 - NGINX como API Gateway y para repartir la carga
 - MySQL, MongoDB, Solr (búsqueda), Memcached (caché) y RabbitMQ (mensajes)
-- Monitoreo previsto: logs con un mismo identificador para seguir cada pedido, métricas con Prometheus y un tablero en Grafana. La configuración queda para Entrega 2.
+- Observabilidad: logs JSON con `correlation_id` y `trace_id`, y trazas distribuidas con OpenTelemetry y Jaeger (Entrega 2). Métricas con Prometheus y tablero en Grafana: para la presentación final.
 - Pruebas previstas: tests de Go para las reglas; integración con bases y RabbitMQ reales en Docker Compose; pruebas de contrato y de carga. La herramienta de carga se definirá al implementar.
 
 **Frontend (Entrega 2):** React + Vite.
@@ -121,6 +122,7 @@ Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedor
 | Lecturas de Catálogo para el frontend | http://localhost:8080/api/v1/cocinas |
 | Panel de Solr (desarrollo) | http://localhost:8983 |
 | MongoDB con Compass (desarrollo) | `mongodb://root:<MONGO_ROOT_PASSWORD>@localhost:27017` |
+| Trazas en Jaeger | http://localhost:16686 |
 
 Para detener todo: `docker compose down`. Con `-v` se borran también los volúmenes de MongoDB y Solr: al arrancar de nuevo se cargan los datos iniciales y se reconstruye el índice.
 
@@ -131,6 +133,34 @@ npx --yes @stoplight/prism-cli@5.16.0 mock -h 127.0.0.1 -p 4010 docs/contracts/v
 ```
 
 Los ejemplos de uso están en [la guía del contrato](docs/contracts/README.md#ejemplos).
+
+## Logs y trazas
+
+**Logs estructurados.** El gateway, Búsqueda y Catálogo escriben una línea JSON por solicitud con los mismos campos: `servicio`, `correlation_id`, `trace_id`, `metodo`, `ruta`, `estado` y duración. La ruta va sin parámetros ni cuerpo, así que no quedan coordenadas, textos de búsqueda ni API keys.
+
+**Correlación.** El gateway toma el `X-Correlation-Id` que manda el cliente (o genera uno), lo reenvía y lo devuelve en la respuesta. Búsqueda lo pasa a Catálogo cuando le pide datos. Con ese id se encuentran todas las líneas de una solicitud en los tres servicios:
+
+```powershell
+docker compose logs gateway busqueda catalogo | Select-String "mi-prueba-1"
+```
+
+**Trazas distribuidas (OpenTelemetry + Jaeger).** Cada solicitud genera una traza con un span por paso: el gateway, Búsqueda, cada consulta a Solr, cada llamada a Catálogo y cada comando de Catálogo a MongoDB. El `trace_id` viaja en el header estándar `traceparent` (W3C) y también aparece en los logs, así que se puede pasar de un log a su traza y al revés. Para verla:
+
+1. Hacer una solicitud con un id conocido:
+   ```powershell
+   curl.exe -X POST -H "X-API-Key: clave-local" -H "X-Correlation-Id: mi-prueba-1" -H "Content-Type: application/json" --data-binary "@scripts/proximidad-ejemplo.json" http://localhost:8080/public/v1/proximidad
+   ```
+2. Abrir http://localhost:16686, elegir el servicio `gateway` o `busqueda` y buscar por la etiqueta `ghostkitchen.correlation_id=mi-prueba-1` (o pegar el `trace_id` del log).
+
+Para ver la traza que cruza dos servicios y la base, pedir una reconstrucción del índice: `docker compose exec busqueda wget -qO- --post-data= http://127.0.0.1:8083/internal/reindexar`. En Jaeger aparece `busqueda → catalogo → MongoDB` (y las escrituras en Solr). La traza del arranque de Búsqueda (`preparar índice al iniciar`) muestra lo mismo.
+
+| Qué se ve en una traza | Ejemplo |
+| --- | --- |
+| Gateway | `/public/v1/proximidad`, con su duración y estado |
+| Búsqueda | el span de la ruta (`/v1/proximidad`) y uno por cada consulta a Solr (`solr cocinas/select`) |
+| Catálogo | `/internal/platos` y uno por comando a MongoDB (`find`, `count`) |
+
+Para no mandar datos sensibles a Jaeger, los spans llevan la ruta como plantilla (`/v1/sedes/:sedeId/platos`) y la operación de Solr, no la URL con parámetros. Por la misma razón el gateway solo crea su span cuando la solicitud no tiene parámetros (`?...`); esas solicitudes igual se trazan desde Búsqueda. En desarrollo se guardan todas las trazas.
 
 ## Estructura del repositorio
 

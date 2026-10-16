@@ -7,12 +7,13 @@
 #   - mongo:         MongoDB, base catalogo_db con su propio usuario.
 #   - busqueda:      servicio Búsqueda (Go + Gin). Arma su índice desde Catálogo y atiende la capacidad publicada.
 #   - solr:          índice de Búsqueda (cores "cocinas" y "platos").
+#   - jaeger:        recibe las trazas (OpenTelemetry) del gateway, Búsqueda y Catálogo. UI en el puerto 16686.
 #   - contract-mock: mock de la capacidad publicada, servido desde el contrato OpenAPI (puerto 4010).
-# Los demás servicios, MySQL, RabbitMQ y la observabilidad se agregan en las próximas entregas.
+# Los demás servicios, MySQL, RabbitMQ, las métricas y el tablero se agregan en las próximas entregas.
 # Los secretos se leen del archivo .env, que no se versiona (copiar .env.example como .env).
 services:
   gateway:
-    image: nginx:1.27-alpine
+    image: nginx:1.27-alpine-otel     # NGINX con el módulo de OpenTelemetry
     container_name: ghostkitchen-gateway
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -23,6 +24,8 @@ services:
         condition: service_healthy
       catalogo:
         condition: service_healthy
+      jaeger:
+        condition: service_started
     restart: unless-stopped
 
   catalogo:
@@ -34,6 +37,7 @@ services:
       MONGO_DB: catalogo_db
       MONGO_TIMEOUT_MS: "2000"
       SEED_AL_INICIAR: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     expose:
       - "8082"            # solo dentro de la red de Docker
     depends_on:
@@ -74,6 +78,7 @@ services:
       SOLR_TIMEOUT_MS: "2000"
       CATALOGO_URL: http://catalogo:8082
       PUBLIC_API_KEYS: ${PUBLIC_API_KEYS:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     expose:
       - "8083"            # solo dentro de la red de Docker: desde afuera se entra por el gateway
     depends_on:
@@ -96,6 +101,15 @@ services:
       - solr-data:/var/solr
     ports:
       - "8983:8983"       # panel de administración de Solr (solo para desarrollo)
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: ghostkitchen-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"   # recibe OTLP por gRPC (4317, gateway) y HTTP (4318, servicios)
+    ports:
+      - "16686:16686"     # interfaz web para ver las trazas
     restart: unless-stopped
 
   contract-mock:

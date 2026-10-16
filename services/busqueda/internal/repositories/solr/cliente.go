@@ -12,7 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	"ghostkitchen/busqueda/internal/domain"
+	"ghostkitchen/busqueda/internal/trazas"
 )
 
 // Cores (índices) que usa Búsqueda. Se crean al levantar Solr (docker-compose).
@@ -100,7 +105,25 @@ func (c *Cliente) NombresEsquema(ctx context.Context, core, recurso string) (map
 	return nombres, nil
 }
 
-func (c *Cliente) hacer(ctx context.Context, metodo, ruta string, cuerpo any, destino any) error {
+// hacer ejecuta una llamada a Solr dentro de un span propio. El span lleva el core y la
+// operación (ej. "solr platos/select"), pero no la URL completa: los parámetros pueden
+// tener coordenadas o el texto que buscó el consumidor, y eso no se registra.
+func (c *Cliente) hacer(ctx context.Context, metodo, ruta string, cuerpo any, destino any) (err error) {
+	operacion := strings.TrimPrefix(strings.SplitN(ruta, "?", 2)[0], "/")
+	ctx, span := trazas.Tracer().Start(ctx, "solr "+operacion, trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("db.system", "solr"),
+			attribute.String("db.operation", operacion),
+			attribute.String("http.request.method", metodo),
+		))
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "falló la llamada a Solr")
+		}
+		span.End()
+	}()
+
 	var body io.Reader
 	if cuerpo != nil {
 		b, err := json.Marshal(cuerpo)
@@ -121,6 +144,7 @@ func (c *Cliente) hacer(ctx context.Context, metodo, ruta string, cuerpo any, de
 		return fmt.Errorf("%w: %v", domain.ErrNoDisponible, err)
 	}
 	defer resp.Body.Close()
+	trace.SpanFromContext(ctx).SetAttributes(attribute.Int("http.response.status_code", resp.StatusCode))
 	datos, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	if err != nil {
 		return fmt.Errorf("%w: leer respuesta: %v", domain.ErrNoDisponible, err)

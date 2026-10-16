@@ -9,9 +9,13 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"ghostkitchen/busqueda/internal/clients"
 	"ghostkitchen/busqueda/internal/domain"
 	"ghostkitchen/busqueda/internal/repositories"
+	"ghostkitchen/busqueda/internal/trazas"
 )
 
 // TamPagina es la cantidad de platos que se pide por llamada a Catálogo.
@@ -49,7 +53,19 @@ type Resultado struct {
 // Reconstruir lee todas las cocinas y platos de Catálogo y los guarda en el índice.
 // Guarda por páginas: si Catálogo falla a mitad de camino, el índice conserva lo anterior
 // para los platos que faltaron, y la próxima reconstrucción lo completa.
-func (r *Reconstructor) Reconstruir(ctx context.Context) (Resultado, error) {
+func (r *Reconstructor) Reconstruir(ctx context.Context) (res Resultado, err error) {
+	// Un span que agrupa toda la reconstrucción: adentro quedan las llamadas a Catálogo
+	// (y, por la propagación, lo que Catálogo hace en MongoDB) y las escrituras en Solr.
+	ctx, span := trazas.Tracer().Start(ctx, "reconstruir índice")
+	defer func() {
+		span.SetAttributes(attribute.Int("indice.sedes", res.Sedes), attribute.Int("indice.platos", res.Platos))
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "reconstrucción incompleta")
+		}
+		span.End()
+	}()
+
 	cocinas, err := r.fuente.Cocinas(ctx)
 	if err != nil {
 		return Resultado{}, err
@@ -81,7 +97,7 @@ func (r *Reconstructor) Reconstruir(ctx context.Context) (Resultado, error) {
 		return Resultado{}, fmt.Errorf("guardar sedes: %w", err)
 	}
 
-	res := Resultado{Sedes: len(sedes)}
+	res = Resultado{Sedes: len(sedes)}
 	for page := 1; ; page++ {
 		pag, err := r.fuente.Platos(ctx, page, TamPagina)
 		if err != nil {
