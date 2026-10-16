@@ -1,7 +1,7 @@
 # ADR-003 — Qué base de datos usa cada servicio
 
-- **Estado:** Primera versión (se valida en la Entrega 2)
-- **Fecha:** 2026-10-09
+- **Estado:** Aceptada para Catálogo y Búsqueda, validada en la Entrega 2 (ver [Validación](#validación-entrega-2)). MySQL se valida con Inventario y Pedidos
+- **Fecha:** 2026-10-09; validada el 2026-10-16
 - **Responsable:** Valentina Rey
 - **Decisión del enunciado:** D3 (qué almacenamiento usa cada servicio, cómo se usan los datos y qué limitaciones aceptamos)
 - **Relacionado con:** [ADR-001](ADR-001-limites-de-los-servicios.md) · [ADR-005](ADR-005-comunicacion-entre-servicios.md) · [ARCHITECTURE](../ARCHITECTURE.md) (secciones 4 y 6)
@@ -115,14 +115,37 @@ Así cumplimos con una base **relacional (MySQL)** y una **no relacional (MongoD
 - Cuando muchos reservan el mismo ingrediente, MySQL se puede poner lento. Lo vamos a medir en el test de carga.
 - Sin backups en el entorno académico.
 
-## Pendiente para la Entrega 2
+## Validación (Entrega 2)
 
-- Confirmar los índices con los tests de carga.
-- Definir cómo se crean y cambian las tablas: migraciones en archivos SQL que se ejecutan al iniciar cada servicio.
+**Lo que ya funciona con su base real:**
+
+| Qué decía el ADR | Qué implementamos | Resultado |
+| --- | --- | --- |
+| Catálogo en MongoDB, la cocina con sus restaurantes adentro | Colección `cocinas` con los restaurantes embebidos (como máximo 4) y colección `platos` aparte | ✅ |
+| Platos por cocina y activo; platos por restaurante | Índices `{cocinaId, activo, _id}` y `{restauranteId}`, creados al arrancar Catálogo (si ya existen, no pasa nada) | ✅ |
+| Una base por servicio | `catalogo_db` con su propio usuario (`catalogo`, solo `readWrite` sobre esa base), creado por el script de inicio de MongoDB. La contraseña sale del `.env` | ✅ |
+| Búsqueda en Solr, como copia que se puede reconstruir | Cores `cocinas` y `platos`, armados desde la API de Catálogo; si se borran, se reconstruyen al arrancar o con `POST /internal/reindexar` | ✅ |
+| Solo los campos necesarios en Solr (Clase 5) | Los platos guardan lo que se busca, filtra o muestra; los nombres del restaurante y la cocina se copian para no consultar a Catálogo en cada búsqueda ([ADR-006](ADR-006-busqueda.md)) | ✅ |
+| Si se cae la base, el servicio lo dice | MongoDB caído → Catálogo responde `503` en menos de 2 s y su `/ready` falla | ✅ |
+
+**Lo que cambió o se posterga:**
+
+- **Replica set de MongoDB:** todavía no hace falta. El límite de 4 restaurantes se controla en una sola operación sobre el documento, y Catálogo no usa transacciones. Lo activamos cuando sumemos el *outbox*, que sí necesita guardar el cambio y el mensaje juntos.
+- **Memcached:** se suma con la caché ([ADR-007](ADR-007-cache.md)).
+- **Zonas en Solr:** todavía no; la cocina más cercana usa la ubicación de las cocinas.
+- **MySQL (Inventario, Pedidos, Usuarios) y MongoDB de Notificaciones:** no están implementados. La prueba de reservas al mismo tiempo, que era la validación principal de MySQL, pasa a cuando exista Inventario y se define junto con la consistencia ([ADR-004](README.md)).
+- **Migraciones:** se mantiene la idea de archivos SQL que cada servicio ejecuta al iniciar; se implementan con el primer servicio que use MySQL.
+
+**Conclusión:** MongoDB para Catálogo y Solr para Búsqueda funcionan como se planeó. La elección de MySQL no cambió, pero queda sin validar con datos reales.
+
+## Pendiente
+
+- Confirmar los índices con los tests de carga ([ADR-013](ADR-013-capacidad-y-costos.md)).
+- Migraciones SQL y prueba de reservas al mismo tiempo, con Inventario.
 
 ## Cómo lo vamos a validar
 
-- **Entrega 2:** Inventario y Catálogo funcionando con sus bases reales, con tests que prueben reservas al mismo tiempo.
+- **Entrega 2 (hecho en parte, ver arriba):** Catálogo con MongoDB y Búsqueda con Solr funcionando. Las reservas al mismo tiempo pasan a la entrega final, con Inventario.
 - **Entrega final:** el test de carga tiene que dar 0 platos vendidos de más, y agregar al carrito tiene que tardar menos de 500 ms con 100 usuarios a la vez.
 
 ## Referencias
