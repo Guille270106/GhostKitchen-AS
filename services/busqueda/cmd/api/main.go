@@ -12,8 +12,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
+
+	"ghostkitchen/busqueda/internal/clients"
 	"ghostkitchen/busqueda/internal/config"
 	"ghostkitchen/busqueda/internal/handlers"
+	"ghostkitchen/busqueda/internal/indexer"
+	"ghostkitchen/busqueda/internal/middleware"
 	"ghostkitchen/busqueda/internal/repositories/solr"
 	"ghostkitchen/busqueda/internal/router"
 	"ghostkitchen/busqueda/internal/seed"
@@ -30,13 +35,37 @@ func main() {
 	repo := solr.NuevoRepositorio(solr.NuevoCliente(cfg.SolrURL, cfg.SolrTimeout))
 	svc := services.Nueva(repo)
 
+	// De dónde salen los datos del índice: de Catálogo si está configurado (lo normal),
+	// o de los datos iniciales embebidos (para probar Búsqueda sola).
+	var reconstruir func(context.Context) (indexer.Resultado, error)
+	if cfg.CatalogoURL != "" {
+		dispo, err := seed.DisponibilidadInicial()
+		if err != nil {
+			log.Error("no se pudo leer la disponibilidad inicial", "error", err.Error())
+			os.Exit(1)
+		}
+		rec := indexer.NuevoReconstructor(clients.NuevoCatalogo(cfg.CatalogoURL), repo, dispo)
+		reconstruir = func(ctx context.Context) (indexer.Resultado, error) {
+			if err := repo.PrepararEsquema(ctx); err != nil {
+				return indexer.Resultado{}, err
+			}
+			res, err := rec.Reconstruir(ctx)
+			if err == nil {
+				log.Info("índice reconstruido desde Catálogo", "correlation_id", middleware.IDDesdeContexto(ctx),
+					"sedes", res.Sedes, "platos", res.Platos)
+			}
+			return res, err
+		}
+	}
+
 	var listo atomic.Bool
 	ctx, parar := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer parar()
-	go inicializarIndice(ctx, log, repo, cfg.SeedAlIniciar, &listo)
+	go inicializarIndice(ctx, log, repo, cfg.SeedAlIniciar, reconstruir, &listo)
 
 	r := router.Nuevo(log,
 		handlers.NuevoInterno(cfg.APIKeys, repo.Ping, &listo),
+		handlers.NuevoReindexar(reconstruir),
 		handlers.NuevoPublico(svc),
 	)
 	srv := &http.Server{
@@ -44,7 +73,7 @@ func main() {
 		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
+		WriteTimeout:      30 * time.Second, // la reconstrucción manual puede tardar más que una consulta
 	}
 
 	go func() {
@@ -62,18 +91,19 @@ func main() {
 	_ = srv.Shutdown(fin)
 }
 
-// inicializarIndice espera a que Solr responda, crea los campos que falten y carga los datos
-// iniciales. Mientras tanto /ready responde 503 y las consultas responden 503.
-func inicializarIndice(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, conSeed bool, listo *atomic.Bool) {
+// inicializarIndice espera a que Solr (y Catálogo, si se usa) respondan y arma el índice.
+// Mientras tanto /ready responde 503 y las consultas responden 503.
+func inicializarIndice(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, conSeed bool,
+	reconstruir func(context.Context) (indexer.Resultado, error), listo *atomic.Bool) {
 	espera := time.Second
 	for intento := 1; ; intento++ {
-		err := preparar(ctx, log, repo, conSeed)
+		err := preparar(ctx, log, repo, conSeed, reconstruir)
 		if err == nil {
 			listo.Store(true)
 			log.Info("índice listo", "intentos", intento)
 			return
 		}
-		log.Warn("Solr todavía no está listo", "intento", intento, "error", err.Error())
+		log.Warn("el índice todavía no se pudo preparar", "intento", intento, "error", err.Error())
 		select {
 		case <-ctx.Done():
 			return
@@ -85,9 +115,14 @@ func inicializarIndice(ctx context.Context, log *slog.Logger, repo *solr.Reposit
 	}
 }
 
-func preparar(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, conSeed bool) error {
-	c, cancel := context.WithTimeout(ctx, 30*time.Second)
+func preparar(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, conSeed bool,
+	reconstruir func(context.Context) (indexer.Resultado, error)) error {
+	c, cancel := context.WithTimeout(middleware.ConCorrelacion(ctx, "inicio-"+uuid.NewString()), 60*time.Second)
 	defer cancel()
+	if reconstruir != nil {
+		_, err := reconstruir(c)
+		return err
+	}
 	if !conSeed {
 		return repo.PrepararEsquema(c)
 	}

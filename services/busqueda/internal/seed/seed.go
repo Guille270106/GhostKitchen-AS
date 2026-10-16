@@ -118,6 +118,21 @@ func Cargar(ctx context.Context, idx repositories.Indexador, ahora time.Time) (i
 	return len(sedes), len(platos), nil
 }
 
+// DisponibilidadInicial devuelve, para cada plato de ejemplo, si se puede pedir.
+// Es provisional: la disponibilidad real es de Inventario (mensaje disponibilidad.cambiada).
+// Un plato que no está en la tabla figura como no disponible (todavía no tiene receta).
+func DisponibilidadInicial() (func(platoID string) bool, error) {
+	var ps []platoSeed
+	if err := leerJSON("datos/platos.json", &ps); err != nil {
+		return nil, err
+	}
+	tabla := make(map[string]bool, len(ps))
+	for _, p := range ps {
+		tabla[p.ID] = p.Disponible
+	}
+	return func(id string) bool { return tabla[id] }, nil
+}
+
 func leerJSON(ruta string, destino any) error {
 	b, err := datos.ReadFile(ruta)
 	if err != nil {
