@@ -93,9 +93,13 @@ Las imágenes de los diagramas están únicamente en **`docs/diagrams/`**. Qué 
 
 ## Cómo ejecutarlo
 
-Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedores Linux iniciados. La primera ejecución descarga las imágenes (Solr, NGINX, Go, Prism) y necesita conexión a Internet.
+Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedores Linux iniciados. La primera ejecución descarga las imágenes (MongoDB, Solr, NGINX, Go, Prism) y necesita conexión a Internet.
 
-1. Copiar `.env.example` como `.env` y completar `PUBLIC_API_KEYS` con una clave de prueba, por ejemplo `PUBLIC_API_KEYS=clave-local`. El `.env` no se sube al repositorio.
+1. Copiar `.env.example` como `.env` y completar, con letras y números:
+   - `PUBLIC_API_KEYS`: una clave de prueba, por ejemplo `clave-local`;
+   - `MONGO_ROOT_PASSWORD` y `CATALOGO_DB_PASSWORD`: contraseñas de MongoDB (Compose no arranca si faltan).
+
+   El `.env` no se sube al repositorio.
 2. Desde la raíz del repositorio:
 
    ```bash
@@ -114,9 +118,11 @@ Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedor
 | --- | --- |
 | Capacidad publicada (real, Entrega 2) | http://localhost:8080/public/v1/sedes (header `X-API-Key` con una clave de `PUBLIC_API_KEYS`) |
 | Mock de la capacidad publicada | http://localhost:4010/v1/sedes (header `X-API-Key` con cualquier valor) |
+| Lecturas de Catálogo para el frontend | http://localhost:8080/api/v1/cocinas |
 | Panel de Solr (desarrollo) | http://localhost:8983 |
+| MongoDB con Compass (desarrollo) | `mongodb://root:<MONGO_ROOT_PASSWORD>@localhost:27017` |
 
-Para detener todo: `docker compose down` (agregar `-v` para borrar también el índice de Solr; se vuelve a cargar al arrancar).
+Para detener todo: `docker compose down`. Con `-v` se borran también los volúmenes de MongoDB y Solr: al arrancar de nuevo se cargan los datos iniciales y se reconstruye el índice.
 
 El mock (Prism) devuelve ejemplos estáticos: no calcula distancias ni filtros. Sin Docker, con Node.js y npm:
 

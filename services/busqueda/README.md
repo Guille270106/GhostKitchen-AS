@@ -2,12 +2,12 @@
 
 **Responsable:** Guillermina Sánchez (índice y búsqueda) · Lucía Rucci (capacidad publicada).
 
-> **Entrega 2:** funcionando la **capacidad publicada** completa (`/v1/sedes`, `/v1/sedes/cercana`, `/v1/sedes/{sedeId}/platos`, `/v1/platos/{platoId}` y `POST /v1/proximidad`) sobre Solr, detrás del gateway con API key. Por ahora el índice se llena con **datos iniciales** (4 cocinas y 64 platos inventados); el lector de mensajes de Catálogo e Inventario, la búsqueda del frontend (`/platos/buscar`, sugerencias, zonas) y la reconstrucción llegan con esos servicios.
+> **Entrega 2:** funcionando la **capacidad publicada** completa (`/v1/sedes`, `/v1/sedes/cercana`, `/v1/sedes/{sedeId}/platos`, `/v1/platos/{platoId}` y `POST /v1/proximidad`) sobre Solr, detrás del gateway con API key. El índice se **reconstruye desde Catálogo** (MongoDB) al arrancar y con `POST /internal/reindexar`. La disponibilidad todavía es una tabla provisional (es dato de Inventario, que aún no existe): un plato nuevo, sin receta, figura no disponible. El lector de mensajes y la búsqueda del frontend (`/platos/buscar`, sugerencias, zonas) llegan con RabbitMQ y el frontend.
 
 ## Cómo levantarlo y probarlo
 
 1. Copiar `.env.example` como `.env` y completar `PUBLIC_API_KEYS` con una clave de prueba, por ejemplo `PUBLIC_API_KEYS=clave-local`. **No subir el `.env`.**
-2. Desde la raíz del repo: `docker compose up --build`. La primera vez tarda porque descarga Solr y compila el servicio. Búsqueda espera a que Solr arranque, crea los campos que faltan y carga los datos iniciales (en el log aparece `índice listo`).
+2. Desde la raíz del repo: `docker compose up --build`. La primera vez tarda porque descarga Solr y compila el servicio. Búsqueda espera a que Solr y Catálogo respondan, crea los campos que faltan y arma el índice con los datos de Catálogo (en el log aparece `índice reconstruido desde Catálogo` y después `índice listo`).
 3. Probar por el gateway:
    ```powershell
    curl.exe -H "X-API-Key: clave-local" http://localhost:8080/public/v1/sedes
@@ -71,13 +71,15 @@ internal/repositories/solr/    implementación sobre Solr (consultas, esquema, c
 internal/repositories/memoria/ implementación en memoria, solo para tests
 internal/domain/               cómo es un plato y una sede en la búsqueda, y sus errores
 internal/geo/                  distancia Haversine
-internal/seed/                 datos iniciales (4 cocinas, 64 platos) mientras no llegan mensajes
+internal/indexer/              reconstrucción del índice desde Catálogo (y, más adelante, el lector de mensajes)
+internal/clients/              cliente HTTP de Catálogo: 5 s por intento y 3 reintentos (trabajo de fondo)
+internal/seed/                 datos iniciales para probar Búsqueda sola y disponibilidad provisional
 internal/middleware/           X-Correlation-Id y log JSON de cada solicitud
 internal/router/               arma Gin con middleware y rutas
 internal/config/               variables de entorno
 ```
 
-Previsto para cuando existan Catálogo, Inventario y RabbitMQ: `internal/indexer/` (entrada 2, lector de mensajes) e `internal/clients/` (reconstrucción por API).
+Previsto para cuando existan Inventario y RabbitMQ: el lector de mensajes en `internal/indexer/` y el cliente de Inventario para la disponibilidad real.
 
 **Esquema de Solr:** no hay archivos de configuración aparte. Al arrancar, Búsqueda usa la Schema API para crear los campos que falten en los cores `cocinas` y `platos`, y un tipo de texto `text_gk` que pasa a minúsculas y quita acentos (así `CAFE` encuentra `Café`). Es idempotente: se puede ejecutar en cada arranque.
 
@@ -96,7 +98,7 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 | `GET /internal/apikey/verificar` | el gateway (`auth_request`) | Verificar la `X-API-Key` antes de dejar pasar una solicitud a `/public/v1`: 204 válida, 401 inválida |
 | `GET /health` y `GET /ready` | Docker y el gateway | `/health`: el proceso está vivo. `/ready`: el índice está preparado y Solr responde (503 si no) |
 
-Implementadas en la Entrega 2: las rutas `/v1/...`, `POST /v1/proximidad`, `/internal/apikey/verificar`, `/health` y `/ready`. Las demás llegan con el frontend y con Catálogo e Inventario.
+Implementadas en la Entrega 2: las rutas `/v1/...`, `POST /v1/proximidad`, `POST /internal/reindexar`, `/internal/apikey/verificar`, `/health` y `/ready`. Las demás llegan con el frontend y con Catálogo e Inventario.
 
 ## Proximidad externa prevista
 
@@ -138,7 +140,8 @@ Las llamadas de reconstrucción admiten hasta 5 s por intento y tres reintentos:
 | `SOLR_URL` | `http://solr:8983/solr` | Dirección de Solr |
 | `SOLR_TIMEOUT_MS` | `2000` | Tiempo máximo de cada llamada a Solr |
 | `PUBLIC_API_KEYS` | vacío | Claves de los grupos consumidores, separadas por coma. Vacío = se rechazan todas |
-| `SEED_AL_INICIAR` | `true` | Cargar los datos iniciales al arrancar |
+| `CATALOGO_URL` | vacío | Dirección de Catálogo (`http://catalogo:8082` en Docker). Si está, el índice se arma desde Catálogo |
+| `SEED_AL_INICIAR` | `true` | Solo sin `CATALOGO_URL`: cargar los datos iniciales embebidos (para probar Búsqueda sola) |
 
 Más adelante se suman las direcciones de RabbitMQ y de las API internas de Catálogo e Inventario. El radio de cobertura de la API publicada es 25 km, según el [contrato v1](../../docs/contracts/v1/openapi.yaml). Las claves de consumidores se validan en el gateway mediante `PUBLIC_API_KEYS`; no se incorporan al índice.
 
@@ -150,6 +153,7 @@ Más adelante se suman las direcciones de RabbitMQ y de las API internas de Cat�
 - **Handlers:** respuestas y errores de las 5 operaciones con Problem Details, validaciones (booleano como texto, listas, campos extra, radio 0 o 501, coordenadas, cuerpo vacío o doble, más de 64 KiB), `X-Correlation-Id` recibido o generado, verificación de API key (incluida la falla cerrada sin claves) y `/ready`.
 - **Repositorio Solr** contra un Solr simulado: consulta geoespacial, filtros y orden, escape de texto, esquema que solo agrega lo que falta, documentos guardados y errores de Solr como 503.
 - **Datos iniciales:** 4 cocinas, 64 platos sin ids repetidos, carga idempotente y el plato `p5` igual al ejemplo del contrato.
+- **Reconstrucción** contra un Catálogo simulado: solo se muestran platos activos de restaurantes y cocinas activas, se ignoran restaurantes desconocidos, se recorren todas las páginas y, si Catálogo falla a mitad de camino, se conserva lo ya guardado y se informa el error.
 
 Las respuestas se validaron contra el OpenAPI 1.1.0 con los datos en memoria, y el gateway se probó con `scripts/probar-api-publica.ps1` (401, 413, 429 y 503 con Problem Details). Queda pendiente sumar a la suite una prueba de integración contra un Solr real.
 
