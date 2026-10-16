@@ -134,7 +134,7 @@ Invoke-RestMethod -Method Post -Uri "http://localhost:4010/v1/proximidad" -Heade
 
 Prism solo devuelve ejemplos; no calcula ni selecciona automáticamente una respuesta según las coordenadas o el booleano. Para preparar los otros casos se puede usar Prefer: example=soloSede, example=sedeLejosCocinaCerca o example=sinCocinas. Los cálculos reales se implementarán después de Entrega 1.
 
-La API key, correlación y límite de 60 consultas por minuto aplican también al POST. El gateway real limita el cuerpo a 64 KiB y responde 413 si se supera. No guardamos las coordenadas externas ni registramos el cuerpo. El contrato 1.1.0 es una revisión local de diseño; conserva sin cambios los cuatro GET de la versión publicada 1.0.0.
+La API key, correlación y límite de 60 consultas por minuto aplican también al POST. El gateway real limita el cuerpo a 64 KiB y responde 413 si se supera. No guardamos las coordenadas externas ni registramos el cuerpo. La versión 1.1.0 conserva sin cambios los cuatro GET de la versión 1.0.0.
 
 ## Cómo usarla
 

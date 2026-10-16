@@ -46,7 +46,7 @@ POST /v1/proximidad recibe ubicacionCliente, ubicacionSede, radioKm > 0 y hasta 
 
 Haversine en Go calcula distancia en línea recta y rango inclusivo; la aplicación ofrece su sede si dentroDelRango=true. Con true, Solr consulta además nuestra cocina más cercana al cliente, independientemente del resultado externo, con radio min(radioKm, 25). FUERA_RANGO y SIN_SEDES son resultados 200; caída de Solr con la opción activada es 503. Con false no depende de Solr.
 
-Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción), sin crear ni guardar recursos. Cuerpo máximo 64 KiB. El consumidor convierte direcciones a coordenadas; no agregamos geocodificación ni rutas por calles. Esta precisión reemplaza el borrador local de listas de sedes, antes de publicar 1.1.0; no cambia los cuatro GET públicos de 1.0.0. La arquitectura y los servicios siguen iguales.
+Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción), sin crear ni guardar recursos. Cuerpo máximo 64 KiB. El consumidor convierte direcciones a coordenadas; no agregamos geocodificación ni rutas por calles. No cambia los cuatro GET públicos de 1.0.0. La arquitectura y los servicios siguen iguales.
 
 ### Quién la atiende: Búsqueda
 

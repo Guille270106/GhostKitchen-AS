@@ -134,6 +134,12 @@ El que cocina todo es la cocina; los restaurantes son solo marcas. El pedido tie
 | Que el gateway termine teniendo lógica del negocio | El gateway solo rutea, verifica el login, limita y reparte la carga |
 | Que Inventario use una localidad vieja o que todavía no le llegó | Cada mensaje `cocina.*` trae una versión, e Inventario solo guarda una versión más nueva que la que tiene. Si le falta una referencia para validar el recurso, **rechaza** los cambios del personal de cocina hasta verificar su pertenencia. El *seed* carga las 4 cocinas al iniciar |
 
+## Ajuste de roles (12/10/2026)
+
+Admin mantiene estructura y cuentas de su localidad (HU14–HU16) y consulta métricas (HU22). Cocina mantiene su menú e inventario (HU17–HU21), pedidos (HU23–HU25) e historial (HU27). HU26 se elimina porque queda integrada en HU18. Quien trabaja en cocina conoce platos y stock real; el admin administra estructura y no es cuello de botella para el trabajo diario.
+
+Se conservan los seis servicios, las bases y los eventos. Catálogo valida cocina_id para platos; Inventario para ingredientes, recetas y movimientos. Admin no administra menú ni stock. Rol incorrecto: 403; recurso de otra cocina: 404. El precio permanece congelado al agregar al carrito (RN15), y las reservas conservan sus ingredientes aunque cambie una receta.
+
 ## Cómo lo vamos a validar
 
 - **Entrega 2:** revisar que ningún servicio necesite entrar a la base de otro. Si pasa, separamos mal y hacemos un ADR nuevo que reemplace a este (sin borrarlo).
@@ -147,8 +153,3 @@ El que cocina todo es la cocina; los restaurantes son solo marcas. El pedido tie
 - Clase 5: el índice de búsqueda como copia derivada de los datos.
 - Clase 6: el gateway como única entrada; quién es se verifica en el borde, qué puede hacer lo decide cada servicio.
 - Clase 7: fallas parciales y aislamiento.
-## Ajuste de roles de Entrega 1 — 12/10/2026
-
-Admin mantiene estructura y cuentas de su localidad (HU14–HU16) y consulta métricas (HU22). Cocina mantiene su menú e inventario (HU17–HU21), pedidos (HU23–HU25) e historial (HU27). HU26 se elimina porque queda integrada en HU18. Quien trabaja en cocina conoce platos y stock real; el admin administra estructura y no es cuello de botella para el trabajo diario.
-
-Se conservan los seis servicios, las bases y los eventos. Catálogo valida cocina_id para platos; Inventario para ingredientes, recetas y movimientos. Admin no administra menú ni stock. Rol incorrecto: 403; recurso de otra cocina: 404. El precio permanece congelado al agregar al carrito (RN15), y las reservas conservan sus ingredientes aunque cambie una receta.
