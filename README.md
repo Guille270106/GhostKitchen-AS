@@ -93,40 +93,38 @@ Las imágenes de los diagramas están únicamente en **`docs/diagrams/`**. Qué 
 
 ## Cómo ejecutarlo
 
-Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedores Linux iniciados. La primera ejecución descarga la imagen de Prism y necesita conexión a Internet.
+Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedores Linux iniciados. La primera ejecución descarga las imágenes (Solr, NGINX, Go, Prism) y necesita conexión a Internet.
 
-Desde la raíz del repositorio:
+1. Copiar `.env.example` como `.env` y completar `PUBLIC_API_KEYS` con una clave de prueba, por ejemplo `PUBLIC_API_KEYS=clave-local`. El `.env` no se sube al repositorio.
+2. Desde la raíz del repositorio:
 
-```bash
-docker compose up
-```
+   ```bash
+   docker compose up --build
+   ```
 
-El comando levanta únicamente el mock de esta entrega. Para iniciarlo en segundo plano y detenerlo:
+3. Probar la capacidad publicada, ya implementada, a través del gateway (en PowerShell usar `curl.exe`):
 
-```bash
-docker compose up -d contract-mock
-docker compose down
-```
+   ```bash
+   curl -H "X-API-Key: clave-local" http://localhost:8080/public/v1/sedes
+   ```
 
-Prueba de una respuesta:
+   O todas las operaciones juntas, en PowerShell: `.\scripts\probar-api-publica.ps1 -Clave clave-local`.
 
-```bash
-curl -H "X-API-Key: demo" http://localhost:4010/v1/sedes
-```
+| Servicio | URL |
+| --- | --- |
+| Capacidad publicada (real, Entrega 2) | http://localhost:8080/public/v1/sedes (header `X-API-Key` con una clave de `PUBLIC_API_KEYS`) |
+| Mock de la capacidad publicada | http://localhost:4010/v1/sedes (header `X-API-Key` con cualquier valor) |
+| Panel de Solr (desarrollo) | http://localhost:8983 |
 
-En PowerShell usar `curl.exe`. Sin Docker, con Node.js y npm:
+Para detener todo: `docker compose down` (agregar `-v` para borrar también el índice de Solr; se vuelve a cargar al arrancar).
+
+El mock (Prism) devuelve ejemplos estáticos: no calcula distancias ni filtros. Sin Docker, con Node.js y npm:
 
 ```bash
 npx --yes @stoplight/prism-cli@5.16.0 mock -h 127.0.0.1 -p 4010 docs/contracts/v1/openapi.yaml
 ```
 
-Prism devuelve ejemplos estáticos. No calcula distancias ni filtros, no reserva ingredientes y no implementa el límite real de solicitudes. Los ejemplos de uso están en [la guía del contrato](docs/contracts/README.md#ejemplos).
-
-| Servicio | URL |
-| --- | --- |
-| Mock de la capacidad publicada | http://localhost:4010/v1/sedes (header `X-API-Key` con cualquier valor) |
-
-En esta entrega no hace falta ninguna contraseña. Cuando sumemos los servicios, hay que copiar `.env.example` como `.env` y completarlo. El `.env` no se sube al repositorio.
+Los ejemplos de uso están en [la guía del contrato](docs/contracts/README.md#ejemplos).
 
 ## Estructura del repositorio
 
