@@ -1,6 +1,6 @@
 # Arquitectura de GhostKitchen
 
-> **Versión:** Entrega 1 (9/10/2026), revisada el 12/10/2026. Es un diseño preliminar: todavía no hay código de los servicios. Lo único que ya funciona es el **mock del contrato** que publicamos (`docker compose up`).
+> **Versión:** Entrega 2 (16/10/2026). Ya funcionan el **gateway**, **Búsqueda** (con Solr) y **Catálogo** (con MongoDB), con logs correlacionados y trazas en Jaeger, además del mock del contrato. El resto del documento sigue describiendo el diseño completo; lo que está implementado se marca en las secciones 11 y 13.
 
 En este documento explicamos cómo armamos el sistema: qué servicios tiene, qué hace cada uno, qué datos guarda, cómo se comunican, qué pasa cuando algo falla y cómo se despliegan. Por qué tomamos cada decisión está en los [ADR](adr/README.md), y qué tiene que hacer el sistema está en el [SPEC](../SPEC.md).
 
@@ -91,7 +91,7 @@ Son **6 microservicios y un API Gateway** (el enunciado pide al menos 3).
 - **Pedidos** usa además **DDD**, porque tiene la máquina de estados más rica y depende de Inventario, Catálogo y un proveedor que todavía no conocemos. Si el proveedor cambia, solo cambia el adaptador.
 - **Inventario** es hexagonal **liviano**: tres entradas distintas (HTTP, mensajes y el proceso que vence reservas) usan las mismas reglas. Que no se venda de más lo garantiza MySQL (sección 6.4), y eso se prueba con tests contra una base real.
 
-Esto se termina de justificar en el ADR-002, en la Entrega 2.
+La justificación completa está en el [ADR-002](adr/ADR-002-arquitectura-interna.md).
 
 ### 4.1 Por qué las recetas están en Inventario y no en Catálogo
 
@@ -137,8 +137,10 @@ Tomamos las ideas de las clases y las aplicamos a GhostKitchen. Las herramientas
 | — | React + Vite | Frontend (el enunciado deja elegir) | — |
 | — | Prism | Mock del contrato a partir del OpenAPI | 008 |
 | — | Mailpit | Servidor de correo de prueba en local | 005 |
-| Logs, métricas y seguimiento con Correlation ID (clases 1, 3, 4, 6 y 7); Prometheus como ejemplo de datos de series de tiempo (clase 2) | Grafana como propuesta del grupo | Prometheus reúne las métricas y Grafana permite verlas en un tablero. Los logs y registros de cada paso permiten seguir una operación. La configuración se definirá en Entrega 2 | 011 |
-| Separar las reglas de las dependencias para poder probarlas (clase 8), y comprobar fallas de forma controlada (clase 7) | Tests de Go y dependencias reales en Docker Compose; herramienta de carga pendiente | Pruebas unitarias, de integración, de contrato y de carga que pide el enunciado | 013 |
+| Logs, métricas y seguimiento con Correlation ID (clases 1, 3, 4, 6 y 7); Prometheus como ejemplo de datos de series de tiempo (clase 2) | Grafana como propuesta del grupo | Prometheus reúne las métricas y Grafana permite verlas en un tablero | 011 |
+| Trazabilidad distribuida (clase 1) | OpenTelemetry y Jaeger | Seguir una solicitud por todos los servicios y ver dónde se demora. Funciona desde la Entrega 2 | 011 |
+| Circuit breaker y reintentos con espera creciente (clase 7) | `sony/gobreaker` y `cenkalti/backoff` | Usar librerías en lugar de programar estos mecanismos a mano (Pedidos) | 010 |
+| Separar las reglas de las dependencias para poder probarlas (clase 8), y comprobar fallas de forma controlada (clase 7) | Tests de Go, dependencias reales en Docker Compose y k6 para la carga | Pruebas unitarias, de integración, de contrato y de carga que pide el enunciado | 013 |
 
 ### 4.6 Qué hay en el repositorio
 
@@ -154,7 +156,7 @@ GhostKitchen/
 └── docker-compose.yml        Para levantar todo con un comando
 ```
 
-En esta entrega cada servicio tiene solo su README. Desde la Entrega 2 se suma el código de cada servicio, el frontend, `pkg/` (código técnico compartido) y la configuración de las herramientas de monitoreo.
+Desde la Entrega 2 hay código en `services/busqueda` y `services/catalogo`, la configuración del gateway en `gateway/`, scripts de prueba en `scripts/` y la prueba de carga en `tests/carga/`. Los demás servicios tienen por ahora solo su README; después se suman su código, el frontend y la configuración de Prometheus y Grafana.
 
 ## 5. Cómo se comunican
 
@@ -307,7 +309,7 @@ Notificaciones **no recibe pedidos del frontend**: solo escucha los mensajes `pe
 
 ### 6.9 Reconstruir la búsqueda
 
-Si hay que armar la búsqueda de cero, Búsqueda les pide los datos a Catálogo e Inventario **por su API**, de a páginas. Nunca entra a sus bases. Mientras se reconstruye, la búsqueda anterior sigue funcionando, y las versiones (sección 6.3) evitan que la reconstrucción pise cambios más nuevos que llegaron por mensaje.
+Si hay que armar la búsqueda de cero, Búsqueda les pide los datos a Catálogo e Inventario **por su API**, de a páginas. Nunca entra a sus bases. En la Entrega 2 ya funciona con Catálogo: al arrancar y con `POST /internal/reindexar` ([ADR-006](adr/ADR-006-busqueda.md)). Mientras se reconstruye, la búsqueda anterior sigue funcionando, y las versiones (sección 6.3) evitan que la reconstrucción pise cambios más nuevos que llegaron por mensaje.
 
 ## 7. Roles y permisos
 
@@ -411,7 +413,7 @@ Con true, Solr busca además nuestra cocina activa más cercana al cliente, no a
 - **Quién lo llama:** Pedidos, directo. No lo llama el frontend ni pasa por nuestro gateway.
 - **Cómo:** con el tiempo que quede del total de 3 s, reintentando solo si es seguro, cortando un rato si falla mucho (circuit breaker) y con un **test de contrato** que avise si su API cambia.
 - **Dónde se usa:** en el paso de la confirmación que corresponda según lo que haga.
-- **Qué ve el cliente si falla:** un mensaje claro, y el pedido no se pierde. Lo detallamos en el ADR-009 cuando conozcamos su contrato.
+- **Qué ve el cliente si falla:** un mensaje claro, y el pedido no se pierde. Cómo lo integramos está en el [ADR-009](adr/ADR-009-consumo-del-proveedor.md); el detalle se completa cuando conozcamos su contrato.
 
 ## 10. Qué pasa si algo falla
 
@@ -438,33 +440,37 @@ Las caídas de Inventario, RabbitMQ y el correo son las que vamos a provocar en 
 | Qué | Estado |
 | --- | --- |
 | Mock del contrato | ✅ Funciona |
-| Gateway, los 6 servicios, MySQL, MongoDB, RabbitMQ, Solr, Memcached, Mailpit y frontend | Entrega 2 |
-| Logs, métricas con Prometheus y tablero con Grafana (propuesta inicial) | Entrega 2 en adelante; decisión detallada en ADR-011 |
+| Gateway, Búsqueda con Solr, Catálogo con MongoDB | ✅ Entrega 2 |
+| Logs JSON correlacionados y trazas en Jaeger | ✅ Entrega 2 ([ADR-011](adr/ADR-011-observabilidad.md)) |
+| Usuarios, Inventario, Pedidos, Notificaciones, MySQL, RabbitMQ, Memcached, Mailpit y frontend | Entrega final |
+| Segunda copia de Catálogo ([ADR-012](adr/ADR-012-balanceo-de-carga.md)), métricas con Prometheus y tablero con Grafana | Entrega final |
 
 En local, Docker Compose levantará frontend, gateway, servicios y sus dependencias. La entrada del frontend será el gateway. Para publicar la capacidad externa se desplegará lo necesario para Búsqueda y su API; el resto se mantendrá dentro de la red prevista.
 
 Solo el gateway y las herramientas de monitoreo quedan accesibles desde fuera de Docker: ningún microservicio se puede llamar sin pasar por el gateway.
 
-**En la nube** subimos solo lo necesario para lo que publicamos (Búsqueda con Solr), para gastar lo menos posible. Dónde y cuánto cuesta lo decidimos en el ADR-013.
+**En la nube**, para la API publicada alcanza con el gateway, Búsqueda, Solr, Catálogo y MongoDB. Para la presentación final, la primera estimación es una máquina virtual de 2 vCPU y 4 GB corriendo Docker Compose (unos USD 24 por mes); el detalle está en el [ADR-013](adr/ADR-013-capacidad-y-costos.md).
 
 ## 12. Lo que viene en las próximas entregas
 
+Los temas de esta tabla ya tienen su ADR (Entrega 2). Lo que falta es implementarlos; la Búsqueda ya funciona salvo los mensajes y las zonas.
+
 | Tema | Qué pensamos hacer | ADR |
 | --- | --- | --- |
-| Búsqueda | Solr con tres índices: platos, cocinas (con ubicación, para la más cercana) y zonas. Se actualiza por mensajes en 5 s como máximo y se puede reconstruir de cero. **Nunca decide el stock.** | ADR-006 |
-| Caché | Memcached en Catálogo para "cocinas con sus restaurantes" y "menú de una cocina". Dura 60 s y se borra cuando se modifica algo. Vamos a medir los tiempos con y sin caché. **El stock nunca se guarda en caché.** | ADR-007 |
+| Búsqueda | Solr con tres índices: platos, cocinas (con ubicación, para la más cercana) y zonas. Se actualiza por mensajes en 5 s como máximo y se puede reconstruir de cero. **Nunca decide el stock.** | [ADR-006](adr/ADR-006-busqueda.md) |
+| Caché | Memcached en Catálogo para "cocinas con sus restaurantes" y "menú de una cocina". Dura 60 s y se borra cuando se modifica algo. Vamos a medir los tiempos con y sin caché. **El stock nunca se guarda en caché.** | [ADR-007](adr/ADR-007-cache.md) |
 | Consistencia | La reserva "todo o nada", las claves para no repetir, el outbox, la saga de confirmación y la versión del pedido. | ADR-004 |
-| Fallas | Tiempos máximos de espera, reintentos esperando cada vez más, circuit breaker y mensajes honestos al usuario (por ejemplo, "estamos confirmando tu pedido"). | ADR-010 |
-| Balanceo | Catálogo con 2 copias detrás de NGINX, que se reparten los pedidos por turnos. Si una copia falla varias veces seguidas, NGINX deja de mandarle pedidos un rato (`max_fails`, `fail_timeout`). Lo vamos a mostrar en Grafana. | ADR-012 |
-| Monitoreo | Logs JSON y registros de cada paso con el mismo identificador, métricas en Prometheus y un tablero en Grafana. Mostrar tiempos, errores, instancias, caché y colas. Probar una alerta por mensajes en la DLQ y definir los umbrales de errores después de medir el sistema. | ADR-011 |
+| Fallas | Tiempos máximos de espera, reintentos esperando cada vez más, circuit breaker y mensajes honestos al usuario (por ejemplo, "estamos confirmando tu pedido"). | [ADR-010](adr/ADR-010-resiliencia.md) |
+| Balanceo | Catálogo con 2 copias detrás de NGINX, que se reparten los pedidos por turnos. Si una copia falla varias veces seguidas, NGINX deja de mandarle pedidos un rato (`max_fails`, `fail_timeout`). Lo vamos a mostrar en Grafana. | [ADR-012](adr/ADR-012-balanceo-de-carga.md) |
+| Monitoreo | Logs JSON y registros de cada paso con el mismo identificador, métricas en Prometheus y un tablero en Grafana. Mostrar tiempos, errores, instancias, caché y colas. Probar una alerta por mensajes en la DLQ y definir los umbrales de errores después de medir el sistema. | [ADR-011](adr/ADR-011-observabilidad.md) |
 | Seguridad | Contraseñas encriptadas con bcrypt, que nunca se devuelven. Token firmado con una clave que no está en el repo. Límite de pedidos por usuario en NGINX. | ADR-001 / ADR-005 |
-| Pruebas | Unitarias de las reglas con Go; integración con una base o RabbitMQ real en Docker Compose; contrato del proveedor; carga con resultados y análisis. El 70 % de cobertura es una meta inicial del grupo, no un porcentaje fijado en el enunciado. La herramienta de carga se elegirá al implementar. | ADR-013 |
+| Pruebas | Unitarias de las reglas con Go; integración con una base o RabbitMQ real en Docker Compose; contrato del proveedor; carga con resultados y análisis. El 70 % de cobertura es una meta inicial del grupo, no un porcentaje fijado en el enunciado. La herramienta de carga se elegirá al implementar. | [ADR-013](adr/ADR-013-capacidad-y-costos.md) |
 
 ### 12.1 Monitoreo: qué queremos poder ver
 
 La idea es saber qué pasó con un pedido sin abrir la consola de cada servicio por separado. Esto se relaciona con el seguimiento distribuido de la Clase 1 y con el identificador de correlación de las clases 4 y 6. Vamos a registrar el inicio y fin de cada paso, servicio, resultado y duración con el mismo `correlation_id`, también en los eventos. Así podremos reconstruir el recorrido y ubicar una demora. No guardamos contraseñas, tokens ni coordenadas externas en los logs.
 
-Como propuesta inicial, Prometheus reunirá los números y Grafana los mostrará en un tablero. Prometheus aparece como ejemplo de series de tiempo en la Clase 2; Grafana es una elección nuestra para cumplir el tablero del enunciado. En Entrega 1 todavía no están instalados. La forma de consultar los logs juntos, presentar las trazas completas y activar las alertas se concretará en ADR-011; no damos esa implementación por terminada.
+Como propuesta inicial, Prometheus reunirá los números y Grafana los mostrará en un tablero. Prometheus aparece como ejemplo de series de tiempo en la Clase 2; Grafana es una elección nuestra para cumplir el tablero del enunciado. En Entrega 1 todavía no están instalados. Desde la Entrega 2 los logs JSON y las trazas en Jaeger funcionan en Búsqueda, Catálogo y el gateway; las métricas, el tablero, los objetivos de servicio y las alertas están definidos en el [ADR-011](adr/ADR-011-observabilidad.md).
 
 | Qué miramos | Para qué nos sirve | Relación con la teoría |
 | --- | --- | --- |
@@ -477,12 +483,12 @@ Como propuesta inicial, Prometheus reunirá los números y Grafana los mostrará
 
 ### 12.2 Pruebas: qué vamos a comprobar
 
-Las clases muestran por qué conviene separar reglas y dependencias y qué ocurre ante fallas. El enunciado pide pruebas unitarias, integración con una dependencia real y carga con resultados analizados. En los ocho apuntes revisados no se fija testcontainers ni k6 como herramienta; por eso no los dejamos como decisiones cerradas en Entrega 1.
+Las clases muestran por qué conviene separar reglas y dependencias y qué ocurre ante fallas. El enunciado pide pruebas unitarias, integración con una dependencia real y carga con resultados analizados. En los ocho apuntes revisados no se fija una herramienta de carga; en la Entrega 2 elegimos k6 ([ADR-013](adr/ADR-013-capacidad-y-costos.md)).
 
 - **Unitarias:** con los tests de Go (`go test`), probar las reglas sin levantar todo el sistema: no reservar cantidades negativas, no avanzar estados inválidos, validar roles y calcular la distancia entre dos puntos. Las interfaces de la arquitectura hexagonal permiten reemplazar dependencias durante estas pruebas (Clase 8).
 - **Integración:** levantar las dependencias de prueba con Docker Compose y comprobar el servicio contra una base o RabbitMQ real, con datos separados. Por ejemplo, dos solicitudes intentan reservar el último plato y solo una lo consigue; un evento repetido no vuelve a aplicar su efecto.
 - **Contrato:** comprobar que las solicitudes y respuestas respetan OpenAPI y que la integración detecta cambios incompatibles del proveedor. Los ejemplos de Prism sirven para preparar el consumidor; no prueban la lógica de los futuros servicios.
-- **Carga:** enviar solicitudes concurrentes al flujo elegido y registrar cantidad de solicitudes, tiempos de respuesta, errores y el recurso que limita la capacidad. Comparar Catálogo con/sin caché y con una/dos instancias. La herramienta se justificará en ADR-013 antes de ejecutar la prueba.
+- **Carga:** enviar solicitudes concurrentes al flujo elegido y registrar cantidad de solicitudes, tiempos de respuesta, errores y el recurso que limita la capacidad. Comparar Catálogo con/sin caché y con una/dos instancias. La herramienta (k6) y los escenarios están en el ADR-013; el primer escenario está en `tests/carga/api-publica.js`.
 - **Fallas controladas:** apagar una dependencia o hacer que responda lento, comprobar la respuesta al usuario y la recuperación, y registrar el resultado en el POSTMORTEM que pide el enunciado (Clase 7). Es una comprobación distinta de la prueba de carga.
 
 El objetivo es probar las reglas importantes y explicar los resultados. Un porcentaje alto de cobertura por sí solo no demuestra que el stock sea correcto.
@@ -491,25 +497,29 @@ El objetivo es probar las reglas importantes y explicar los resultados. Un porce
 
 | ADR | Decisión | Estado | Entrega |
 | --- | --- | --- | --- |
-| [ADR-001](adr/ADR-001-limites-de-los-servicios.md) | D1 Cómo separamos los servicios | Aceptada | 1 |
-| ADR-002 | D2 Cómo se organiza cada servicio por dentro | Pendiente (adelanto en la sección 4) | 2 |
-| [ADR-003](adr/ADR-003-persistencia.md) | D3 Qué base usa cada servicio | Primera versión | 1 |
+| [ADR-001](adr/ADR-001-limites-de-los-servicios.md) | D1 Cómo separamos los servicios | Aceptada, validada | 1 (validada en la 2) |
+| [ADR-002](adr/ADR-002-arquitectura-interna.md) | D2 Cómo se organiza cada servicio por dentro | Aceptada para Búsqueda y Catálogo | 2 |
+| [ADR-003](adr/ADR-003-persistencia.md) | D3 Qué base usa cada servicio | Aceptada; validada para MongoDB y Solr | 1 (validada en la 2) |
 | ADR-004 | D4 Consistencia y concurrencia | Pendiente (adelanto en las secciones 6.4 a 6.7) | Final |
-| [ADR-005](adr/ADR-005-comunicacion-entre-servicios.md) | D5 Cómo se comunican | Primera versión | 1 |
-| ADR-006 | D6 Búsqueda | Pendiente | 2 |
-| ADR-007 | D7 Caché | Pendiente | 2 |
-| [ADR-008](adr/ADR-008-contrato-propio.md) | D8 Lo que publicamos | Aceptada | 1 |
-| ADR-009 … ADR-013 | D9 a D13 | Pendientes (adelanto de D10 en la sección 10) | 2 |
+| [ADR-005](adr/ADR-005-comunicacion-entre-servicios.md) | D5 Cómo se comunican | Aceptada; validada la parte síncrona | 1 (validada en la 2) |
+| [ADR-006](adr/ADR-006-busqueda.md) | D6 Búsqueda | Aceptada | 2 |
+| [ADR-007](adr/ADR-007-cache.md) | D7 Caché | Propuesta | 2 |
+| [ADR-008](adr/ADR-008-contrato-propio.md) | D8 Lo que publicamos | Aceptada, implementada (contrato 1.1.0 sin cambios) | 1 (implementada en la 2) |
+| [ADR-009](adr/ADR-009-consumo-del-proveedor.md) | D9 Lo que consumimos | Propuesta (falta que asignen el proveedor) | 2 |
+| [ADR-010](adr/ADR-010-resiliencia.md) | D10 Qué pasa cuando algo falla | Aceptada | 2 |
+| [ADR-011](adr/ADR-011-observabilidad.md) | D11 Monitoreo | Primera versión | 2 |
+| [ADR-012](adr/ADR-012-balanceo-de-carga.md) | D12 Balanceo de carga | Propuesta | 2 |
+| [ADR-013](adr/ADR-013-capacidad-y-costos.md) | D13 Capacidad y costos | Primera versión | 2 |
 
 ## 14. Limitaciones conocidas
 
-- **Todavía no hay código de los servicios.** En esta entrega funciona el mock del contrato.
-- **No sabemos qué grupo vamos a consumir**, así que el paso del proveedor y el ADR-009 quedan pendientes.
+- **Funcionan tres piezas de siete:** gateway, Búsqueda y Catálogo. Usuarios, Inventario, Pedidos y Notificaciones todavía no tienen código, así que la disponibilidad de los platos sale de los datos iniciales y la búsqueda no recibe mensajes.
+- **No sabemos qué grupo vamos a consumir**, así que el [ADR-009](adr/ADR-009-consumo-del-proveedor.md) define cómo lo vamos a integrar, pero no el contrato concreto.
 - **Tenemos que confirmar con la cátedra:** que los pedidos los reciba la cocina (y no cada restaurante), que los 10 minutos no se reinicien al agregar platos y hasta cuándo puede cancelar el cliente.
 - **Usuarios es una pieza crítica:** el gateway le pregunta en cada solicitud con login. Si se cae, nadie puede usar las funciones privadas. La alternativa sería que NGINX verifique el token por su cuenta, pero eso requiere un módulo extra o un gateway propio.
 - **NGINX gratuito solo detecta una copia caída cuando le fallan los pedidos** (no la revisa por su cuenta cada tanto; eso es de la versión paga).
 - **El gateway es una sola instancia:** si se cae, se cae todo. Lo aceptamos para el trabajo académico (Clase 6).
-- **MongoDB tiene que correr como replica set** para que el outbox de Catálogo funcione.
+- **MongoDB tiene que correr como replica set** para que el outbox de Catálogo funcione. Hoy corre sin replica set porque Catálogo todavía no usa transacciones.
 - **Las ubicaciones de zonas y cocinas son aproximadas.** Sirven para sugerir una cocina, no para calcular el recorrido del repartidor.
 - **El pago es simulado** y no manejamos repartidores.
 - **Los restaurantes tienen nombres reales** solo como ejemplo. Los platos, precios y stock son inventados.

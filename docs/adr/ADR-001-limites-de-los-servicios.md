@@ -1,7 +1,7 @@
 # ADR-001 — Cómo separamos los servicios
 
-- **Estado:** Aceptada (preliminar: se valida en la Entrega 2)
-- **Fecha:** 2026-10-09
+- **Estado:** Aceptada. Validada en la Entrega 2 con Búsqueda, Catálogo y el gateway (ver [Validación](#validación-entrega-2))
+- **Fecha:** 2026-10-09; validada el 2026-10-16
 - **Responsable:** Guillermina Sánchez
 - **Decisión del enunciado:** D1 (criterios para separar los servicios, cómo se relacionan y de quién es cada dato)
 - **Relacionado con:** [SPEC](../../SPEC.md) · [ARCHITECTURE](../ARCHITECTURE.md) (secciones 3 y 4) · [ADR-003](ADR-003-persistencia.md) · [ADR-005](ADR-005-comunicacion-entre-servicios.md) · [ADR-008](ADR-008-contrato-propio.md)
@@ -140,9 +140,31 @@ Admin mantiene estructura y cuentas de su localidad (HU14–HU16) y consulta mé
 
 Se conservan los seis servicios, las bases y los eventos. Catálogo valida cocina_id para platos; Inventario para ingredientes, recetas y movimientos. Admin no administra menú ni stock. Rol incorrecto: 403; recurso de otra cocina: 404. El precio permanece congelado al agregar al carrito (RN15), y las reservas conservan sus ingredientes aunque cambie una receta.
 
+## Validación (Entrega 2)
+
+Con tres piezas funcionando (gateway, Búsqueda y Catálogo con MongoDB) revisamos lo que prometía este ADR:
+
+| Qué decía el ADR | Qué encontramos | Resultado |
+| --- | --- | --- |
+| Ningún servicio entra a la base de otro | Búsqueda no tiene credenciales de MongoDB: arma su índice pidiendo `GET /internal/cocinas` y `GET /internal/platos` a Catálogo. Catálogo entra a MongoDB con su propio usuario, que solo puede leer y escribir `catalogo_db` | ✅ |
+| Cada dato tiene un dueño | Cocinas, restaurantes y platos son de Catálogo. Búsqueda solo guarda copias en Solr y las puede reconstruir (`POST /internal/reindexar`) | ✅ |
+| No hay llamadas en círculo | Búsqueda llama a Catálogo; Catálogo no llama a nadie | ✅ |
+| Si se cae Búsqueda, lo demás sigue | Con Búsqueda caída, el gateway responde `503` en la búsqueda y Catálogo sigue atendiendo el menú | ✅ |
+| El gateway no tiene lógica del negocio | Solo rutea, controla la API key (le pregunta a Búsqueda), limita y agrega el `X-Correlation-Id` | ✅ |
+| Lo que publicamos lo atiende Búsqueda ([ADR-008](ADR-008-contrato-propio.md)) | Las cinco operaciones del contrato 1.1.0 salen de Búsqueda sin consultar a otro servicio en cada solicitud | ✅ |
+
+**Diferencias con lo planeado, que no cambian los límites:**
+
+- Búsqueda todavía **no recibe mensajes**: reconstruye el índice por API al arrancar y a pedido. Los mensajes de Catálogo e Inventario llegan con RabbitMQ ([ADR-006](ADR-006-busqueda.md)).
+- La **disponibilidad** de los platos sale de los datos iniciales hasta que exista Inventario; ante la duda, el plato figura como no disponible.
+- Las **zonas** todavía no están cargadas: la cocina más cercana se calcula directo sobre la ubicación de las cocinas, que es lo que pide el contrato.
+- Inventario, Pedidos, Usuarios y Notificaciones todavía no están implementados, así que sus límites se validan en la entrega final.
+
+**Conclusión:** con lo implementado, ningún servicio necesitó entrar a la base de otro ni llamar de vuelta a quien lo llama. No hace falta reemplazar este ADR.
+
 ## Cómo lo vamos a validar
 
-- **Entrega 2:** revisar que ningún servicio necesite entrar a la base de otro. Si pasa, separamos mal y hacemos un ADR nuevo que reemplace a este (sin borrarlo).
+- **Entrega 2 (hecho, ver arriba):** revisar que ningún servicio necesite entrar a la base de otro. Si pasa, separamos mal y hacemos un ADR nuevo que reemplace a este (sin borrarlo).
 - **Entrega final:** con 200 personas reservando el último plato a la vez, **0 platos vendidos de más**. Y si tiramos Búsqueda o Notificaciones, los pedidos se siguen confirmando.
 
 ## Referencias
