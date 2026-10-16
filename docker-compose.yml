@@ -1,11 +1,14 @@
 # Puesta en marcha local de GhostKitchen: `docker compose up --build`
 #
 # Estado (Entrega 2):
-#   - gateway:       NGINX en el puerto 8080. Publica la capacidad en /public/v1 con API key y límite.
-#   - busqueda:      servicio Búsqueda (Go + Gin). Atiende la capacidad publicada.
+#   - gateway:       NGINX en el puerto 8080. Publica la capacidad en /public/v1 (API key y límite)
+#                    y las lecturas de Catálogo en /api/v1.
+#   - catalogo:      servicio Catálogo (Go + Gin). Fuente de verdad de cocinas, restaurantes y platos.
+#   - mongo:         MongoDB, base catalogo_db con su propio usuario.
+#   - busqueda:      servicio Búsqueda (Go + Gin). Arma su índice desde Catálogo y atiende la capacidad publicada.
 #   - solr:          índice de Búsqueda (cores "cocinas" y "platos").
 #   - contract-mock: mock de la capacidad publicada, servido desde el contrato OpenAPI (puerto 4010).
-# Los demás servicios, bases, RabbitMQ y la observabilidad se agregan en las próximas entregas.
+# Los demás servicios, MySQL, RabbitMQ y la observabilidad se agregan en las próximas entregas.
 # Los secretos se leen del archivo .env, que no se versiona (copiar .env.example como .env).
 services:
   gateway:
@@ -18,6 +21,48 @@ services:
     depends_on:
       busqueda:
         condition: service_healthy
+      catalogo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  catalogo:
+    build: ./services/catalogo
+    container_name: ghostkitchen-catalogo
+    environment:
+      PORT: "8082"
+      MONGO_URI: mongodb://catalogo:${CATALOGO_DB_PASSWORD:?Completá CATALOGO_DB_PASSWORD en .env}@mongo:27017/catalogo_db?authSource=catalogo_db
+      MONGO_DB: catalogo_db
+      MONGO_TIMEOUT_MS: "2000"
+      SEED_AL_INICIAR: "true"
+    expose:
+      - "8082"            # solo dentro de la red de Docker
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8082/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    container_name: ghostkitchen-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Completá MONGO_ROOT_PASSWORD en .env}
+      CATALOGO_DB_PASSWORD: ${CATALOGO_DB_PASSWORD:?Completá CATALOGO_DB_PASSWORD en .env}
+    volumes:
+      - mongo-data:/data/db
+      - ./infra/mongo:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "27017:27017"     # para mirar los datos con MongoDB Compass (solo desarrollo)
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     restart: unless-stopped
 
   busqueda:
@@ -27,12 +72,13 @@ services:
       PORT: "8083"
       SOLR_URL: http://solr:8983/solr
       SOLR_TIMEOUT_MS: "2000"
-      SEED_AL_INICIAR: "true"
+      CATALOGO_URL: http://catalogo:8082
       PUBLIC_API_KEYS: ${PUBLIC_API_KEYS:-}
     expose:
       - "8083"            # solo dentro de la red de Docker: desde afuera se entra por el gateway
     depends_on:
       - solr
+      - catalogo
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8083/health"]
       interval: 5s
@@ -62,4 +108,5 @@ services:
       - "4010:4010"
 
 volumes:
+  mongo-data:
   solr-data:
