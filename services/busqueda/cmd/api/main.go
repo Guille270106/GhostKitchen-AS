@@ -17,6 +17,7 @@ import (
 	"ghostkitchen/busqueda/internal/repositories/solr"
 	"ghostkitchen/busqueda/internal/router"
 	"ghostkitchen/busqueda/internal/seed"
+	"ghostkitchen/busqueda/internal/services"
 )
 
 func main() {
@@ -27,14 +28,17 @@ func main() {
 	}
 
 	repo := solr.NuevoRepositorio(solr.NuevoCliente(cfg.SolrURL, cfg.SolrTimeout))
+	svc := services.Nueva(repo)
 
 	var listo atomic.Bool
 	ctx, parar := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer parar()
 	go inicializarIndice(ctx, log, repo, cfg.SeedAlIniciar, &listo)
 
-	// La capacidad publicada (/v1) se agrega en el siguiente paso.
-	r := router.Nuevo(log, handlers.NuevoInterno(cfg.APIKeys, repo.Ping, &listo))
+	r := router.Nuevo(log,
+		handlers.NuevoInterno(cfg.APIKeys, repo.Ping, &listo),
+		handlers.NuevoPublico(svc),
+	)
 	srv := &http.Server{
 		Addr:              ":" + cfg.Puerto,
 		Handler:           r,
