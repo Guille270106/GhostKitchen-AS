@@ -1,7 +1,7 @@
 # ADR-005 — Cómo se comunican los servicios
 
-- **Estado:** Primera versión (se valida en la Entrega 2)
-- **Fecha:** 2026-10-09
+- **Estado:** Aceptada. Validada en la Entrega 2 la parte de llamadas directas y correlación (ver [Validación](#validación-entrega-2)); la mensajería se valida con Pedidos, Inventario y Notificaciones
+- **Fecha:** 2026-10-09; validada el 2026-10-16
 - **Responsable:** Lucía Rucci
 - **Decisión del enunciado:** D5 (cuándo usar llamadas directas y cuándo mensajes, tiempos de espera, reintentos, eventos e idempotencia)
 - **Relacionado con:** [ADR-001](ADR-001-limites-de-los-servicios.md) · [ADR-003](ADR-003-persistencia.md) · [ADR-008](ADR-008-contrato-propio.md) · [ARCHITECTURE](../ARCHITECTURE.md) (secciones 5, 6 y 10)
@@ -166,10 +166,27 @@ Como un mail mandado por SMTP no se puede deshacer ni guardar en la misma transa
 | Que se llene la DLQ y nadie se entere | Alerta en Grafana |
 | Que un mensaje viejo pise a uno nuevo | Usamos `secuencia` y descartamos los viejos |
 
+## Validación (Entrega 2)
+
+Lo que planeábamos validar ("agregar al carrito" de punta a punta y un mensaje repetido que manda un solo mail) necesita Pedidos, Inventario, Notificaciones y RabbitMQ, que todavía no existen. Validamos lo mismo con el flujo que sí funciona: **la API publicada** (gateway → Búsqueda → Solr) y **la reconstrucción del índice** (Búsqueda → Catálogo → MongoDB).
+
+| Qué decía el ADR | Qué implementamos | Resultado |
+| --- | --- | --- |
+| Búsqueda → Catálogo para reconstruir: 5 s y 3 reintentos, fuera de una solicitud de usuario | 5 s por intento y 3 reintentos con espera de 0,5 s, 1 s y 2 s. Hoy reintenta ante cualquier respuesta que no sea `200`: es una lectura, así que repetirla es seguro (lo afinamos para no reintentar un `4xx`). Si falla, se conserva el índice anterior | ✅ |
+| Ninguna pantalla espera más de 3 s | Gateway: 1 s para conectar y 3 s para responder. Solr y MongoDB: 2 s. La verificación de la API key: 1 s | ✅ |
+| Reintenta uno solo | El gateway no reintenta; solo reintenta la reconstrucción, que es trabajo de fondo | ✅ |
+| `correlation_id` en los logs de todos los servicios | El gateway lo genera (o usa el del cliente), Búsqueda lo pasa a Catálogo en `X-Correlation-Id` y los tres lo registran. Además viaja la traza (`traceparent`) y Jaeger muestra una reconstrucción como una sola traza con spans de Búsqueda y Catálogo ([ADR-011](ADR-011-observabilidad.md)) | ✅ |
+| Las llamadas internas no salen por el gateway | `/internal/` está bloqueado en el gateway: responde `404` | ✅ |
+| Mensajes, outbox, idempotencia, DLQ | Sin cambios en la decisión; se implementan con RabbitMQ | Pendiente |
+
+**Lo que aprendimos:** el reintento con espera creciente alcanzó para la reconstrucción. Para las llamadas de Pedidos, que tienen el plazo de 3 s, vamos a usar librerías de circuit breaker y backoff ([ADR-010](ADR-010-resiliencia.md)) en lugar de programarlo a mano.
+
+**Conclusión:** la parte síncrona funciona como se decidió. No cambia nada del ADR.
+
 ## Cómo lo vamos a validar
 
-- **Entrega 2:** seguir un "agregar al carrito" de punta a punta con el mismo `correlation_id` en el gateway, Pedidos, Catálogo e Inventario. Y un test que mande dos veces el mismo mensaje de cambio de estado y verifique que llega un solo mail.
-- **Entrega final:** si tiramos Inventario, Pedidos tiene que responder rápido "no podemos tomar pedidos ahora". Si tiramos RabbitMQ, no se tiene que perder ningún mensaje.
+- **Entrega 2 (hecho con el flujo de búsqueda, ver arriba):** seguir un "agregar al carrito" de punta a punta con el mismo `correlation_id` en el gateway, Pedidos, Catálogo e Inventario. Y un test que mande dos veces el mismo mensaje de cambio de estado y verifique que llega un solo mail.
+- **Entrega final:** lo que no se pudo en la Entrega 2: "agregar al carrito" de punta a punta con el mismo `correlation_id` y el mensaje repetido que manda un solo mail. Además, si tiramos Inventario, Pedidos tiene que responder rápido "no podemos tomar pedidos ahora". Si tiramos RabbitMQ, no se tiene que perder ningún mensaje.
 
 ## Referencias
 

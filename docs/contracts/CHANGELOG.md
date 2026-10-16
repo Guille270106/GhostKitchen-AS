@@ -2,6 +2,14 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versiones según [SemVer](https://semver.org/lang/es/): los cambios compatibles suben la versión menor y siguen en `/v1`; los incompatibles van a `/v2` (ver la [guía](README.md#versiones)).
 
+## [Sin publicar]
+
+### Aclarado
+- La guía decía que todas las respuestas traen `RateLimit-Remaining`. El gateway lo manda solo en el `429` (con valor `0`); `RateLimit-Limit: 60` sí va en todas. Los dos headers ya eran opcionales en el OpenAPI, así que **no cambia el contrato**: sigue siendo 1.1.0.
+
+### Implementado
+- La versión real de las cinco operaciones (Entrega 2), atendida por Búsqueda detrás del gateway en `/public/v1`. Mismo contrato que el mock.
+
 ## [1.1.0] — 2026-10-12
 
 ### Agregado

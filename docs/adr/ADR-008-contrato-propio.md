@@ -1,7 +1,7 @@
 # ADR-008 — Lo que publicamos para otro grupo
 
-- **Estado:** Aceptada
-- **Fecha:** 2026-10-09; ampliada el 2026-10-12
+- **Estado:** Aceptada. Implementada en la Entrega 2; el contrato sigue en la versión 1.1.0
+- **Fecha:** 2026-10-09; ampliada el 2026-10-12; actualizada el 2026-10-16
 - **Responsable:** Lucía Rucci
 - **Decisión del enunciado:** D8 (diseño, publicación, compatibilidad y versionado de la capacidad que ofrecemos a otro grupo)
 - **Relacionado con:** [contrato](../contracts/v1/openapi.yaml) · [guía para el otro grupo](../contracts/README.md) · [CHANGELOG](../contracts/CHANGELOG.md) · [ADR-001](ADR-001-limites-de-los-servicios.md) · [ARCHITECTURE](../ARCHITECTURE.md) (sección 9)
@@ -81,7 +81,7 @@ Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción
 
 - **Desde hoy (Entrega 1), un mock:** el contrato trae ejemplos de cada respuesta. Con `docker compose up` se levanta **Prism**, que responde esos ejemplos en `http://localhost:4010`. Así el otro grupo puede empezar a integrarse sin esperar a que tengamos el sistema.
 - **La versión real (Entrega 2):** la atiende el servicio **Búsqueda**, detrás del gateway NGINX, en `/public/v1`. El gateway controla la API key y el límite.
-- **En la nube:** subimos Búsqueda con Solr a un servicio gratuito o barato (Render o Railway; lo decidimos en el ADR-013). La URL pública la agregamos al contrato y a la guía.
+- **En la nube:** la primera estimación del [ADR-013](ADR-013-capacidad-y-costos.md) es una máquina virtual con Docker Compose, en lugar de Render o Railway, porque Búsqueda necesita también Solr, Catálogo y MongoDB para tener datos. La URL pública la agregamos al contrato y a la guía cuando esté desplegada.
 - **Disponibilidad:** hacemos lo posible para que esté siempre andando, desde la Entrega 2 hasta el final de la materia. Si tenemos que cortarlo, avisamos al otro grupo con 48 h de anticipación.
 
 ### Cómo manejamos los cambios (versionado)
@@ -92,6 +92,24 @@ Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción
 - **Si hay una `v2`, la `v1` sigue andando** hasta el final de la materia, y lo avisamos en el `CHANGELOG` (Clase 6: una versión nueva convive con la anterior hasta su retiro).
 - **Historial:** `docs/contracts/CHANGELOG.md` anota cada versión con su fecha. Las versiones viejas no se borran.
 - **Para no romper el contrato sin darnos cuenta:** el OpenAPI se valida en cada pull request, y desde la Entrega 2 los tests de Búsqueda comparan sus respuestas con los esquemas del contrato.
+
+## Implementación (Entrega 2)
+
+**El contrato no cambió:** sigue en la versión **1.1.0**, así que no hay versión nueva ni cambios para el otro grupo. Lo que hicimos fue implementarlo:
+
+| Qué | Cómo quedó |
+| --- | --- |
+| Quién atiende | Búsqueda, con los datos de Solr, que arma desde Catálogo ([ADR-006](ADR-006-busqueda.md)) |
+| Dónde | El gateway publica `/public/v1/...` y se lo pasa a Búsqueda como `/v1/...` |
+| API key | El gateway le pregunta a Búsqueda (`/internal/apikey/verificar`) si la clave de `X-API-Key` está en `PUBLIC_API_KEYS`. Las claves van en el `.env`, nunca en el repo |
+| Límite | 60 por minuto por clave en NGINX; al pasarse, `429` con `Retry-After: 1` y Problem Details. Cuerpo de más de 64 KiB → `413` |
+| Errores | Todos en Problem Details con los códigos de la tabla de arriba, incluidos los que genera el gateway (401, 413, 429, 503) |
+| Seguimiento | `X-Correlation-Id` devuelto en cada respuesta y registrado en los logs del gateway y de Búsqueda |
+| Privacidad | Las coordenadas de proximidad no se guardan ni se registran en logs ni en trazas ([ADR-011](ADR-011-observabilidad.md)) |
+
+**Cómo lo comprobamos:** las respuestas de Búsqueda se validaron contra el OpenAPI 1.1.0 (esquemas y Problem Details), y el gateway con `scripts/probar-api-publica.ps1` (401, 413, 429 y 503). Falta convertir esa validación en un test automático que corra en cada pull request.
+
+**Una aclaración en la guía, sin cambiar el contrato:** el gateway manda `RateLimit-Limit: 60` en todas las respuestas, pero `RateLimit-Remaining` solo en el `429` (con valor `0`), porque NGINX gratuito no expone cuántas solicitudes le quedan a cada clave. El contrato ya declaraba esos headers como opcionales, así que es compatible; corregimos la guía, que decía que venía en todas las respuestas, y lo anotamos en el [CHANGELOG](../contracts/CHANGELOG.md).
 
 ## Alternativas que pensamos
 
@@ -126,7 +144,7 @@ Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción
 
 - **Entrega 1:** contrato validado con `swagger-cli` 4.0.4 y mock probado con Prism 5.16.0. Las cuatro operaciones y los errores documentados (404, 429, 503, latitud inválida y falta de API key) responden; cómo probarlo está en la [guía del contrato](../contracts/README.md#probar-sin-esperar-al-backend-mock). Que Prism arranque, por sí solo, no sustituye la validación formal de OpenAPI.
 - **Ampliación 1.1.0:** validar formalmente OpenAPI y los ejemplos del nuevo POST; comprobar 200, validaciones estructurales y errores simulados. Las reglas de distancia, rango inclusivo, comparación con el cliente y cobertura se prueban con la implementación real.
-- **Entrega 2:** la versión real pasa un test que la compara con el contrato y está en una URL pública.
+- **Entrega 2 (hecho en parte):** la versión real funciona detrás del gateway y sus respuestas se validaron contra el contrato. Pendiente: el test automático en cada pull request y la URL pública, que llega con el despliegue.
 - **Durante la integración:** si el otro grupo nos pide un cambio, lo anotamos acá con la versión nueva.
 
 ## Referencias
