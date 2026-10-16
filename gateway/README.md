@@ -2,7 +2,9 @@
 
 **Responsable:** Guillermina Sánchez.
 
-> Entrega 1: diseño preliminar. Todavía no hay configuración NGINX implementada; lo que sigue se prevé desde la Entrega 2.
+> **Entrega 2:** implementada la entrada de la **capacidad publicada** en [`nginx.conf`](nginx.conf): `/public/v1/` → Búsqueda `/v1/`, verificación de `X-API-Key` con `auth_request` a Búsqueda (`/internal/apikey/verificar`), 60 solicitudes por minuto por clave (429 con `Retry-After`), cuerpo máximo de 64 KiB (413), `X-Correlation-Id` recibido o generado y reenviado, logs JSON sin parámetros ni claves, `/internal/` bloqueado y errores con Problem Details (401, 413, 429, 503). Las rutas del frontend (`/api/v1`), el login con Usuarios y el balanceo de Catálogo se agregan cuando esos servicios existan.
+>
+> **Cómo cuenta el límite:** NGINX usa un balde que se vacía a 1 solicitud por segundo (`rate=60r/m`) con `burst=59`: una clave puede hacer 60 solicitudes seguidas y después 1 por segundo. Por eso `Retry-After` es 1. NGINX no calcula `RateLimit-Remaining` en las respuestas exitosas; solo envía `RateLimit-Limit: 60` (y `RateLimit-Remaining: 0` en el 429).
 
 El API Gateway es **NGINX** y escucha en el puerto 8080. Lo configuramos en la Entrega 2. Más detalle en [ARCHITECTURE.md](../docs/ARCHITECTURE.md#8-rutas-del-gateway) y en el [ADR-001](../docs/adr/ADR-001-limites-de-los-servicios.md).
 

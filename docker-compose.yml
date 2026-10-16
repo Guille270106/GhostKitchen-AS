@@ -1,11 +1,57 @@
-# Puesta en marcha local de GhostKitchen: `docker compose up`
+# Puesta en marcha local de GhostKitchen: `docker compose up --build`
 #
-# Estado (Entrega 1):
-#   - contract-mock: mock de la capacidad publicada, servido desde el contrato OpenAPI.
-# El frontend, el API Gateway, los microservicios, las bases de datos, RabbitMQ, Solr y la
-# observabilidad se agregan en las próximas entregas (ver docs/ARCHITECTURE.md, sección 11).
-# Los secretos se van a leer de un archivo .env que no se versiona (ver .env.example).
+# Estado (Entrega 2):
+#   - gateway:       NGINX en el puerto 8080. Publica la capacidad en /public/v1 con API key y límite.
+#   - busqueda:      servicio Búsqueda (Go + Gin). Atiende la capacidad publicada.
+#   - solr:          índice de Búsqueda (cores "cocinas" y "platos").
+#   - contract-mock: mock de la capacidad publicada, servido desde el contrato OpenAPI (puerto 4010).
+# Los demás servicios, bases, RabbitMQ y la observabilidad se agregan en las próximas entregas.
+# Los secretos se leen del archivo .env, que no se versiona (copiar .env.example como .env).
 services:
+  gateway:
+    image: nginx:1.27-alpine
+    container_name: ghostkitchen-gateway
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      busqueda:
+        condition: service_healthy
+    restart: unless-stopped
+
+  busqueda:
+    build: ./services/busqueda
+    container_name: ghostkitchen-busqueda
+    environment:
+      PORT: "8083"
+      SOLR_URL: http://solr:8983/solr
+      SOLR_TIMEOUT_MS: "2000"
+      SEED_AL_INICIAR: "true"
+      PUBLIC_API_KEYS: ${PUBLIC_API_KEYS:-}
+    expose:
+      - "8083"            # solo dentro de la red de Docker: desde afuera se entra por el gateway
+    depends_on:
+      - solr
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8083/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+    restart: unless-stopped
+
+  solr:
+    image: solr:9.7
+    container_name: ghostkitchen-solr
+    command: bash -c "precreate-core cocinas; precreate-core platos; exec solr -f"
+    environment:
+      SOLR_HEAP: 512m
+    volumes:
+      - solr-data:/var/solr
+    ports:
+      - "8983:8983"       # panel de administración de Solr (solo para desarrollo)
+    restart: unless-stopped
+
   contract-mock:
     image: stoplight/prism:5
     container_name: ghostkitchen-contract-mock
@@ -14,3 +60,6 @@ services:
       - ./docs/contracts:/contracts:ro
     ports:
       - "4010:4010"
+
+volumes:
+  solr-data:
