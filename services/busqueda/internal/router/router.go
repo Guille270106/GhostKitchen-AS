@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"ghostkitchen/busqueda/internal/middleware"
+	"ghostkitchen/busqueda/internal/trazas"
 )
 
 // Registrador es un grupo de handlers que agrega sus rutas (internas, públicas, etc.).
@@ -19,7 +20,9 @@ type Registrador interface {
 func Nuevo(log *slog.Logger, grupos ...Registrador) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(middleware.Correlacion(), middleware.Log(log), gin.Recovery())
+	// Primero la traza (crea el span), después el id de correlación (lo anota en el span)
+	// y el log (que escribe ambos ids).
+	r.Use(trazas.Middleware(), middleware.Correlacion(), middleware.Log(log), gin.Recovery())
 	r.HandleMethodNotAllowed = true
 
 	for _, g := range grupos {

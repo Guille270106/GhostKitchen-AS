@@ -13,6 +13,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/mongo/otelmongo"
 
 	"ghostkitchen/catalogo/internal/config"
 	"ghostkitchen/catalogo/internal/handlers"
@@ -20,11 +21,23 @@ import (
 	"ghostkitchen/catalogo/internal/router"
 	"ghostkitchen/catalogo/internal/seed"
 	"ghostkitchen/catalogo/internal/services"
+	"ghostkitchen/catalogo/internal/trazas"
 )
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("servicio", "catalogo")
 	cfg := config.Cargar()
+
+	cerrarTrazas, err := trazas.Iniciar(context.Background())
+	if err != nil {
+		log.Error("no se pudo configurar OpenTelemetry", "error", err.Error())
+		os.Exit(1)
+	}
+	defer func() {
+		fin, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = cerrarTrazas(fin) // manda los spans pendientes antes de salir
+	}()
 
 	ctx, parar := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer parar()
@@ -34,7 +47,10 @@ func main() {
 	cliente, err := mongo.Connect(ctx, options.Client().
 		ApplyURI(cfg.MongoURI).
 		SetServerSelectionTimeout(cfg.MongoTimeout).
-		SetTimeout(cfg.MongoTimeout))
+		SetTimeout(cfg.MongoTimeout).
+		// Un span por cada comando a MongoDB (find, count, insert), dentro de la traza
+		// de la solicitud. El monitor no registra el contenido de los documentos.
+		SetMonitor(otelmongo.NewMonitor()))
 	if err != nil {
 		log.Error("la configuración de MongoDB es inválida", "error", err.Error())
 		os.Exit(1)

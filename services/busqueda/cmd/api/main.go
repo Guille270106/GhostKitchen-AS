@@ -23,11 +23,24 @@ import (
 	"ghostkitchen/busqueda/internal/router"
 	"ghostkitchen/busqueda/internal/seed"
 	"ghostkitchen/busqueda/internal/services"
+	"ghostkitchen/busqueda/internal/trazas"
 )
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("servicio", "busqueda")
 	cfg := config.Cargar()
+
+	cerrarTrazas, err := trazas.Iniciar(context.Background())
+	if err != nil {
+		log.Error("no se pudo configurar OpenTelemetry", "error", err.Error())
+		os.Exit(1)
+	}
+	defer func() {
+		fin, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = cerrarTrazas(fin) // manda los spans pendientes antes de salir
+	}()
+
 	if len(cfg.APIKeys) == 0 {
 		log.Warn("PUBLIC_API_KEYS está vacía: el gateway va a rechazar todas las solicitudes a /public/v1")
 	}
@@ -51,8 +64,9 @@ func main() {
 			}
 			res, err := rec.Reconstruir(ctx)
 			if err == nil {
+				traceID, _ := trazas.IDs(ctx)
 				log.Info("índice reconstruido desde Catálogo", "correlation_id", middleware.IDDesdeContexto(ctx),
-					"sedes", res.Sedes, "platos", res.Platos)
+					"trace_id", traceID, "sedes", res.Sedes, "platos", res.Platos)
 			}
 			return res, err
 		}
@@ -119,6 +133,10 @@ func preparar(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, con
 	reconstruir func(context.Context) (indexer.Resultado, error)) error {
 	c, cancel := context.WithTimeout(middleware.ConCorrelacion(ctx, "inicio-"+uuid.NewString()), 60*time.Second)
 	defer cancel()
+	// Span raíz del arranque: la reconstrucción no nace de una solicitud HTTP.
+	c, span := trazas.Tracer().Start(c, "preparar índice al iniciar")
+	defer span.End()
+	trazas.MarcarCorrelacion(c, middleware.IDDesdeContexto(c))
 	if reconstruir != nil {
 		_, err := reconstruir(c)
 		return err
