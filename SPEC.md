@@ -102,9 +102,9 @@ El sistema tiene **4 cocinas**, una por localidad. Cada una tiene como **máximo
 | **RN21** | La disponibilidad que muestra la búsqueda es **orientativa** (puede tener hasta 5 s de atraso). El control real se hace al reservar. |
 | **RN22** | El cliente **no tiene localidad**: elige la cocina desde la que pide y puede cambiarla cuando quiera. El admin solo maneja cocinas de su localidad. |
 | **RN23** | El acceso se controla por **rol, cocina y localidad del admin** (ver la sección 9). |
+| **RN24** | Una cocina **cubre hasta 25 km** en línea recta desde su ubicación. Si ninguna cocina activa está a menos de 25 km de una ubicación, la consulta de cocina más cercana responde que **no hay cobertura**. Al cliente se le siguen mostrando las 4 cocinas para que elija una a mano (RN22). |
 | **RN25** | Cocina administra platos, recetas, ingredientes, stock, reposiciones y mermas solo de su cocina asignada. Admin administra estructura y cuentas de su localidad y consulta métricas; no menú, inventario ni pedidos. |
 | **RN26** | La consulta recibe ubicacionCliente, ubicacionSede (externa), radioKm > 0 y hasta 500 e incluirDarkKitchen=false. Compara esas dos ubicaciones en línea recta sin guardarlas. Con true también busca nuestra cocina más cercana al cliente con radio efectivo min(radioKm, 25). |
-| **RN24** | Una cocina **cubre hasta 25 km** en línea recta desde su ubicación. Si ninguna cocina activa está a menos de 25 km de una ubicación, la consulta de cocina más cercana responde que **no hay cobertura**. Al cliente se le siguen mostrando las 4 cocinas para que elija una a mano (RN22). |
 
 ### Qué pasa al agregar un plato al carrito
 
