@@ -139,7 +139,7 @@ La API key, correlación y límite de 60 consultas por minuto aplican también a
 ## Cómo usarla
 
 - **Clave:** en cada pedido tienen que mandar el header `X-API-Key`. Cada grupo recibe **su propia clave** por un canal privado. No la suban a su repositorio: guárdenla en una variable de entorno. Si se filtra, avísennos y les damos otra.
-- **Límite:** 60 pedidos por minuto por clave. Cada respuesta dice cuántos les quedan (`RateLimit-Remaining`). Si se pasan, responde `429` y les dice cuánto esperar (`Retry-After`).
+- **Límite:** 60 pedidos por minuto por clave. Cada respuesta trae el límite (`RateLimit-Limit: 60`). Si se pasan, responde `429` con `RateLimit-Remaining: 0` y les dice cuánto esperar (`Retry-After`). En las respuestas exitosas no mandamos `RateLimit-Remaining`: cuenten ustedes sus solicitudes si lo necesitan.
 - **Reintentos:** las operaciones originales son GET. El POST de proximidad también solo consulta y calcula, no crea recursos ni guarda destinos; se puede repetir tras errores transitorios. Los resultados de cocinas pueden cambiar si sus datos cambian. No asumir esta propiedad para cualquier POST.
 - **Distancia:** es en línea recta. Si no hay ninguna sede a menos de 25 km, `buscarSedeCercana` responde `404 SIN_COBERTURA`.
 - **Disponibilidad:** el campo `disponible` puede tener **hasta 5 segundos de atraso** y **no reserva nada**. Muéstrenlo como algo orientativo ("disponible ahora").
