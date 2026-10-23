@@ -3,6 +3,10 @@
 // Entrega 2: reconstrucción completa desde la API de Catálogo (al arrancar y con
 // POST /internal/reindexar). Cuando exista RabbitMQ, acá se suma el lector de los
 // mensajes cocina.*, plato.* y disponibilidad.cambiada.
+//
+// Es la segunda entrada del servicio, al lado de los handlers HTTP (ADR-002): no atiende a
+// usuarios, sino que copia en Solr datos que son de otros servicios. El índice es una copia
+// que se puede tirar y volver a armar en cualquier momento (ADR-003, Clase 5).
 package indexer
 
 import (
@@ -18,10 +22,13 @@ import (
 	"ghostkitchen/busqueda/internal/trazas"
 )
 
-// TamPagina es la cantidad de platos que se pide por llamada a Catálogo.
+// TamPagina es la cantidad de platos que se pide por llamada a Catálogo. Se pide de a 100
+// para no armar respuestas enormes ni acercarse a los 5 s de límite por intento.
 const TamPagina = 100
 
 // FuenteCatalogo es lo que se necesita de Catálogo (lo implementa clients.Catalogo).
+// Es una interfaz para que los tests prueben la reconstrucción con un Catálogo falso,
+// sin levantar el servicio real (ADR-002).
 type FuenteCatalogo interface {
 	Cocinas(ctx context.Context) ([]clients.CocinaCatalogo, error)
 	Platos(ctx context.Context, page, pageSize int) (clients.PaginaPlatos, error)
@@ -53,6 +60,10 @@ type Resultado struct {
 // Reconstruir lee todas las cocinas y platos de Catálogo y los guarda en el índice.
 // Guarda por páginas: si Catálogo falla a mitad de camino, el índice conserva lo anterior
 // para los platos que faltaron, y la próxima reconstrucción lo completa.
+//
+// Los datos se piden a la API interna de Catálogo, nunca a su base: cada servicio es el
+// único que entra a la suya (una base por servicio, ADR-001; ARCHITECTURE 6.9). Así Catálogo
+// puede cambiar cómo guarda sus datos sin romper a Búsqueda.
 func (r *Reconstructor) Reconstruir(ctx context.Context) (res Resultado, err error) {
 	// Un span que agrupa toda la reconstrucción: adentro quedan las llamadas a Catálogo
 	// (y, por la propagación, lo que Catálogo hace en MongoDB) y las escrituras en Solr.
@@ -71,6 +82,9 @@ func (r *Reconstructor) Reconstruir(ctx context.Context) (res Resultado, err err
 		return Resultado{}, err
 	}
 
+	// Cada plato se guarda con el nombre de su restaurante y de su cocina copiados adentro
+	// (desnormalizado): Solr no hace joins, y así una búsqueda no necesita consultar a
+	// Catálogo (ADR-003). Este mapa permite armar esa copia sin pedir nada más.
 	type datosRest struct {
 		ref    domain.Referencia
 		sede   domain.Referencia
@@ -84,6 +98,8 @@ func (r *Reconstructor) Reconstruir(ctx context.Context) (res Resultado, err err
 			Ubicacion: c.Ubicacion, TiempoEntregaMin: c.TiempoEntregaMin, TiempoEntregaMax: c.TiempoEntregaMax,
 			CostoEnvio: c.CostoEnvio, Restaurantes: []domain.Referencia{}, Activa: c.Activa,
 		}
+		// Se recorren también los restaurantes inactivos: no se publican en la sede, pero
+		// sus platos se tienen que indexar como inactivos para pisar la copia vieja.
 		for _, rest := range c.Restaurantes {
 			ref := domain.Referencia{ID: rest.ID, Nombre: rest.Nombre}
 			if rest.Activo {
@@ -98,6 +114,8 @@ func (r *Reconstructor) Reconstruir(ctx context.Context) (res Resultado, err err
 	}
 
 	res = Resultado{Sedes: len(sedes)}
+	// Cada página se guarda antes de pedir la siguiente: la memoria no crece con la cantidad
+	// de platos, y si algo falla se devuelve res con lo que ya quedó guardado.
 	for page := 1; ; page++ {
 		pag, err := r.fuente.Platos(ctx, page, TamPagina)
 		if err != nil {
@@ -114,7 +132,7 @@ func (r *Reconstructor) Reconstruir(ctx context.Context) (res Resultado, err err
 				etq = []string{}
 			}
 			moneda := p.Moneda
-			if moneda == "" {
+			if moneda == "" { // el contrato siempre publica una moneda; hoy todo es en pesos
 				moneda = "ARS"
 			}
 			platos = append(platos, domain.Plato{

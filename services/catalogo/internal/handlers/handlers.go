@@ -1,4 +1,7 @@
 // Package handlers traduce HTTP a llamadas al servicio de Catálogo.
+//
+// Es la capa de entrada (ADR-002): lee parámetros, llama a services y elige el código HTTP.
+// No sabe que existe MongoDB.
 package handlers
 
 import (
@@ -42,6 +45,8 @@ func (h *Catalogo) Registrar(r gin.IRoutes) {
 	r.GET("/internal/platos", h.paginaPlatos)
 }
 
+// preparado atiende GET /ready: MongoDB responde en menos de 1 s. /health, en cambio, solo
+// dice que el proceso está vivo, porque reiniciar Catálogo no arregla MongoDB (ADR-010).
 func (h *Catalogo) preparado(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Second)
 	defer cancel()
@@ -98,7 +103,9 @@ func (h *Catalogo) todasLasCocinas(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": cocinas})
 }
 
-// GET /internal/platos?page=1&pageSize=100
+// GET /internal/platos?page=1&pageSize=100. La usa Búsqueda para reconstruir su índice
+// sin entrar a catalogo_db (ADR-001). El tamaño de página tiene un máximo para que nadie
+// pueda pedir toda la colección de una vez.
 func (h *Catalogo) paginaPlatos(c *gin.Context) {
 	page, err1 := enteroQuery(c, "page", 1, 1, 1_000_000)
 	size, err2 := enteroQuery(c, "pageSize", 100, 1, services.MaxTamPagina)
@@ -114,6 +121,7 @@ func (h *Catalogo) paginaPlatos(c *gin.Context) {
 	c.JSON(http.StatusOK, pag)
 }
 
+// enteroQuery lee un entero opcional de la query y controla que esté entre min y max.
 func enteroQuery(c *gin.Context, nombre string, porDefecto, min, max int) (int, error) {
 	v, ok := c.GetQuery(nombre)
 	if !ok {
@@ -126,6 +134,8 @@ func enteroQuery(c *gin.Context, nombre string, porDefecto, min, max int) (int, 
 	return n, nil
 }
 
+// responderError traduce los errores del servicio. Lo que no es "no existe" es una falla de
+// MongoDB y se responde 503 con Retry-After, nunca una lista vacía (ADR-010).
 func responderError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrCocinaNoEncontrada):
@@ -139,6 +149,8 @@ func responderError(c *gin.Context, err error) {
 	}
 }
 
+// responderProblema escribe el error en formato Problem Details (RFC 9457), con el
+// correlationId para que quien llama pueda encontrar la solicitud en nuestros logs.
 func responderProblema(c *gin.Context, estado int, codigo, detalle string) {
 	c.Header("Content-Type", "application/problem+json")
 	c.AbortWithStatusJSON(estado, gin.H{

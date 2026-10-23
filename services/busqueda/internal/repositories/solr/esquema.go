@@ -5,8 +5,14 @@ import (
 	"fmt"
 )
 
+// El esquema se crea desde el código con la Schema API, y no con archivos de configuración
+// de Solr. Así un core vacío (recién creado o borrado) queda listo cuando arranca Búsqueda:
+// el índice es una copia reconstruible y no hay que prepararlo a mano (ADR-003).
+
 // tipoTexto es el tipo de texto para buscar: separa palabras, pasa a minúsculas y quita
 // acentos, así "CAFE" encuentra "Café". Se guarda el texto original para mostrarlo.
+// Los mismos filtros se aplican al indexar y al buscar, por eso los dos lados coinciden.
+// Con preserveOriginal=false solo se indexa la forma sin acento (un token por palabra).
 var tipoTexto = map[string]any{
 	"name":                 "text_gk",
 	"class":                "solr.TextField",
@@ -29,11 +35,19 @@ func campo(nombre, tipo string, extra ...func(map[string]any)) map[string]any {
 	return c
 }
 
+// Opciones de campo. soloGuardado es para lo que solo se muestra (no se busca ni se
+// filtra), y soloIndexado para lo que solo se busca: cada uno ocupa menos lugar en el índice.
 func multivaluado(c map[string]any) { c["multiValued"] = true }
 func soloGuardado(c map[string]any) { c["indexed"] = false; c["docValues"] = false }
 func soloIndexado(c map[string]any) { c["stored"] = false }
 
 // Campos de cada core. El campo "id" ya viene en el esquema por defecto de Solr.
+//
+// Solo se guardan los campos que se buscan, filtran o muestran (Clase 5). "string" es para
+// filtros exactos (fq), "text_gk" para buscar por palabras y "location" para geodist().
+// Los restaurantes de una cocina se guardan como texto JSON: solo se muestran, y así no hace
+// falta modelar documentos anidados en Solr. "categoria" es string para filtrar exacto y se
+// copia (copyField) a "categoria_txt" para que también se encuentre al buscar por texto.
 var camposCocinas = []map[string]any{
 	campo("nombre", "string"),
 	campo("localidad", "string"),
@@ -74,6 +88,8 @@ func (r *Repositorio) PrepararEsquema(ctx context.Context) error {
 	return r.prepararCore(ctx, CorePlatos, true, camposPlatos, copias)
 }
 
+// prepararCore primero pregunta qué existe y después agrega solo lo que falta, porque la
+// Schema API da error si se agrega un campo o un tipo que ya está.
 func (r *Repositorio) prepararCore(ctx context.Context, core string, conTexto bool, campos, copias []map[string]any) error {
 	if conTexto {
 		tipos, err := r.cli.NombresEsquema(ctx, core, "fieldtypes")

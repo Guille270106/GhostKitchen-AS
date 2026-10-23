@@ -1,4 +1,7 @@
 // Package mongo implementa el repositorio de Catálogo sobre MongoDB (base catalogo_db).
+//
+// Es la capa de repositorio: el único paquete que sabe hablar con MongoDB. Catálogo es el
+// único servicio que entra a catalogo_db; los demás le piden los datos por su API (ADR-001).
 package mongo
 
 import (
@@ -34,6 +37,10 @@ func Nuevo(cliente *mongo.Client, base string) *Repositorio {
 }
 
 // CrearIndices crea los índices que usan las consultas. Es idempotente.
+//
+// El índice (cocinaId, activo, _id) cubre el menú: filtra por cocina y por activo y ya
+// devuelve los platos ordenados por _id, sin ordenar en memoria. El de restauranteId es el
+// de "platos por restaurante" que pide ADR-003.
 func (r *Repositorio) CrearIndices(ctx context.Context) error {
 	_, err := r.platos.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "cocinaId", Value: 1}, {Key: "activo", Value: 1}, {Key: "_id", Value: 1}}},
@@ -42,6 +49,7 @@ func (r *Repositorio) CrearIndices(ctx context.Context) error {
 	return envolver(err)
 }
 
+// ListarCocinas devuelve las cocinas ordenadas por id, con sus restaurantes embebidos.
 func (r *Repositorio) ListarCocinas(ctx context.Context, soloActivas bool) ([]domain.Cocina, error) {
 	filtro := bson.D{}
 	if soloActivas {
@@ -51,13 +59,15 @@ func (r *Repositorio) ListarCocinas(ctx context.Context, soloActivas bool) ([]do
 	if err != nil {
 		return nil, envolver(err)
 	}
-	cocinas := []domain.Cocina{}
+	cocinas := []domain.Cocina{} // vacío y no nil, para que el JSON sea [] y no null
 	if err := cur.All(ctx, &cocinas); err != nil {
 		return nil, envolver(err)
 	}
 	return cocinas, nil
 }
 
+// ObtenerCocina devuelve la cocina por id. Que no exista no es una falla de la base: se
+// devuelve ok=false sin error, y el servicio decide que eso es un 404.
 func (r *Repositorio) ObtenerCocina(ctx context.Context, id string) (domain.Cocina, bool, error) {
 	var c domain.Cocina
 	err := r.cocinas.FindOne(ctx, bson.D{{Key: "_id", Value: id}}).Decode(&c)
@@ -70,6 +80,7 @@ func (r *Repositorio) ObtenerCocina(ctx context.Context, id string) (domain.Coci
 	return c, true, nil
 }
 
+// ListarPlatosDeCocina devuelve los platos activos de una cocina, ordenados por id.
 func (r *Repositorio) ListarPlatosDeCocina(ctx context.Context, cocinaID string) ([]domain.Plato, error) {
 	filtro := bson.D{{Key: "cocinaId", Value: cocinaID}, {Key: "activo", Value: true}}
 	cur, err := r.platos.Find(ctx, filtro, options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}))
@@ -83,6 +94,7 @@ func (r *Repositorio) ListarPlatosDeCocina(ctx context.Context, cocinaID string)
 	return platos, nil
 }
 
+// ObtenerPlato devuelve el plato por id (ok=false si no existe), activo o no.
 func (r *Repositorio) ObtenerPlato(ctx context.Context, id string) (domain.Plato, bool, error) {
 	var p domain.Plato
 	err := r.platos.FindOne(ctx, bson.D{{Key: "_id", Value: id}}).Decode(&p)
@@ -95,6 +107,9 @@ func (r *Repositorio) ObtenerPlato(ctx context.Context, id string) (domain.Plato
 	return p, true, nil
 }
 
+// PaginaPlatos devuelve una página de todos los platos y el total. Se ordena por _id para
+// que las páginas no se pisen entre sí: sin un orden fijo, MongoDB podría devolver el mismo
+// plato en dos páginas.
 func (r *Repositorio) PaginaPlatos(ctx context.Context, page, pageSize int) ([]domain.Plato, int, error) {
 	total, err := r.platos.CountDocuments(ctx, bson.D{})
 	if err != nil {
@@ -115,6 +130,7 @@ func (r *Repositorio) PaginaPlatos(ctx context.Context, page, pageSize int) ([]d
 	return platos, int(total), nil
 }
 
+// CantidadCocinas cuenta las cocinas guardadas.
 func (r *Repositorio) CantidadCocinas(ctx context.Context) (int, error) {
 	n, err := r.cocinas.CountDocuments(ctx, bson.D{})
 	return int(n), envolver(err)
@@ -122,6 +138,8 @@ func (r *Repositorio) CantidadCocinas(ctx context.Context) (int, error) {
 
 // InsertarIniciales inserta sin pisar: si un documento ya existe (clave duplicada), lo deja como está.
 func (r *Repositorio) InsertarIniciales(ctx context.Context, cocinas []domain.Cocina, platos []domain.Plato) error {
+	// Sin orden (ordered=false), un duplicado no corta la inserción: MongoDB sigue con los
+	// demás y al final informa qué documentos fallaron.
 	sinOrden := options.InsertMany().SetOrdered(false)
 	if len(cocinas) > 0 {
 		docs := make([]any, len(cocinas))
@@ -144,6 +162,7 @@ func (r *Repositorio) InsertarIniciales(ctx context.Context, cocinas []domain.Co
 	return nil
 }
 
+// Ping verifica que el servidor primario de MongoDB responde.
 func (r *Repositorio) Ping(ctx context.Context) error {
 	return envolver(r.cliente.Ping(ctx, readpref.Primary()))
 }
@@ -155,13 +174,15 @@ func soloDuplicados(err error) bool {
 		return false
 	}
 	for _, e := range bwe.WriteErrors {
-		if e.Code != 11000 {
+		if e.Code != 11000 { // 11000 es el código de MongoDB para clave duplicada
 			return false
 		}
 	}
 	return true
 }
 
+// envolver convierte cualquier error de MongoDB en domain.ErrNoDisponible, para que las capas
+// de arriba respondan 503 sin conocer los errores del driver.
 func envolver(err error) error {
 	if err == nil {
 		return nil

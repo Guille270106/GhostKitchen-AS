@@ -22,6 +22,7 @@ func Nuevo() *Repositorio {
 	return &Repositorio{cocinas: map[string]domain.Cocina{}, platos: map[string]domain.Plato{}}
 }
 
+// ListarCocinas devuelve las cocinas ordenadas por id (solo las activas si soloActivas).
 func (r *Repositorio) ListarCocinas(_ context.Context, soloActivas bool) ([]domain.Cocina, error) {
 	if r.Falla != nil {
 		return nil, r.Falla
@@ -38,6 +39,7 @@ func (r *Repositorio) ListarCocinas(_ context.Context, soloActivas bool) ([]doma
 	return out, nil
 }
 
+// ObtenerCocina devuelve la cocina por id, activa o no.
 func (r *Repositorio) ObtenerCocina(_ context.Context, id string) (domain.Cocina, bool, error) {
 	if r.Falla != nil {
 		return domain.Cocina{}, false, r.Falla
@@ -48,6 +50,7 @@ func (r *Repositorio) ObtenerCocina(_ context.Context, id string) (domain.Cocina
 	return c, ok, nil
 }
 
+// ListarPlatosDeCocina devuelve los platos activos de una cocina, ordenados por id.
 func (r *Repositorio) ListarPlatosDeCocina(_ context.Context, cocinaID string) ([]domain.Plato, error) {
 	if r.Falla != nil {
 		return nil, r.Falla
@@ -64,6 +67,7 @@ func (r *Repositorio) ListarPlatosDeCocina(_ context.Context, cocinaID string) (
 	return out, nil
 }
 
+// ObtenerPlato devuelve el plato por id, activo o no.
 func (r *Repositorio) ObtenerPlato(_ context.Context, id string) (domain.Plato, bool, error) {
 	if r.Falla != nil {
 		return domain.Plato{}, false, r.Falla
@@ -74,6 +78,7 @@ func (r *Repositorio) ObtenerPlato(_ context.Context, id string) (domain.Plato, 
 	return p, ok, nil
 }
 
+// PaginaPlatos devuelve todos los platos de a páginas, ordenados por id.
 func (r *Repositorio) PaginaPlatos(_ context.Context, page, pageSize int) ([]domain.Plato, int, error) {
 	if r.Falla != nil {
 		return nil, 0, r.Falla
@@ -90,6 +95,7 @@ func (r *Repositorio) PaginaPlatos(_ context.Context, page, pageSize int) ([]dom
 	return todos[desde:hasta], len(todos), nil
 }
 
+// CantidadCocinas cuenta las cocinas guardadas.
 func (r *Repositorio) CantidadCocinas(context.Context) (int, error) {
 	if r.Falla != nil {
 		return 0, r.Falla
@@ -99,6 +105,7 @@ func (r *Repositorio) CantidadCocinas(context.Context) (int, error) {
 	return len(r.cocinas), nil
 }
 
+// InsertarIniciales agrega solo lo que no existe, igual que la versión de MongoDB.
 func (r *Repositorio) InsertarIniciales(_ context.Context, cocinas []domain.Cocina, platos []domain.Plato) error {
 	if r.Falla != nil {
 		return r.Falla
@@ -118,6 +125,7 @@ func (r *Repositorio) InsertarIniciales(_ context.Context, cocinas []domain.Coci
 	return nil
 }
 
+// Ping devuelve Falla: así un test simula que la base no responde.
 func (r *Repositorio) Ping(context.Context) error { return r.Falla }
 
 // Guardar agrega o reemplaza una cocina o un plato (solo para preparar tests).

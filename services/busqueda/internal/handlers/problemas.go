@@ -1,4 +1,7 @@
 // Package handlers traduce HTTP a llamadas a los servicios y los errores a Problem Details (RFC 9457).
+//
+// Es la capa de entrada (la de más afuera, ADR-002): lee y valida parámetros, llama a
+// services y elige el código HTTP. No tiene reglas de negocio ni sabe que existe Solr.
 package handlers
 
 import (
@@ -11,7 +14,9 @@ import (
 	"ghostkitchen/busqueda/internal/middleware"
 )
 
-// Códigos estables del contrato.
+// Códigos estables del contrato (docs/contracts/v1/openapi.yaml). El consumidor decide por
+// code y no por el texto, así podemos mejorar los mensajes sin romper a nadie (ADR-008).
+// segundosReintentoNoDisponib es el Retry-After de los 503: el mismo que usa el gateway.
 const (
 	CodigoParametroInvalido     = "PARAMETRO_INVALIDO"
 	CodigoAPIKeyInvalida        = "API_KEY_INVALIDA"
@@ -42,6 +47,7 @@ type Problema struct {
 	Errores       []ErrorParametro `json:"errores,omitempty"`
 }
 
+// titulos da, para cada código, el final de la URL de "type" y el título legible.
 var titulos = map[string]struct{ slug, titulo string }{
 	CodigoParametroInvalido:  {"parametro-invalido", "Parámetro inválido"},
 	CodigoAPIKeyInvalida:     {"api-key-invalida", "API key inválida"},
@@ -77,7 +83,8 @@ func parametrosInvalidos(c *gin.Context, errores []ErrorParametro) {
 }
 
 // responderError traduce un error de los servicios. Cualquier falla del índice es 503:
-// nunca se devuelve una lista vacía para disimularla.
+// nunca se devuelve una lista vacía para disimularla (degradación honesta, ADR-010).
+// Los errores de negocio (no existe, sin cobertura) son respuestas válidas, no fallas.
 func responderError(c *gin.Context, err error, detalle404 string) {
 	switch {
 	case errors.Is(err, domain.ErrSedeNoEncontrada):

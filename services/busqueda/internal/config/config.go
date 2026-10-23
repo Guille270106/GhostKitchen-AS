@@ -1,4 +1,5 @@
 // Package config lee la configuración de Búsqueda desde variables de entorno.
+// Solo lo usa main: las demás capas reciben los valores ya leídos, no leen el entorno.
 package config
 
 import (
@@ -12,8 +13,8 @@ import (
 type Config struct {
 	Puerto        string        // PORT (8083)
 	SolrURL       string        // SOLR_URL (http://solr:8983/solr)
-	SolrTimeout   time.Duration // SOLR_TIMEOUT_MS (2000)
-	APIKeys       []string      // PUBLIC_API_KEYS, separadas por coma. Vacío = nadie entra.
+	SolrTimeout   time.Duration // SOLR_TIMEOUT_MS (2000): límite por llamada a Solr (ADR-010)
+	APIKeys       []string      // PUBLIC_API_KEYS, separadas por coma. Vacío = nadie entra (falla cerrada).
 	SeedAlIniciar bool          // SEED_AL_INICIAR (true): solo si no hay CATALOGO_URL
 	CatalogoURL   string        // CATALOGO_URL (http://catalogo:8082). Si está, el índice se arma desde Catálogo
 }

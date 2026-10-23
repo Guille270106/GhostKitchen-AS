@@ -1,4 +1,9 @@
-// Búsqueda: índice de cocinas y platos (Solr) y capacidad publicada para otros grupos.
+// Package main arranca Búsqueda: índice de cocinas y platos (Solr) y capacidad publicada
+// para otros grupos (ADR-008).
+//
+// Es la raíz de composición del servicio: el único lugar que conoce las implementaciones
+// concretas (Solr, el cliente de Catálogo) y las conecta con las capas
+// handlers → services → repositories (ADR-002). El resto del código recibe interfaces.
 package main
 
 import (
@@ -45,11 +50,15 @@ func main() {
 		log.Warn("PUBLIC_API_KEYS está vacía: el gateway va a rechazar todas las solicitudes a /public/v1")
 	}
 
+	// Inyección de dependencias: el servicio recibe el repositorio de Solr como
+	// repositories.Lector (una interfaz). No sabe que abajo hay Solr, y por eso los tests
+	// le pasan el repositorio en memoria sin cambiar una línea del servicio (patrón Repository).
 	repo := solr.NuevoRepositorio(solr.NuevoCliente(cfg.SolrURL, cfg.SolrTimeout))
 	svc := services.Nueva(repo)
 
 	// De dónde salen los datos del índice: de Catálogo si está configurado (lo normal),
 	// o de los datos iniciales embebidos (para probar Búsqueda sola).
+	// Los datos se piden a la API de Catálogo; Búsqueda nunca lee catalogo_db (ADR-001).
 	var reconstruir func(context.Context) (indexer.Resultado, error)
 	if cfg.CatalogoURL != "" {
 		dispo, err := seed.DisponibilidadInicial()
@@ -59,11 +68,16 @@ func main() {
 		}
 		rec := indexer.NuevoReconstructor(clients.NuevoCatalogo(cfg.CatalogoURL), repo, dispo)
 		reconstruir = func(ctx context.Context) (indexer.Resultado, error) {
+			// El esquema se revisa en cada reconstrucción: si alguien borró y recreó el core,
+			// el índice se vuelve a armar solo (es una copia reconstruible, ADR-003).
 			if err := repo.PrepararEsquema(ctx); err != nil {
 				return indexer.Resultado{}, err
 			}
 			res, err := rec.Reconstruir(ctx)
 			if err == nil {
+				// Se registran los dos ids: correlation_id (el nuestro, viaja en
+				// X-Correlation-Id y se busca en los logs de todos los servicios, ADR-005) y
+				// trace_id (el de OpenTelemetry, para abrir la traza en Jaeger, ADR-011).
 				traceID, _ := trazas.IDs(ctx)
 				log.Info("índice reconstruido desde Catálogo", "correlation_id", middleware.IDDesdeContexto(ctx),
 					"trace_id", traceID, "sedes", res.Sedes, "platos", res.Platos)
@@ -72,6 +86,10 @@ func main() {
 		}
 	}
 
+	// El índice se prepara en segundo plano para que el servidor HTTP arranque igual:
+	// /health responde enseguida (el proceso está vivo) y /ready da 503 hasta que el índice
+	// está listo (ADR-010, salud y reinicio). listo es atómico porque lo escribe esta
+	// goroutine y lo leen los handlers desde otras.
 	var listo atomic.Bool
 	ctx, parar := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer parar()
@@ -98,6 +116,8 @@ func main() {
 		}
 	}()
 
+	// Apagado ordenado: con SIGTERM (docker stop) se dejan terminar las solicitudes en curso
+	// hasta 10 s en lugar de cortarlas a la mitad.
 	<-ctx.Done()
 	log.Info("apagando")
 	fin, cancelar := context.WithTimeout(context.Background(), 10*time.Second)
@@ -107,6 +127,10 @@ func main() {
 
 // inicializarIndice espera a que Solr (y Catálogo, si se usa) respondan y arma el índice.
 // Mientras tanto /ready responde 503 y las consultas responden 503.
+//
+// Reintenta sin límite porque en Docker Compose Solr y Catálogo pueden tardar más que
+// Búsqueda en arrancar, y sin índice el servicio no puede atender. La espera se duplica
+// en cada intento para no insistir sobre una dependencia que todavía está levantando (ADR-010).
 func inicializarIndice(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, conSeed bool,
 	reconstruir func(context.Context) (indexer.Resultado, error), listo *atomic.Bool) {
 	espera := time.Second
@@ -129,8 +153,14 @@ func inicializarIndice(ctx context.Context, log *slog.Logger, repo *solr.Reposit
 	}
 }
 
+// preparar hace un intento de armar el índice: desde Catálogo si hay CATALOGO_URL; si no,
+// con los datos iniciales (conSeed) o dejando solo el esquema.
 func preparar(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, conSeed bool,
 	reconstruir func(context.Context) (indexer.Resultado, error)) error {
+	// Cada intento tiene su propio correlation_id ("inicio-..."), para encontrar en los logs
+	// de Búsqueda y de Catálogo todo lo que hizo ese arranque. El plazo de 60 s es mucho más
+	// largo que los 3 s de una pantalla porque es trabajo de fondo: nadie lo está esperando,
+	// y adentro hay varias llamadas a Catálogo (5 s cada una, con reintentos) y a Solr.
 	c, cancel := context.WithTimeout(middleware.ConCorrelacion(ctx, "inicio-"+uuid.NewString()), 60*time.Second)
 	defer cancel()
 	// Span raíz del arranque: la reconstrucción no nace de una solicitud HTTP.

@@ -1,5 +1,8 @@
 // Package services tiene las reglas de la capacidad publicada:
 // sedes, cocina más cercana, búsqueda de platos y proximidad.
+//
+// Es la capa del medio (ADR-002): no conoce HTTP ni Solr. Recibe un repositories.Lector
+// (una interfaz) por el constructor, y main le pasa el de Solr; los tests, uno en memoria.
 package services
 
 import (
@@ -25,7 +28,7 @@ func Nueva(repo repositories.Lector) *Busqueda { return &Busqueda{repo: repo} }
 // ListarSedes devuelve las sedes activas.
 func (b *Busqueda) ListarSedes(ctx context.Context) ([]domain.Sede, error) {
 	sedes, err := b.repo.ListarSedes(ctx)
-	if sedes == nil && err == nil {
+	if sedes == nil && err == nil { // para que el JSON sea [] y no null
 		sedes = []domain.Sede{}
 	}
 	return sedes, err
@@ -60,6 +63,10 @@ type ResultadoPlatos struct {
 
 // BuscarPlatos busca platos de una sede activa. Si la sede no existe o no está activa,
 // devuelve domain.ErrSedeNoEncontrada.
+//
+// Se busca primero la sede para separar dos respuestas que el consumidor tiene que poder
+// distinguir: "esa sede no existe" (404) y "esa sede no tiene platos con ese filtro"
+// (200 con la lista vacía).
 func (b *Busqueda) BuscarPlatos(ctx context.Context, f domain.FiltroPlatos) (ResultadoPlatos, error) {
 	sede, ok, err := b.repo.ObtenerSede(ctx, f.SedeID)
 	if err != nil {

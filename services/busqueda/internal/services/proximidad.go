@@ -29,7 +29,8 @@ type SedeExterna struct {
 	DentroDelRango bool    `json:"dentroDelRango"`
 }
 
-// DarkKitchen es nuestra cocina activa más cercana al cliente.
+// DarkKitchen es nuestra cocina activa más cercana al cliente. Sede y DistanciaKm son
+// punteros para que, con estado SIN_SEDES, salgan como null en el JSON y no como un cero.
 type DarkKitchen struct {
 	Estado          string             `json:"estado"`
 	Sede            *domain.Referencia `json:"sede"`
@@ -46,7 +47,8 @@ type ResultadoProximidad struct {
 }
 
 // Proximidad compara la sede externa con el cliente y, si se pide, busca nuestra cocina
-// más cercana AL CLIENTE. No guarda ni registra las coordenadas recibidas.
+// más cercana AL CLIENTE. No guarda ni registra las coordenadas recibidas: son datos de los
+// clientes del otro grupo y no los necesitamos después de responder (ADR-008, ADR-011).
 func (b *Busqueda) Proximidad(ctx context.Context, q ConsultaProximidad) (ResultadoProximidad, error) {
 	d := geo.DistanciaKm(q.Cliente, q.Sede)
 	res := ResultadoProximidad{
@@ -57,14 +59,19 @@ func (b *Busqueda) Proximidad(ctx context.Context, q ConsultaProximidad) (Result
 		},
 	}
 	if !q.IncluirDarkKitchen {
-		return res, nil // no depende de Solr
+		// No depende de Solr: esta parte sigue respondiendo aunque Solr esté caído (ADR-010).
+		return res, nil
 	}
 
+	// Nuestras cocinas no entregan a más de CoberturaKm (RN24), aunque el consumidor pida
+	// un radio mayor para su sede.
 	radio := math.Min(q.RadioKm, CoberturaKm)
 	dk := &DarkKitchen{RadioAplicadoKm: radio}
 	sede, ok, err := b.repo.SedeMasCercana(ctx, q.Cliente)
 	if err != nil {
-		return ResultadoProximidad{}, err // 503 para toda la consulta
+		// 503 para toda la consulta, sin media respuesta: si no podemos consultar el índice,
+		// no sabemos si hay una cocina cerca, y no corresponde decir que no la hay.
+		return ResultadoProximidad{}, err
 	}
 	if !ok {
 		dk.Estado = EstadoSinSedes

@@ -1,4 +1,8 @@
 // Package services tiene las reglas de lectura de Catálogo.
+//
+// Es la capa del medio (ADR-002): no conoce HTTP ni MongoDB. Recibe un
+// repositories.Repositorio (una interfaz) por el constructor; main le pasa el de MongoDB
+// y los tests, uno en memoria. Acá se decide qué se publica: solo lo activo (RN19).
 package services
 
 import (
@@ -9,7 +13,8 @@ import (
 	"ghostkitchen/catalogo/internal/repositories"
 )
 
-// MaxTamPagina es el máximo de platos por página en la lectura interna.
+// MaxTamPagina es el máximo de platos por página en la lectura interna. Limita cuánto puede
+// pedir de una vez quien llama, para que una sola solicitud no cargue a MongoDB.
 const MaxTamPagina = 500
 
 // Catalogo reúne las lecturas de cocinas y platos.

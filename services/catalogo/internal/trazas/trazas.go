@@ -1,5 +1,9 @@
 // Package trazas configura OpenTelemetry: cada solicitud genera una traza que sigue su
 // recorrido por los servicios y MongoDB, y se ve en Jaeger.
+//
+// Es infraestructura transversal y es igual al de Búsqueda. Si la solicitud trae traceparent
+// (por ejemplo, desde la reconstrucción de Búsqueda), los spans de Catálogo y de MongoDB
+// quedan dentro de esa misma traza.
 package trazas
 
 import (

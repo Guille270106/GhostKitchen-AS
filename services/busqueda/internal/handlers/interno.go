@@ -35,7 +35,8 @@ func (h *Interno) Registrar(r gin.IRoutes) {
 	r.GET("/internal/apikey/verificar", h.verificarAPIKey)
 }
 
-// GET /health: el proceso está vivo.
+// GET /health: el proceso está vivo. No consulta a Solr a propósito: si Solr se cae,
+// reiniciar Búsqueda no lo arregla. Eso lo dice /ready (ADR-010, salud y reinicio).
 func (h *Interno) salud(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"estado": "ok"})
 }
@@ -46,6 +47,8 @@ func (h *Interno) preparado(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"estado": "iniciando"})
 		return
 	}
+	// Un chequeo de salud tiene que contestar rápido: si Solr tarda más de 1 s, para
+	// nosotros no está listo.
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Second)
 	defer cancel()
 	if err := h.ping(ctx); err != nil {
@@ -58,10 +61,13 @@ func (h *Interno) preparado(c *gin.Context) {
 
 // GET /internal/apikey/verificar: el gateway la consulta con auth_request antes de dejar
 // pasar una solicitud a /public/v1. Responde 204 si la clave es válida y 401 si no.
+// La clave nunca se escribe en el log ni en la traza (ADR-011).
 func (h *Interno) verificarAPIKey(c *gin.Context) {
 	clave := []byte(c.GetHeader("X-API-Key"))
 	if len(clave) > 0 {
 		for _, k := range h.claves {
+			// ConstantTimeCompare tarda lo mismo acierte o no. Con un == común, el tiempo
+			// de respuesta dejaría adivinar la clave carácter por carácter.
 			if subtle.ConstantTimeCompare(clave, k) == 1 {
 				c.Status(http.StatusNoContent)
 				return
