@@ -141,12 +141,12 @@ func TestFiltroEscapaComillas(t *testing.T) {
 func TestPrepararEsquemaSoloAgregaLoQueFalta(t *testing.T) {
 	repo, sf := nuevoSolrFalso(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case strings.HasSuffix(r.URL.Path, "/schema/fieldtypes"):
-			_, _ = io.WriteString(w, `{"fieldTypes":[{"name":"string"},{"name":"text_gk"}]}`)
-		case strings.HasSuffix(r.URL.Path, "/schema/fields"):
-			_, _ = io.WriteString(w, `{"fields":[{"name":"id"},{"name":"nombre"},{"name":"activo"}]}`)
-		case strings.HasSuffix(r.URL.Path, "/schema/copyfields"):
-			_, _ = io.WriteString(w, `{"copyFields":[{"source":"categoria","dest":"categoria_txt"}]}`)
+			case strings.HasSuffix(r.URL.Path, "/schema/fieldtypes"):
+				_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"fieldTypes":[{"name":"string"},{"name":"text_gk"}]}`)
+			case strings.HasSuffix(r.URL.Path, "/schema/fields"):
+				_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"fields":[{"name":"id"},{"name":"nombre"},{"name":"activo"}]}`)
+			case strings.HasSuffix(r.URL.Path, "/schema/copyfields"):
+				_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"copyFields":[{"source":"categoria","dest":"categoria_txt"}]}`)
 		default:
 			_, _ = io.WriteString(w, `{"responseHeader":{"status":0}}`)
 		}

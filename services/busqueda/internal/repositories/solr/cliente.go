@@ -89,13 +89,19 @@ func (c *Cliente) Esquema(ctx context.Context, core string, comandos any) error 
 // NombresEsquema devuelve los nombres de campos o tipos de campo existentes.
 // recurso: "fields", "fieldtypes" o "copyfields".
 func (c *Cliente) NombresEsquema(ctx context.Context, core, recurso string) (map[string]bool, error) {
-	var r map[string][]map[string]any
+	// Solr responde un objeto con "responseHeader" y la lista ("fields", "fieldTypes" o
+	// "copyFields"). Solo se lee la lista; el resto de la respuesta se ignora.
+	var r struct {
+		Fields     []map[string]any `json:"fields"`
+		FieldTypes []map[string]any `json:"fieldTypes"`
+		CopyFields []map[string]any `json:"copyFields"`
+	}
 	if err := c.hacer(ctx, http.MethodGet, "/"+core+"/schema/"+recurso, nil, &r); err != nil {
 		return nil, err
 	}
+	items := map[string][]map[string]any{"fields": r.Fields, "fieldtypes": r.FieldTypes, "copyfields": r.CopyFields}[recurso]
 	nombres := map[string]bool{}
-	clave := map[string]string{"fields": "fields", "fieldtypes": "fieldTypes", "copyfields": "copyFields"}[recurso]
-	for _, item := range r[clave] {
+	for _, item := range items {
 		if recurso == "copyfields" {
 			nombres[fmt.Sprint(item["source"])+"->"+fmt.Sprint(item["dest"])] = true
 			continue
