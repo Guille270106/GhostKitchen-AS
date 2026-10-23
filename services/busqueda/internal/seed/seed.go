@@ -1,9 +1,11 @@
 // Package seed carga en el índice las 4 cocinas y sus platos de ejemplo.
 //
-// Hasta que Catálogo e Inventario publiquen sus mensajes (cocina.*, plato.*,
-// disponibilidad.cambiada), Búsqueda arranca con estos datos para que la API
-// publicada funcione de punta a punta. Los nombres de restaurantes son reales
-// (trabajo académico); platos, precios y disponibilidad son inventados.
+// Se usa en dos casos. Sin CATALOGO_URL, Búsqueda arranca con estos datos para probarla sola
+// (con CATALOGO_URL, que es lo normal en docker-compose, el índice se arma desde Catálogo).
+// Y siempre, mientras Inventario no exista, DisponibilidadInicial da la tabla provisional de
+// qué platos se pueden pedir (después llegará en el mensaje disponibilidad.cambiada).
+// Los nombres de restaurantes son reales (trabajo académico); platos, precios y
+// disponibilidad son inventados.
 package seed
 
 import (
@@ -17,6 +19,8 @@ import (
 	"ghostkitchen/busqueda/internal/repositories"
 )
 
+// datos queda dentro del binario (embed): la imagen de Docker no necesita archivos aparte.
+//
 //go:embed datos/*.json
 var datos embed.FS
 

@@ -1,7 +1,7 @@
-// Package seed carga las 4 cocinas, sus restaurantes y los platos de ejemplo la primera vez
-// que arranca Catálogo. Mientras no existan las pantallas de administración, son los datos
-// con los que trabaja todo el sistema. Los nombres de restaurantes son reales (trabajo
-// académico); platos y precios son inventados.
+// Package seed carga las 4 cocinas, sus restaurantes y los platos de ejemplo cuando faltan en
+// la base: en cada arranque inserta solo lo que no está (ver Cargar). Mientras no existan
+// las pantallas de administración, son los datos con los que trabaja todo el sistema.
+// Los nombres de restaurantes son reales (trabajo académico); platos y precios son inventados.
 package seed
 
 import (
@@ -15,6 +15,8 @@ import (
 	"ghostkitchen/catalogo/internal/repositories"
 )
 
+// datos queda dentro del binario (embed): la imagen de Docker no necesita archivos aparte.
+//
 //go:embed datos/*.json
 var datos embed.FS
 

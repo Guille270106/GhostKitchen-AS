@@ -25,8 +25,10 @@ func Nuevo() *Repositorio {
 	return &Repositorio{sedes: map[string]domain.Sede{}, platos: map[string]domain.Plato{}}
 }
 
+// PrepararEsquema no hace nada: en memoria no hay esquema que crear.
 func (r *Repositorio) PrepararEsquema(context.Context) error { return nil }
 
+// GuardarSedes agrega o reemplaza sedes por id.
 func (r *Repositorio) GuardarSedes(_ context.Context, sedes []domain.Sede) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -36,6 +38,7 @@ func (r *Repositorio) GuardarSedes(_ context.Context, sedes []domain.Sede) error
 	return nil
 }
 
+// GuardarPlatos agrega o reemplaza platos por id.
 func (r *Repositorio) GuardarPlatos(_ context.Context, platos []domain.Plato) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -45,6 +48,7 @@ func (r *Repositorio) GuardarPlatos(_ context.Context, platos []domain.Plato) er
 	return nil
 }
 
+// ListarSedes devuelve las sedes activas ordenadas por id.
 func (r *Repositorio) ListarSedes(context.Context) ([]domain.Sede, error) {
 	if r.Falla != nil {
 		return nil, r.Falla
@@ -61,6 +65,7 @@ func (r *Repositorio) ListarSedes(context.Context) ([]domain.Sede, error) {
 	return out, nil
 }
 
+// ObtenerSede devuelve la sede si existe y está activa.
 func (r *Repositorio) ObtenerSede(_ context.Context, id string) (domain.Sede, bool, error) {
 	if r.Falla != nil {
 		return domain.Sede{}, false, r.Falla
@@ -71,6 +76,8 @@ func (r *Repositorio) ObtenerSede(_ context.Context, id string) (domain.Sede, bo
 	return s, ok && s.Activa, nil
 }
 
+// SedeMasCercana recorre todas las sedes con Haversine. Imita el orden de Solr (distancia y,
+// si empatan, id) para que los tests den lo mismo que producción.
 func (r *Repositorio) SedeMasCercana(ctx context.Context, punto domain.Ubicacion) (domain.Sede, bool, error) {
 	sedes, err := r.ListarSedes(ctx) // ya vienen ordenadas por id
 	if err != nil || len(sedes) == 0 {
@@ -86,6 +93,8 @@ func (r *Repositorio) SedeMasCercana(ctx context.Context, punto domain.Ubicacion
 	return mejor, true, nil
 }
 
+// BuscarPlatos aplica los mismos filtros que Solr, pero el texto se busca como subcadena
+// (sin quitar acentos ni calcular puntaje) y "relevancia" ordena por id. Alcanza para probar las reglas.
 func (r *Repositorio) BuscarPlatos(_ context.Context, f domain.FiltroPlatos) ([]domain.Plato, int, error) {
 	if r.Falla != nil {
 		return nil, 0, r.Falla
@@ -132,6 +141,7 @@ func (r *Repositorio) BuscarPlatos(_ context.Context, f domain.FiltroPlatos) ([]
 	return res[desde:hasta], total, nil
 }
 
+// ObtenerPlato devuelve el plato si existe y está activo.
 func (r *Repositorio) ObtenerPlato(_ context.Context, id string) (domain.Plato, bool, error) {
 	if r.Falla != nil {
 		return domain.Plato{}, false, r.Falla
@@ -142,6 +152,7 @@ func (r *Repositorio) ObtenerPlato(_ context.Context, id string) (domain.Plato, 
 	return p, ok && p.Activo, nil
 }
 
+// Ping devuelve Falla: así un test simula que el índice no responde.
 func (r *Repositorio) Ping(context.Context) error { return r.Falla }
 
 func contiene(lista []string, v string) bool {

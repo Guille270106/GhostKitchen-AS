@@ -1,5 +1,12 @@
 // Package repositories define cómo Búsqueda lee y escribe su índice.
 // La implementación real usa Solr (subpaquete solr); los tests usan una en memoria.
+//
+// Es el patrón Repository (ADR-002): services depende de estas interfaces y no de Solr.
+// main elige la implementación y se la pasa (inyección de dependencias). Así las reglas se
+// prueban sin levantar Solr, y cambiar de motor de búsqueda no toca los servicios.
+//
+// Hay dos interfaces chicas en lugar de una grande: quien responde consultas (services)
+// solo puede leer, y quien carga datos (indexer, seed) solo puede escribir.
 package repositories
 
 import (
@@ -26,7 +33,8 @@ type Lector interface {
 	Ping(ctx context.Context) error
 }
 
-// Indexador carga datos en el índice. Lo usa la carga inicial (y más adelante el lector de mensajes).
+// Indexador carga datos en el índice. Lo usan la reconstrucción desde Catálogo (indexer) y
+// la carga inicial (seed); más adelante, también el lector de mensajes.
 type Indexador interface {
 	// PrepararEsquema crea los campos que falten. Es idempotente.
 	PrepararEsquema(ctx context.Context) error

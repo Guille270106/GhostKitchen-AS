@@ -1,4 +1,8 @@
-// Catálogo: cocinas, restaurantes y platos (qué se vende y a qué precio), sobre MongoDB.
+// Package main arranca Catálogo: cocinas, restaurantes y platos (qué se vende y a qué
+// precio), sobre MongoDB.
+//
+// Es la raíz de composición del servicio: crea el cliente de MongoDB y el repositorio
+// concreto, y los conecta con las capas handlers → services → repositories (ADR-002).
 package main
 
 import (
@@ -57,6 +61,9 @@ func main() {
 	}
 	defer func() { _ = cliente.Disconnect(context.Background()) }()
 
+	// Inyección de dependencias: services.Nuevo recibe el repositorio de MongoDB como
+	// repositories.Repositorio (una interfaz), y los tests le pasan uno en memoria.
+	// La base se prepara en segundo plano para que /health conteste mientras MongoDB arranca.
 	repo := repomongo.Nuevo(cliente, cfg.MongoBase)
 	go prepararBase(ctx, log, repo, cfg.SeedAlIniciar)
 
@@ -76,6 +83,7 @@ func main() {
 		}
 	}()
 
+	// Apagado ordenado: se dejan terminar las solicitudes en curso hasta 10 s.
 	<-ctx.Done()
 	log.Info("apagando")
 	fin, cancelar := context.WithTimeout(context.Background(), 10*time.Second)
@@ -84,10 +92,14 @@ func main() {
 }
 
 // prepararBase espera a MongoDB, crea los índices y carga los datos iniciales que falten.
+// Reintenta sin límite, con una espera que se duplica en cada intento, porque en Docker
+// Compose MongoDB puede tardar más que Catálogo en aceptar conexiones (ADR-010). Se puede
+// repetir sin problema: crear índices y cargar el seed no duplican nada.
 func prepararBase(ctx context.Context, log *slog.Logger, repo *repomongo.Repositorio, conSeed bool) {
 	espera := time.Second
 	for intento := 1; ; intento++ {
 		err := func() error {
+			// Plazo más largo que el de una solicitud: es trabajo de fondo, nadie lo espera.
 			c, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			if err := repo.CrearIndices(c); err != nil {

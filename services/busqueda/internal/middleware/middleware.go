@@ -1,5 +1,13 @@
 // Package middleware tiene lo que se aplica a todas las solicitudes:
 // el identificador de correlación y el log estructurado de cada solicitud.
+//
+// Es infraestructura transversal: no pertenece a ninguna capa y la usan handlers, el
+// cliente de Catálogo y el arranque.
+//
+// correlation_id y trace_id no son lo mismo. El correlation_id es nuestro: viaja en
+// X-Correlation-Id, lo puede mandar el otro grupo y se busca en los logs de todos los
+// servicios (ADR-005). El trace_id es de OpenTelemetry: viaja en traceparent y sirve para
+// ver en Jaeger cuánto tardó cada paso (ADR-011). Se registran los dos para pasar de uno al otro.
 package middleware
 
 import (
@@ -19,9 +27,12 @@ const HeaderCorrelacion = "X-Correlation-Id"
 
 const claveCorrelacion = "correlation_id"
 
+// claveContexto es un tipo propio para que ningún otro paquete pueda pisar ni leer por
+// error esta clave dentro de un context.Context.
 type claveContexto struct{}
 
-// idValido acepta ids de hasta 64 caracteres seguros, como dice el contrato.
+// idValido acepta ids de hasta 64 caracteres seguros, como dice el contrato. El id viene de
+// afuera: sin validarlo, alguien podría meter saltos de línea o textos enormes en nuestros logs.
 var idValido = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
 
 // Correlacion toma el X-Correlation-Id recibido (o genera uno), lo devuelve en la respuesta
@@ -32,6 +43,8 @@ func Correlacion() gin.HandlerFunc {
 		if !idValido.MatchString(id) {
 			id = uuid.NewString()
 		}
+		// Se guarda dos veces: en gin.Context para los handlers, y en el context.Context para
+		// las capas de abajo y el cliente HTTP, que no conocen Gin.
 		c.Set(claveCorrelacion, id)
 		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), claveContexto{}, id))
 		c.Header(HeaderCorrelacion, id)
@@ -56,8 +69,8 @@ func IDDesdeContexto(ctx context.Context) string {
 }
 
 // Log escribe una línea JSON por solicitud. Registra la ruta sin parámetros ni cuerpo:
-// así no quedan coordenadas ni claves en los logs. Incluye correlation_id (el id de negocio
-// que viaja en X-Correlation-Id) y trace_id/span_id (para abrir la traza en Jaeger).
+// así no quedan coordenadas ni claves en los logs (ADR-011). Incluye correlation_id (el id de
+// negocio que viaja en X-Correlation-Id) y trace_id/span_id (para abrir la traza en Jaeger).
 func Log(log *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		inicio := time.Now()

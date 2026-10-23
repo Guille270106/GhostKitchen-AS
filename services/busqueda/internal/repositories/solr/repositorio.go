@@ -55,12 +55,13 @@ type docPlato struct {
 
 // ---------- Lectura ----------
 
+// ListarSedes devuelve las sedes activas ordenadas por id.
 func (r *Repositorio) ListarSedes(ctx context.Context) ([]domain.Sede, error) {
 	p := url.Values{}
 	p.Set("q", "*:*")
 	p.Set("fq", "activo:true")
 	p.Set("sort", "id asc")
-	p.Set("rows", "100")
+	p.Set("rows", "100") // son 4 cocinas: 100 alcanza de sobra
 	resp, err := r.cli.Select(ctx, CoreCocinas, p)
 	if err != nil {
 		return nil, err
@@ -68,6 +69,7 @@ func (r *Repositorio) ListarSedes(ctx context.Context) ([]domain.Sede, error) {
 	return decodificarSedes(resp.Response.Docs)
 }
 
+// ObtenerSede busca por id con el real-time get, que no depende del último commit.
 func (r *Repositorio) ObtenerSede(ctx context.Context, id string) (domain.Sede, bool, error) {
 	raw, err := r.cli.Get(ctx, CoreCocinas, id)
 	if err != nil || raw == nil {
@@ -80,6 +82,10 @@ func (r *Repositorio) ObtenerSede(ctx context.Context, id string) (domain.Sede, 
 	return s, s.Activa, nil
 }
 
+// SedeMasCercana le pide a Solr que ordene las cocinas activas por geodist(): la distancia
+// desde pt (el punto del cliente) hasta el campo sfield (ubicacion) de cada una, y se queda
+// con la primera. No filtra por radio: la regla de los 25 km la aplica services (RN24), que
+// así puede distinguir "no hay sedes" de "la más cercana queda lejos".
 func (r *Repositorio) SedeMasCercana(ctx context.Context, punto domain.Ubicacion) (domain.Sede, bool, error) {
 	p := url.Values{}
 	p.Set("q", "*:*")
@@ -99,6 +105,7 @@ func (r *Repositorio) SedeMasCercana(ctx context.Context, punto domain.Ubicacion
 	return sedes[0], true, nil
 }
 
+// BuscarPlatos devuelve una página de platos y el total (numFound) para calcular las páginas.
 func (r *Repositorio) BuscarPlatos(ctx context.Context, f domain.FiltroPlatos) ([]domain.Plato, int, error) {
 	resp, err := r.cli.Select(ctx, CorePlatos, ParametrosBusqueda(f))
 	if err != nil {
@@ -115,6 +122,7 @@ func (r *Repositorio) BuscarPlatos(ctx context.Context, f domain.FiltroPlatos) (
 	return platos, resp.Response.NumFound, nil
 }
 
+// ObtenerPlato busca por id con el real-time get; un plato inactivo cuenta como no encontrado.
 func (r *Repositorio) ObtenerPlato(ctx context.Context, id string) (domain.Plato, bool, error) {
 	raw, err := r.cli.Get(ctx, CorePlatos, id)
 	if err != nil || raw == nil {
@@ -127,6 +135,7 @@ func (r *Repositorio) ObtenerPlato(ctx context.Context, id string) (domain.Plato
 	return pl, pl.Activo, nil
 }
 
+// Ping hace la consulta más barata posible (rows=0) para ver si Solr responde.
 func (r *Repositorio) Ping(ctx context.Context) error {
 	p := url.Values{}
 	p.Set("q", "*:*")
@@ -136,6 +145,11 @@ func (r *Repositorio) Ping(ctx context.Context) error {
 }
 
 // ParametrosBusqueda traduce el filtro a parámetros de Solr (exportada para testearla).
+//
+// El texto va en q con edismax, que busca en varios campos a la vez con distinto peso (qf):
+// que la palabra esté en el nombre pesa 3 veces más que en la descripción. Todo lo demás va en
+// fq (filtros): no cambia el puntaje de relevancia y Solr guarda cada filtro en caché, así
+// "activo:true" o "cocina_id:..." se reusan entre búsquedas (ADR-006).
 func ParametrosBusqueda(f domain.FiltroPlatos) url.Values {
 	p := url.Values{}
 	if t := strings.TrimSpace(f.Texto); t != "" {
@@ -163,6 +177,8 @@ func ParametrosBusqueda(f domain.FiltroPlatos) url.Values {
 	if f.PrecioMax > 0 {
 		p.Add("fq", fmt.Sprintf("precio:[* TO %d]", f.PrecioMax))
 	}
+	// Siempre se desempata por id: sin un orden total, un plato podría aparecer en dos
+	// páginas o en ninguna al pasar de una a la otra.
 	switch f.Orden {
 	case domain.OrdenPrecioAsc:
 		p.Set("sort", "precio asc,id asc")
@@ -178,6 +194,8 @@ func ParametrosBusqueda(f domain.FiltroPlatos) url.Values {
 
 // ---------- Escritura ----------
 
+// GuardarSedes agrega o reemplaza sedes por id. La ubicación se guarda como "lat,lng",
+// el formato del tipo location de Solr.
 func (r *Repositorio) GuardarSedes(ctx context.Context, sedes []domain.Sede) error {
 	docs := make([]docCocina, 0, len(sedes))
 	for _, s := range sedes {
@@ -195,6 +213,8 @@ func (r *Repositorio) GuardarSedes(ctx context.Context, sedes []domain.Sede) err
 	return r.cli.Actualizar(ctx, CoreCocinas, docs)
 }
 
+// GuardarPlatos agrega o reemplaza platos por id. La fecha va en UTC y RFC 3339, el formato
+// que acepta el tipo pdate.
 func (r *Repositorio) GuardarPlatos(ctx context.Context, platos []domain.Plato) error {
 	docs := make([]docPlato, 0, len(platos))
 	for _, p := range platos {
@@ -283,7 +303,8 @@ func leerPunto(s string) (domain.Ubicacion, error) {
 	return domain.Ubicacion{Lat: lat, Lng: lng}, nil
 }
 
-// frase arma un valor exacto entre comillas para un filtro (fq).
+// frase arma un valor exacto entre comillas para un filtro (fq). Escapar \ y " impide que un
+// valor que manda el consumidor cierre las comillas y agregue condiciones propias al filtro.
 func frase(v string) string {
 	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
 	return `"` + r.Replace(v) + `"`

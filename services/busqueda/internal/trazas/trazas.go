@@ -1,5 +1,8 @@
 // Package trazas configura OpenTelemetry: cada solicitud genera una traza que sigue su
 // recorrido por el gateway, Búsqueda, Solr y Catálogo, y se ve en Jaeger.
+//
+// Es infraestructura transversal, como middleware. Las trazas muestran cuánto tardó cada
+// paso; el correlation_id de los logs sirve para encontrarlas (ver MarcarCorrelacion).
 package trazas
 
 import (
@@ -68,7 +71,9 @@ func Middleware() gin.HandlerFunc {
 }
 
 // MarcarCorrelacion agrega el X-Correlation-Id al span actual, para buscar una traza en
-// Jaeger a partir del id que aparece en los logs o que nos pasa el otro grupo.
+// Jaeger a partir del id que aparece en los logs o que nos pasa el otro grupo. Es el puente
+// entre los dos ids: el correlation_id es nuestro y lo conoce el consumidor; el trace_id lo
+// genera OpenTelemetry.
 func MarcarCorrelacion(ctx context.Context, id string) {
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("ghostkitchen.correlation_id", id))
 }

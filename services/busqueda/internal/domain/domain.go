@@ -1,6 +1,9 @@
 // Package domain define cómo son una sede (cocina) y un plato dentro de Búsqueda.
 // Son copias armadas para buscar: la fuente de verdad es Catálogo (datos comerciales)
 // e Inventario (disponibilidad).
+//
+// Es la capa de más adentro: no importa ningún otro paquete del servicio, y todos los demás
+// (handlers, services, repositories) dependen de ella (ADR-002).
 package domain
 
 import (
@@ -21,6 +24,10 @@ type Referencia struct {
 }
 
 // Sede es una cocina fantasma tal como la publicamos.
+//
+// Activa no sale en el JSON: una sede inactiva directamente no se publica. Igual se guarda
+// en el índice, para que desactivar una cocina en Catálogo pise su copia vieja en Solr.
+// Lo mismo pasa con Plato.Activo.
 type Sede struct {
 	ID               string       `json:"id"`
 	Nombre           string       `json:"nombre"`
@@ -57,6 +64,7 @@ type Plato struct {
 // Orden de los resultados de la búsqueda de platos.
 type Orden string
 
+// Valores de Orden que acepta el parámetro orden del contrato.
 const (
 	OrdenRelevancia Orden = "relevancia"
 	OrdenPrecioAsc  Orden = "precio_asc"
@@ -77,7 +85,8 @@ type FiltroPlatos struct {
 	TamPagina       int
 }
 
-// Etiquetas permitidas por el contrato.
+// EtiquetasValidas son las etiquetas permitidas por el contrato. Son las mismas que valida
+// Catálogo: si se agrega una, hay que cambiarla en los dos servicios y en el contrato.
 var EtiquetasValidas = map[string]bool{
 	"Vegano":      true,
 	"Vegetariano": true,
@@ -91,6 +100,8 @@ var (
 	ErrPlatoNoEncontrado = errors.New("plato no encontrado")
 	ErrSinCobertura      = errors.New("sin cobertura")
 	// ErrNoDisponible envuelve cualquier falla del almacenamiento (Solr caído, timeout).
-	// Nunca se responde una lista vacía para disimular una falla.
+	// Nunca se responde una lista vacía para disimular una falla: el handler la traduce a
+	// 503 con Retry-After (degradación honesta, ADR-010). Una lista vacía diría "no hay
+	// platos", que es falso; el 503 dice "no sé", que es la verdad.
 	ErrNoDisponible = errors.New("almacenamiento no disponible")
 )

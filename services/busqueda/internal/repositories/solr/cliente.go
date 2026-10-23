@@ -1,4 +1,8 @@
 // Package solr implementa el repositorio de Búsqueda sobre Apache Solr usando su API HTTP.
+//
+// Es la capa de repositorio (la implementación concreta de repositories.Lector e Indexador).
+// Es el único paquete que sabe hablar con Solr: cliente.go hace las llamadas HTTP,
+// esquema.go crea los campos y repositorio.go traduce entre el dominio y los documentos.
 package solr
 
 import (
@@ -27,12 +31,15 @@ const (
 )
 
 // Cliente habla con Solr por HTTP. No reintenta: quien llama decide (ADR-005).
+// Una consulta de usuario tiene un plazo de 3 s; con 2 s por llamada y sin reintentos,
+// si Solr no contesta se responde 503 enseguida en lugar de dejar la solicitud colgada.
+// Lo que sí reintenta es el arranque de Búsqueda, que es trabajo de fondo (ADR-010).
 type Cliente struct {
 	base string // ej. http://solr:8983/solr
 	http *http.Client
 }
 
-// NuevoCliente crea un cliente con un timeout por llamada.
+// NuevoCliente crea un cliente con un timeout por llamada (SOLR_TIMEOUT_MS, 2 s por defecto).
 func NuevoCliente(baseURL string, timeout time.Duration) *Cliente {
 	return &Cliente{
 		base: strings.TrimRight(baseURL, "/"),
@@ -76,7 +83,8 @@ func (c *Cliente) Get(ctx context.Context, core, id string) (json.RawMessage, er
 	return r.Doc, nil
 }
 
-// Actualizar agrega o reemplaza documentos (por id) y hace commit.
+// Actualizar agrega o reemplaza documentos (por id) y hace commit, para que lo guardado ya
+// aparezca en /select. Como se reemplaza por id, guardar dos veces lo mismo no duplica nada.
 func (c *Cliente) Actualizar(ctx context.Context, core string, docs any) error {
 	return c.hacer(ctx, http.MethodPost, "/"+core+"/update?commit=true", docs, nil)
 }
@@ -113,7 +121,11 @@ func (c *Cliente) NombresEsquema(ctx context.Context, core, recurso string) (map
 
 // hacer ejecuta una llamada a Solr dentro de un span propio. El span lleva el core y la
 // operación (ej. "solr platos/select"), pero no la URL completa: los parámetros pueden
-// tener coordenadas o el texto que buscó el consumidor, y eso no se registra.
+// tener coordenadas o el texto que buscó el consumidor, y eso no se registra (ADR-011).
+//
+// Toda falla (no conecta, timeout, Solr responde error o algo que no se entiende) sale
+// envuelta en domain.ErrNoDisponible. Así el handler responde 503 sin tener que conocer
+// los errores de Solr.
 func (c *Cliente) hacer(ctx context.Context, metodo, ruta string, cuerpo any, destino any) (err error) {
 	operacion := strings.TrimPrefix(strings.SplitN(ruta, "?", 2)[0], "/")
 	ctx, span := trazas.Tracer().Start(ctx, "solr "+operacion, trace.WithSpanKind(trace.SpanKindClient),
@@ -151,7 +163,7 @@ func (c *Cliente) hacer(ctx context.Context, metodo, ruta string, cuerpo any, de
 	}
 	defer resp.Body.Close()
 	trace.SpanFromContext(ctx).SetAttributes(attribute.Int("http.response.status_code", resp.StatusCode))
-	datos, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	datos, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // tope de 10 MiB para no agotar la memoria
 	if err != nil {
 		return fmt.Errorf("%w: leer respuesta: %v", domain.ErrNoDisponible, err)
 	}

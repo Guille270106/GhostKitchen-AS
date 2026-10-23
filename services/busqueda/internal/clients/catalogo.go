@@ -18,6 +18,8 @@ import (
 )
 
 // CocinaCatalogo es una cocina tal como la devuelve Catálogo en /internal/cocinas.
+// Es un tipo del cliente y no domain.Sede a propósito: si Catálogo cambia su JSON, se ajusta
+// acá y el dominio de Búsqueda no se entera.
 type CocinaCatalogo struct {
 	ID               string           `json:"id"`
 	Nombre           string           `json:"nombre"`
@@ -60,6 +62,10 @@ type PaginaPlatos struct {
 
 // Catalogo llama a la API interna de Catálogo. Es trabajo de fondo: hasta 5 s por intento
 // y 3 reintentos con espera creciente (ADR-005), separado del plazo de 3 s del usuario.
+//
+// Es el único punto de la cadena Búsqueda → Catálogo → MongoDB que reintenta: "reintenta
+// uno solo, el que llama a la dependencia" (ADR-010, Clase 7). Si también reintentaran
+// Catálogo o el gateway, cada falla se multiplicaría en muchos intentos.
 type Catalogo struct {
 	base      string
 	http      *http.Client
@@ -99,6 +105,8 @@ func (c *Catalogo) Platos(ctx context.Context, page, pageSize int) (PaginaPlatos
 	return r, err
 }
 
+// obtener hace un GET con reintentos. Repetirlo es seguro porque es una lectura: no cambia
+// nada en Catálogo, así que no hace falta clave de idempotencia.
 func (c *Catalogo) obtener(ctx context.Context, ruta string, destino any) error {
 	var ultimo error
 	for intento := 0; ; intento++ {
@@ -107,6 +115,8 @@ func (c *Catalogo) obtener(ctx context.Context, ruta string, destino any) error 
 			break
 		}
 		select {
+		// Si se cancela el contexto (apagado o se venció el plazo del arranque) no tiene
+		// sentido seguir esperando para reintentar.
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(c.reintento[intento]):
@@ -118,6 +128,8 @@ func (c *Catalogo) obtener(ctx context.Context, ruta string, destino any) error 
 	return nil
 }
 
+// unaVez hace un solo intento. El límite de 5 s lo pone http.Client.Timeout y cubre toda la
+// llamada, incluida la lectura del cuerpo.
 func (c *Catalogo) unaVez(ctx context.Context, ruta string, destino any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+ruta, nil)
 	if err != nil {
@@ -132,6 +144,7 @@ func (c *Catalogo) unaVez(ctx context.Context, ruta string, destino any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		// Se vacía el cuerpo para que la conexión vuelva al pool y el reintento la reuse.
 		_, _ = io.Copy(io.Discard, resp.Body)
 		return fmt.Errorf("respondió %d", resp.StatusCode)
 	}

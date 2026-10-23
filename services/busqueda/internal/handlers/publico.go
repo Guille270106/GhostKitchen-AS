@@ -22,6 +22,8 @@ import (
 // El gateway ya lo controla; el servicio lo vuelve a controlar por si lo llaman directo.
 const MaxCuerpoProximidad = 64 << 10
 
+// patronSedeID es el formato de id de sede del contrato. Validarlo antes evita mandarle
+// a Solr valores raros y responde 400 en vez de un 404 confuso.
 var patronSedeID = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 // Publico atiende la capacidad publicada (/v1). La API key y el límite de uso
@@ -116,7 +118,12 @@ func (h *Publico) proximidad(c *gin.Context) {
 }
 
 // ---------- Lectura y validación de parámetros ----------
+//
+// Las funciones de lectura juntan todos los errores en lugar de cortar en el primero, así
+// el consumidor ve en una sola respuesta 400 todo lo que tiene que corregir.
 
+// leerCoordenada lee lat o lng de la query. Rechaza "NaN" e "Inf" porque ParseFloat los
+// acepta como números, pero no son coordenadas.
 func leerCoordenada(c *gin.Context, nombre string, limite float64, errs *[]ErrorParametro) float64 {
 	v, ok := c.GetQuery(nombre)
 	if !ok || strings.TrimSpace(v) == "" {
@@ -134,6 +141,9 @@ func leerCoordenada(c *gin.Context, nombre string, limite float64, errs *[]Error
 	return n
 }
 
+// leerFiltro arma el filtro de búsqueda de platos con los valores por defecto del contrato:
+// solo disponibles, orden por relevancia, página 1 de 20. pageSize tiene un máximo de 50
+// para que nadie pida respuestas enormes.
 func leerFiltro(c *gin.Context) (domain.FiltroPlatos, []ErrorParametro) {
 	var errs []ErrorParametro
 	f := domain.FiltroPlatos{
@@ -228,6 +238,8 @@ func leerConsultaProximidad(w http.ResponseWriter, r *http.Request) (services.Co
 		}
 		return services.ConsultaProximidad{}, []ErrorParametro{errorJSON(err)}, false
 	}
+	// Un segundo Decode tiene que dar EOF: así se rechaza un cuerpo con dos objetos
+	// seguidos o con basura después del primero.
 	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		var grande *http.MaxBytesError
 		if errors.As(err, &grande) {
@@ -248,10 +260,12 @@ func leerConsultaProximidad(w http.ResponseWriter, r *http.Request) (services.Co
 	default:
 		radio = *in.RadioKm
 	}
-	incluir := in.IncluirDarkKitchen != nil && *in.IncluirDarkKitchen
+	incluir := in.IncluirDarkKitchen != nil && *in.IncluirDarkKitchen // ausente = false
 	return services.ConsultaProximidad{Cliente: cliente, Sede: sede, RadioKm: radio, IncluirDarkKitchen: incluir}, errs, false
 }
 
+// validarCoordenadas revisa un objeto {lat, lng} del cuerpo. Los mensajes nombran el campo
+// completo (ej. ubicacionCliente.lat) para que el consumidor sepa cuál corregir.
 func validarCoordenadas(nombre string, c *coordenadasEntrada, errs *[]ErrorParametro) domain.Ubicacion {
 	if c == nil {
 		*errs = append(*errs, ErrorParametro{nombre, "Es obligatorio."})
@@ -289,6 +303,8 @@ func errorJSON(err error) ErrorParametro {
 		return ErrorParametro{"cuerpo", "JSON mal formado."}
 	case errors.Is(err, io.EOF):
 		return ErrorParametro{"cuerpo", "El cuerpo es obligatorio."}
+	// encoding/json no tiene un tipo de error para los campos desconocidos: solo se
+	// pueden reconocer por el texto del mensaje.
 	case strings.HasPrefix(err.Error(), "json: unknown field "):
 		campo := strings.Trim(strings.TrimPrefix(err.Error(), "json: unknown field "), `"`)
 		return ErrorParametro{campo, "Campo no permitido."}
@@ -297,6 +313,7 @@ func errorJSON(err error) ErrorParametro {
 	}
 }
 
+// nombreTipo traduce un tipo de Go a palabras que entiende alguien que no conoce Go.
 func nombreTipo(t string) string {
 	switch strings.TrimPrefix(t, "*") {
 	case "bool":
