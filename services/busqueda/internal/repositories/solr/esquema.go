@@ -2,17 +2,24 @@ package solr
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // El esquema se crea desde el código con la Schema API, y no con archivos de configuración
 // de Solr. Así un core vacío (recién creado o borrado) queda listo cuando arranca Búsqueda:
 // el índice es una copia reconstruible y no hay que prepararlo a mano (ADR-003).
 
-// tipoTexto es el tipo de texto para buscar: separa palabras, pasa a minúsculas y quita
-// acentos, así "CAFE" encuentra "Café". Se guarda el texto original para mostrarlo.
-// Los mismos filtros se aplican al indexar y al buscar, por eso los dos lados coinciden.
-// Con preserveOriginal=false solo se indexa la forma sin acento (un token por palabra).
+// tipoTexto es el tipo de texto para buscar: separa palabras, pasa a minúsculas, quita
+// acentos y reduce cada palabra a su raíz en español, así "CAFE" encuentra "Café" y
+// "hamburguesa" encuentra "Hamburguesas" (Clase 5: análisis del texto). Se guarda el texto
+// original para mostrarlo. Los mismos filtros se aplican al indexar y al buscar, por eso
+// los dos lados coinciden. Con preserveOriginal=false solo se indexa la forma sin acento.
+//
+// SpanishLightStemFilter es un "stemmer liviano": saca el plural y la vocal final
+// ("hamburguesas" y "hamburguesa" quedan "hamburgues"), sin cortes agresivos que mezclen
+// palabras distintas. Las palabras de menos de 5 letras quedan como están.
 var tipoTexto = map[string]any{
 	"name":                 "text_gk",
 	"class":                "solr.TextField",

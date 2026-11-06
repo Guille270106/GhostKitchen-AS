@@ -9,10 +9,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -97,6 +99,21 @@ func (c *Cliente) Esquema(ctx context.Context, core string, comandos any) error 
 // NombresEsquema devuelve los nombres de campos o tipos de campo existentes.
 // recurso: "fields", "fieldtypes" o "copyfields".
 func (c *Cliente) NombresEsquema(ctx context.Context, core, recurso string) (map[string]bool, error) {
+	defs, err := c.DefinicionesEsquema(ctx, core, recurso)
+	if err != nil {
+		return nil, err
+	}
+	nombres := make(map[string]bool, len(defs))
+	for n := range defs {
+		nombres[n] = true
+	}
+	return nombres, nil
+}
+
+// DefinicionesEsquema devuelve cada campo, tipo o copia del esquema con su definición
+// completa, por nombre (las copias, como "origen->destino"). Sirve para saber si algo
+// existe y también si quedó con una definición vieja.
+func (c *Cliente) DefinicionesEsquema(ctx context.Context, core, recurso string) (map[string]map[string]any, error) {
 	// Solr responde un objeto con "responseHeader" y la lista ("fields", "fieldTypes" o
 	// "copyFields"). Solo se lee la lista; el resto de la respuesta se ignora.
 	var r struct {
@@ -108,15 +125,15 @@ func (c *Cliente) NombresEsquema(ctx context.Context, core, recurso string) (map
 		return nil, err
 	}
 	items := map[string][]map[string]any{"fields": r.Fields, "fieldtypes": r.FieldTypes, "copyfields": r.CopyFields}[recurso]
-	nombres := map[string]bool{}
+	defs := map[string]map[string]any{}
 	for _, item := range items {
 		if recurso == "copyfields" {
-			nombres[fmt.Sprint(item["source"])+"->"+fmt.Sprint(item["dest"])] = true
+			defs[fmt.Sprint(item["source"])+"->"+fmt.Sprint(item["dest"])] = item
 			continue
 		}
-		nombres[fmt.Sprint(item["name"])] = true
+		defs[fmt.Sprint(item["name"])] = item
 	}
-	return nombres, nil
+	return defs, nil
 }
 
 // hacer ejecuta una llamada a Solr dentro de un span propio. El span lleva el core y la
@@ -152,14 +169,15 @@ func (c *Cliente) hacer(ctx context.Context, metodo, ruta string, cuerpo any, de
 	}
 	req, err := http.NewRequestWithContext(ctx, metodo, c.base+ruta, body)
 	if err != nil {
-		return fmt.Errorf("solr: armar solicitud: %w", err)
+		// No se incluye err: trae la URL completa, con sus parámetros.
+		return fmt.Errorf("solr: armar solicitud para %s", operacion)
 	}
 	if cuerpo != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("%w: %v", domain.ErrNoDisponible, err)
+		return fmt.Errorf("%w: solr %s: %s", domain.ErrNoDisponible, operacion, sinURL(err))
 	}
 	defer resp.Body.Close()
 	trace.SpanFromContext(ctx).SetAttributes(attribute.Int("http.response.status_code", resp.StatusCode))
@@ -170,7 +188,7 @@ func (c *Cliente) hacer(ctx context.Context, metodo, ruta string, cuerpo any, de
 	if resp.StatusCode >= 300 {
 		var e errorSolr
 		_ = json.Unmarshal(datos, &e)
-		return fmt.Errorf("%w: solr respondió %d: %s", domain.ErrNoDisponible, resp.StatusCode, e.Error.Msg)
+		return fmt.Errorf("%w: solr %s respondió %d: %s", domain.ErrNoDisponible, operacion, resp.StatusCode, sinTextoCitado(e.Error.Msg))
 	}
 	if destino != nil {
 		if err := json.Unmarshal(datos, destino); err != nil {
@@ -178,4 +196,29 @@ func (c *Cliente) hacer(ctx context.Context, metodo, ruta string, cuerpo any, de
 		}
 	}
 	return nil
+}
+
+// sinURL devuelve el motivo de un error de red sin la URL: Go arma esos errores como
+// `Get "http://...?pt=-31.42,-64.18&q=...": connection refused`, y la URL tiene los
+// parámetros de la consulta (coordenadas, texto buscado) que no se registran (ADR-011).
+func sinURL(err error) string {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return ue.Err.Error()
+	}
+	return err.Error()
+}
+
+// textoCitado encuentra lo que Solr pone entre comillas simples en sus mensajes de error.
+// Ahí repite la consulta que no pudo entender (ej. "Cannot parse 'hamburguesa (': ...").
+var textoCitado = regexp.MustCompile(`'[^']*'`)
+
+// sinTextoCitado deja el motivo del error de Solr (sirve para diagnosticar) pero quita la
+// consulta que repite entre comillas, y lo corta a 200 caracteres.
+func sinTextoCitado(msg string) string {
+	msg = textoCitado.ReplaceAllString(msg, "'…'")
+	if r := []rune(msg); len(r) > 200 {
+		msg = string(r[:200]) + "…"
+	}
+	return msg
 }
