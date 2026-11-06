@@ -79,7 +79,7 @@ def main():
                 docker("run", "--rm", user)
         for user, password in users:
             result = sql(user, password, user + "_db", "SELECT nombre FROM servicio_metadata; SELECT version, dirty FROM schema_migrations;")
-            version = "2" if user == "inventario" else "1"
+            version = "3" if user == "inventario" else "1"
             assert result.stdout.splitlines() == [user, version + "\t0"], result.stdout
             for other, _ in users:
                 if user == other:

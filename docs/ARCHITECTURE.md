@@ -1,6 +1,6 @@
 # Arquitectura de GhostKitchen
 
-> **V5:** Inventario incorpora su base hexagonal y API interna de ingredientes, con migraciones en el entrypoint. La exposición autenticada por gateway depende de G9; recetas, reservas y mensajería quedan para las tareas siguientes. Ver [Inventario](../services/inventario/README.md).
+> **V5 y V6:** Inventario incorpora su base hexagonal y API interna de ingredientes y recetas, con migraciones en el entrypoint y validación de pertenencia a la cocina. La exposición autenticada por gateway depende de G9; reservas y mensajería quedan para las tareas siguientes. Ver [Inventario](../services/inventario/README.md).
 
 > **Actualización de ronda 1 (06/11/2026):** MySQL incorpora `usuarios_db`, `inventario_db` y `pedidos_db` con usuarios aislados y migraciones versionadas por servicio. Los trabajos de migración son plantillas ejecutables; las API de esos servicios siguen pendientes. Ver [guía de MySQL](../infra/mysql/README.md) y [ADR-004](adr/ADR-004-consistencia-y-concurrencia.md). La API publicada ahora limita por IP cuando falta API key y Búsqueda limita a 10 s la espera entre reintentos de arranque.
 

@@ -52,14 +52,7 @@ func Nuevo(svc *application.Ingredientes, ready func(context.Context) error, log
 		}
 		c.JSON(200, gin.H{"estado": "listo"})
 	})
-	cocina := r.Group("/cocina", func(c *gin.Context) {
-		if err := identidad(c).Validar(); err != nil {
-			responderError(c, err)
-			c.Abort()
-			return
-		}
-		c.Next()
-	})
+	cocina := r.Group("/cocina", autenticarCocina)
 	cocina.POST("/ingredientes", func(c *gin.Context) {
 		var datos struct {
 			Nombre       string `json:"nombre"`
@@ -107,6 +100,8 @@ func Nuevo(svc *application.Ingredientes, ready func(context.Context) error, log
 
 func responderError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, domain.ErrRecetaInvalida):
+		fallo(c, 400, "RECETA_INVALIDA", err.Error())
 	case errors.Is(err, domain.ErrDatosInvalidos):
 		fallo(c, 400, "DATOS_INVALIDOS", err.Error())
 	case errors.Is(err, domain.ErrSinIdentidad):

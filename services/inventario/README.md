@@ -2,9 +2,9 @@
 
 **Responsable:** Valentina Rey.
 
-> **V5 implementado:** servicio base hexagonal, MySQL e ingredientes (HU19). El entrypoint aplica sus migraciones antes de arrancar HTTP. Ver [guía de migraciones](../../infra/mysql/README.md) y [ADR-004](../../docs/adr/ADR-004-consistencia-y-concurrencia.md).
+> **V5 y V6 implementados:** servicio base hexagonal, MySQL, ingredientes (HU19) y recetas (HU18, RN18). El entrypoint aplica sus migraciones antes de arrancar HTTP. Ver [guía de migraciones](../../infra/mysql/README.md) y [ADR-004](../../docs/adr/ADR-004-consistencia-y-concurrencia.md).
 
-> Recetas, reservas, movimientos y mensajería siguen siendo diseño previsto para V6 y siguientes. No están implementados en V5.
+> Reservas, movimientos y mensajería siguen pendientes para V7 y siguientes.
 
 Dice **con qué se hace cada plato y si alcanza**. Puerto interno **8084**.
 
@@ -62,6 +62,28 @@ docker compose -p gk-v5-check -f services/inventario/testdata/compose.yml down -
 ```
 
 La prueba MySQL verifica persistencia, consulta por cocina, rechazo de referencias desconocidas/inactivas y restricciones de stock. Sin `TEST_MYSQL=1` se omite esa prueba; las pruebas HTTP usan un repositorio de memoria como doble, no como almacenamiento del servicio.
+
+## V6 — Recetas de la cocina
+
+| Método y ruta interna | Resultado |
+| --- | --- |
+| `PUT /cocina/platos/{id}/receta` | Cargar o reemplazar la receta completa del plato; devuelve 200 |
+| `GET /cocina/platos/{id}/receta` | Consultar una receta propia; 404 si falta o pertenece a otra cocina |
+| `GET /cocina/recetas` | Listar recetas de la cocina asignada, en `items` |
+
+El PUT recibe ingredientes por **una unidad del plato**, en la unidad definida para cada ingrediente:
+
+```json
+{"items":[{"ingredienteId":"UUID-del-ingrediente","cantidad":200}]}
+```
+
+Exige una lista no vacía, ingredientes sin repetir y cantidades enteras mayores a cero. Campos extras, cantidades fraccionarias, nulas o ausentes producen 400. La cocina se obtiene de la misma identidad interna de V5: no se recibe en el cuerpo. Admin y otros roles reciben 403; platos o ingredientes ajenos, desconocidos o referencias inactivas reciben 404. No hay una verificación nueva de JWT: la integración de G9 sigue pendiente.
+
+La migración **000003** agrega `plato_ref`, `receta` y `receta_item`. Las referencias de los 64 platos iniciales se copiaron del seed actual de Catálogo, calculando cocina y estado con su restaurante y cocina; `p64` permanece inactivo. Son referencias locales con versión 0: V12 incorporará la actualización por eventos. Un plato nuevo sin referencia local no admite receta. No se consulta la base ni la API de Catálogo durante una solicitud.
+
+Guardar bloquea la referencia del plato y la cabecera de receta, valida ingredientes en orden de ID y reemplaza los ítems en una transacción. Si falla, se conservan todos los ítems y la versión anteriores. Las claves foráneas compuestas impiden mezclar cocinas también en MySQL. Cada guardado exitoso incrementa `version`; dos ediciones concurrentes se serializan y queda la última receta completa. Reenviar el mismo PUT conserva sus ingredientes, pero incrementa la versión: no se deduplica por Idempotency-Key. V6 no reserva ni modifica stock.
+
+Las pruebas se ejecutan con los comandos de V5. Agregan validación HTTP, permisos, persistencia de recetas, rollback ante ingredientes ajenos o inexistentes, restricciones SQL y reemplazos concurrentes completos. El GET lee cada receta completa en una sola consulta, para no mezclar versiones.
 
 ## Qué hace
 

@@ -68,5 +68,7 @@ func (r *Repositorio) Obtener(ctx context.Context, cocina, id string) (domain.In
 func (r *Repositorio) Ready(ctx context.Context) error {
 	// Comprueba conectividad y que la migración del servicio está aplicada.
 	var n int
-	return r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ingrediente WHERE 1=0`).Scan(&n)
+	return r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ingrediente i
+ JOIN receta r ON r.cocina_id=i.cocina_id JOIN receta_item ri ON ri.plato_id=r.plato_id
+ JOIN plato_ref p ON p.id=r.plato_id WHERE 1=0`).Scan(&n)
 }
