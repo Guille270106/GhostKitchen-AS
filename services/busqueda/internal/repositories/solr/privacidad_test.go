@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -46,4 +47,28 @@ func TestErrorDeSolrNoTieneElTextoBuscado(t *testing.T) {
 	if !strings.Contains(err.Error(), "400") || !strings.Contains(err.Error(), "Cannot parse") {
 		t.Fatalf("el error tiene que conservar el código y el motivo: %v", err)
 	}
+}
+
+// El esquema y las escrituras son trabajo de fondo: aguantan más que el límite de una
+// consulta, que tiene que seguir siendo corto para no dejar colgada una solicitud.
+func TestEsquemaTieneMasTiempoQueUnaConsulta(t *testing.T) {
+	srv := nuevoSolrLento(t, 300*time.Millisecond)
+	cli := NuevoCliente(srv, 100*time.Millisecond)
+	if err := cli.Esquema(context.Background(), CorePlatos, map[string]any{"add-field": []any{}}); err != nil {
+		t.Fatalf("el esquema tenía que esperar más que el límite de consulta: %v", err)
+	}
+	if _, err := cli.Select(context.Background(), CorePlatos, nil); !errors.Is(err, domain.ErrNoDisponible) {
+		t.Fatalf("la consulta tenía que cortar a los 100 ms: %v", err)
+	}
+}
+
+func nuevoSolrLento(t *testing.T, demora time.Duration) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(demora)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"responseHeader":{"status":0},"response":{"numFound":0,"docs":[]}}`)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/solr"
 }

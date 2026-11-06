@@ -37,15 +37,28 @@ const (
 // si Solr no contesta se responde 503 enseguida en lugar de dejar la solicitud colgada.
 // Lo que sí reintenta es el arranque de Búsqueda, que es trabajo de fondo (ADR-010).
 type Cliente struct {
-	base string // ej. http://solr:8983/solr
-	http *http.Client
+	base  string       // ej. http://solr:8983/solr
+	http  *http.Client // consultas: el límite corto de una solicitud de usuario
+	fondo *http.Client // esquema y escrituras: trabajo de fondo, con más tiempo
 }
 
-// NuevoCliente crea un cliente con un timeout por llamada (SOLR_TIMEOUT_MS, 2 s por defecto).
+// TimeoutFondo es el límite para cambiar el esquema y escribir documentos. Esas llamadas
+// solo las hace el arranque y la reconstrucción del índice, nunca una solicitud de usuario,
+// y pueden tardar: al cambiar el esquema Solr recarga el core (la primera vez tardó más de
+// 2 s), y cada escritura hace commit (en la traza, casi 0,7 s).
+const TimeoutFondo = 15 * time.Second
+
+// NuevoCliente crea un cliente con un timeout por consulta (SOLR_TIMEOUT_MS, 2 s por defecto).
+// El esquema y las escrituras usan TimeoutFondo, o el de consulta si es mayor.
 func NuevoCliente(baseURL string, timeout time.Duration) *Cliente {
+	fondo := TimeoutFondo
+	if timeout > fondo {
+		fondo = timeout
+	}
 	return &Cliente{
-		base: strings.TrimRight(baseURL, "/"),
-		http: &http.Client{Timeout: timeout},
+		base:  strings.TrimRight(baseURL, "/"),
+		http:  &http.Client{Timeout: timeout},
+		fondo: &http.Client{Timeout: fondo},
 	}
 }
 
@@ -67,7 +80,7 @@ type errorSolr struct {
 // Select ejecuta /select en un core.
 func (c *Cliente) Select(ctx context.Context, core string, params url.Values) (respuestaSelect, error) {
 	var r respuestaSelect
-	err := c.hacer(ctx, http.MethodGet, "/"+core+"/select?"+params.Encode(), nil, &r)
+	err := c.hacer(ctx, c.http, http.MethodGet, "/"+core+"/select?"+params.Encode(), nil, &r)
 	return r, err
 }
 
@@ -76,7 +89,7 @@ func (c *Cliente) Get(ctx context.Context, core, id string) (json.RawMessage, er
 	var r struct {
 		Doc json.RawMessage `json:"doc"`
 	}
-	if err := c.hacer(ctx, http.MethodGet, "/"+core+"/get?id="+url.QueryEscape(id), nil, &r); err != nil {
+	if err := c.hacer(ctx, c.http, http.MethodGet, "/"+core+"/get?id="+url.QueryEscape(id), nil, &r); err != nil {
 		return nil, err
 	}
 	if len(r.Doc) == 0 || string(r.Doc) == "null" {
@@ -88,12 +101,12 @@ func (c *Cliente) Get(ctx context.Context, core, id string) (json.RawMessage, er
 // Actualizar agrega o reemplaza documentos (por id) y hace commit, para que lo guardado ya
 // aparezca en /select. Como se reemplaza por id, guardar dos veces lo mismo no duplica nada.
 func (c *Cliente) Actualizar(ctx context.Context, core string, docs any) error {
-	return c.hacer(ctx, http.MethodPost, "/"+core+"/update?commit=true", docs, nil)
+	return c.hacer(ctx, c.fondo, http.MethodPost, "/"+core+"/update?commit=true", docs, nil)
 }
 
 // Esquema envía comandos a la Schema API.
 func (c *Cliente) Esquema(ctx context.Context, core string, comandos any) error {
-	return c.hacer(ctx, http.MethodPost, "/"+core+"/schema", comandos, nil)
+	return c.hacer(ctx, c.fondo, http.MethodPost, "/"+core+"/schema", comandos, nil)
 }
 
 // NombresEsquema devuelve los nombres de campos o tipos de campo existentes.
@@ -121,7 +134,7 @@ func (c *Cliente) DefinicionesEsquema(ctx context.Context, core, recurso string)
 		FieldTypes []map[string]any `json:"fieldTypes"`
 		CopyFields []map[string]any `json:"copyFields"`
 	}
-	if err := c.hacer(ctx, http.MethodGet, "/"+core+"/schema/"+recurso, nil, &r); err != nil {
+	if err := c.hacer(ctx, c.fondo, http.MethodGet, "/"+core+"/schema/"+recurso, nil, &r); err != nil {
 		return nil, err
 	}
 	items := map[string][]map[string]any{"fields": r.Fields, "fieldtypes": r.FieldTypes, "copyfields": r.CopyFields}[recurso]
@@ -143,7 +156,7 @@ func (c *Cliente) DefinicionesEsquema(ctx context.Context, core, recurso string)
 // Toda falla (no conecta, timeout, Solr responde error o algo que no se entiende) sale
 // envuelta en domain.ErrNoDisponible. Así el handler responde 503 sin tener que conocer
 // los errores de Solr.
-func (c *Cliente) hacer(ctx context.Context, metodo, ruta string, cuerpo any, destino any) (err error) {
+func (c *Cliente) hacer(ctx context.Context, cli *http.Client, metodo, ruta string, cuerpo any, destino any) (err error) {
 	operacion := strings.TrimPrefix(strings.SplitN(ruta, "?", 2)[0], "/")
 	ctx, span := trazas.Tracer().Start(ctx, "solr "+operacion, trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
@@ -175,7 +188,7 @@ func (c *Cliente) hacer(ctx context.Context, metodo, ruta string, cuerpo any, de
 	if cuerpo != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.http.Do(req)
+	resp, err := cli.Do(req)
 	if err != nil {
 		return fmt.Errorf("%w: solr %s: %s", domain.ErrNoDisponible, operacion, sinURL(err))
 	}

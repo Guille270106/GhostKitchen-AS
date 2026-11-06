@@ -29,6 +29,7 @@ var tipoTexto = map[string]any{
 		"filters": []map[string]any{
 			{"class": "solr.LowerCaseFilterFactory"},
 			{"class": "solr.ASCIIFoldingFilterFactory", "preserveOriginal": "false"},
+			{"class": "solr.SpanishLightStemFilterFactory"},
 		},
 	},
 }
@@ -85,8 +86,10 @@ var camposPlatos = []map[string]any{
 	campo("actualizado_en", "pdate"),
 }
 
-// PrepararEsquema crea en cada core el tipo de texto y los campos que falten.
-// Se puede ejecutar en cada arranque: solo agrega lo que no existe.
+// PrepararEsquema crea en cada core el tipo de texto y los campos que falten, y actualiza
+// el tipo de texto si quedó de una versión anterior. Se puede ejecutar en cada arranque.
+// Si el tipo cambia, los documentos viejos quedan indexados con la definición anterior:
+// por eso Búsqueda reconstruye todo el índice al arrancar, después de preparar el esquema.
 func (r *Repositorio) PrepararEsquema(ctx context.Context) error {
 	if err := r.prepararCore(ctx, CoreCocinas, false, camposCocinas, nil); err != nil {
 		return err
@@ -99,13 +102,21 @@ func (r *Repositorio) PrepararEsquema(ctx context.Context) error {
 // Schema API da error si se agrega un campo o un tipo que ya está.
 func (r *Repositorio) prepararCore(ctx context.Context, core string, conTexto bool, campos, copias []map[string]any) error {
 	if conTexto {
-		tipos, err := r.cli.NombresEsquema(ctx, core, "fieldtypes")
+		tipos, err := r.cli.DefinicionesEsquema(ctx, core, "fieldtypes")
 		if err != nil {
 			return fmt.Errorf("leer tipos de %s: %w", core, err)
 		}
-		if !tipos["text_gk"] {
+		actual, existe := tipos["text_gk"]
+		switch {
+		case !existe:
 			if err := r.cli.Esquema(ctx, core, map[string]any{"add-field-type": tipoTexto}); err != nil {
 				return fmt.Errorf("crear tipo text_gk en %s: %w", core, err)
+			}
+		case !tieneFiltro(actual, "spanishlightstem"):
+			// El core se creó con una versión anterior de text_gk (sin raíces en español).
+			// replace-field-type cambia la definición y Solr recarga el core.
+			if err := r.cli.Esquema(ctx, core, map[string]any{"replace-field-type": tipoTexto}); err != nil {
+				return fmt.Errorf("actualizar tipo text_gk en %s: %w", core, err)
 			}
 		}
 	}
@@ -144,4 +155,12 @@ func (r *Repositorio) prepararCore(ctx context.Context, core string, conTexto bo
 		}
 	}
 	return nil
+}
+
+// tieneFiltro dice si la definición de un tipo de campo usa un filtro. Se busca por nombre,
+// sin mayúsculas, porque Solr puede devolver la clase ("solr.SpanishLightStemFilterFactory")
+// o el nombre corto ("spanishLightStem") según cómo se creó el tipo.
+func tieneFiltro(definicion map[string]any, filtro string) bool {
+	b, _ := json.Marshal(definicion)
+	return strings.Contains(strings.ToLower(string(b)), filtro)
 }
