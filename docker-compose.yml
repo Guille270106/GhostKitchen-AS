@@ -1,11 +1,117 @@
-# Puesta en marcha local de GhostKitchen: `docker compose up`
+# Puesta en marcha local de GhostKitchen: `docker compose up --build`
 #
-# Estado (Entrega 1):
-#   - contract-mock: mock de la capacidad publicada, servido desde el contrato OpenAPI.
-# El frontend, el API Gateway, los microservicios, las bases de datos, RabbitMQ, Solr y la
-# observabilidad se agregan en las próximas entregas (ver docs/ARCHITECTURE.md, sección 11).
-# Los secretos se van a leer de un archivo .env que no se versiona (ver .env.example).
+# Estado (Entrega 2):
+#   - gateway:       NGINX en el puerto 8080. Publica la capacidad en /public/v1 (API key y límite)
+#                    y las lecturas de Catálogo en /api/v1.
+#   - catalogo:      servicio Catálogo (Go + Gin). Fuente de verdad de cocinas, restaurantes y platos.
+#   - mongo:         MongoDB, base catalogo_db con su propio usuario.
+#   - busqueda:      servicio Búsqueda (Go + Gin). Arma su índice desde Catálogo y atiende la capacidad publicada.
+#   - solr:          índice de Búsqueda (cores "cocinas" y "platos").
+#   - jaeger:        recibe las trazas (OpenTelemetry) del gateway, Búsqueda y Catálogo. UI en el puerto 16686.
+#   - contract-mock: mock de la capacidad publicada, servido desde el contrato OpenAPI (puerto 4010).
+# Los demás servicios, MySQL, RabbitMQ, las métricas y el tablero se agregan en las próximas entregas.
+# Los secretos se leen del archivo .env, que no se versiona (copiar .env.example como .env).
 services:
+  gateway:
+    image: nginx:1.27-alpine-otel     # NGINX con el módulo de OpenTelemetry
+    container_name: ghostkitchen-gateway
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      busqueda:
+        condition: service_healthy
+      catalogo:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    restart: unless-stopped
+
+  catalogo:
+    build: ./services/catalogo
+    container_name: ghostkitchen-catalogo
+    environment:
+      PORT: "8082"
+      MONGO_URI: mongodb://catalogo:${CATALOGO_DB_PASSWORD:?Completá CATALOGO_DB_PASSWORD en .env}@mongo:27017/catalogo_db?authSource=catalogo_db
+      MONGO_DB: catalogo_db
+      MONGO_TIMEOUT_MS: "2000"
+      SEED_AL_INICIAR: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    expose:
+      - "8082"            # solo dentro de la red de Docker
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8082/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    container_name: ghostkitchen-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Completá MONGO_ROOT_PASSWORD en .env}
+      CATALOGO_DB_PASSWORD: ${CATALOGO_DB_PASSWORD:?Completá CATALOGO_DB_PASSWORD en .env}
+    volumes:
+      - mongo-data:/data/db
+      - ./infra/mongo:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "27017:27017"     # para mirar los datos con MongoDB Compass (solo desarrollo)
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  busqueda:
+    build: ./services/busqueda
+    container_name: ghostkitchen-busqueda
+    environment:
+      PORT: "8083"
+      SOLR_URL: http://solr:8983/solr
+      SOLR_TIMEOUT_MS: "2000"
+      CATALOGO_URL: http://catalogo:8082
+      PUBLIC_API_KEYS: ${PUBLIC_API_KEYS:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    expose:
+      - "8083"            # solo dentro de la red de Docker: desde afuera se entra por el gateway
+    depends_on:
+      - solr
+      - catalogo
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8083/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+    restart: unless-stopped
+
+  solr:
+    image: solr:9.7
+    container_name: ghostkitchen-solr
+    command: bash -c "precreate-core cocinas; precreate-core platos; exec solr -f"
+    environment:
+      SOLR_HEAP: 512m
+    volumes:
+      - solr-data:/var/solr
+    ports:
+      - "8983:8983"       # panel de administración de Solr (solo para desarrollo)
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: ghostkitchen-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"   # recibe OTLP por gRPC (4317, gateway) y HTTP (4318, servicios)
+    ports:
+      - "16686:16686"     # interfaz web para ver las trazas
+    restart: unless-stopped
+
   contract-mock:
     image: stoplight/prism:5
     container_name: ghostkitchen-contract-mock
@@ -14,3 +120,7 @@ services:
       - ./docs/contracts:/contracts:ro
     ports:
       - "4010:4010"
+
+volumes:
+  mongo-data:
+  solr-data:

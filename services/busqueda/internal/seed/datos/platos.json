@@ -1,0 +1,804 @@
+[
+ {
+  "id": "p1",
+  "restauranteId": "r1",
+  "nombre": "Mega doble",
+  "descripcion": "Dos medallones de carne, doble cheddar y la salsa de la casa.",
+  "categoria": "Hamburguesas",
+  "etiquetas": [],
+  "precio": 12900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p2",
+  "restauranteId": "r1",
+  "nombre": "Cheese bacon",
+  "descripcion": "Medallón de carne, cheddar y panceta crocante.",
+  "categoria": "Hamburguesas",
+  "etiquetas": [],
+  "precio": 13400,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p3",
+  "restauranteId": "r1",
+  "nombre": "Veggie burger",
+  "descripcion": "Medallón de garbanzos, lechuga, tomate y mayonesa vegana.",
+  "categoria": "Hamburguesas",
+  "etiquetas": [
+   "Vegano"
+  ],
+  "precio": 11800,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p4",
+  "restauranteId": "r1",
+  "nombre": "Papas medianas",
+  "descripcion": "Papas fritas con sal.",
+  "categoria": "Acompañamientos",
+  "etiquetas": [
+   "Vegano",
+   "Sin TACC"
+  ],
+  "precio": 4500,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p5",
+  "restauranteId": "r2",
+  "nombre": "Salmón roll x 10",
+  "descripcion": "Rolls de salmón rosado y arroz de sushi.",
+  "categoria": "Sushi",
+  "etiquetas": [
+   "Sin TACC"
+  ],
+  "precio": 15500,
+  "disponible": false,
+  "activo": true
+ },
+ {
+  "id": "p6",
+  "restauranteId": "r2",
+  "nombre": "Philadelphia roll x 10",
+  "descripcion": "Salmón, queso crema y palta.",
+  "categoria": "Sushi",
+  "etiquetas": [
+   "Sin TACC"
+  ],
+  "precio": 14800,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p7",
+  "restauranteId": "r2",
+  "nombre": "Veggie roll x 10",
+  "descripcion": "Palta, pepino y zanahoria.",
+  "categoria": "Sushi",
+  "etiquetas": [
+   "Vegano",
+   "Sin TACC"
+  ],
+  "precio": 12200,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p8",
+  "restauranteId": "r2",
+  "nombre": "Gyozas de cerdo x 6",
+  "descripcion": "Empanaditas japonesas a la plancha con salsa de soja.",
+  "categoria": "Entradas",
+  "etiquetas": [],
+  "precio": 8900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p9",
+  "restauranteId": "r3",
+  "nombre": "Pizza muzzarella",
+  "descripcion": "Salsa de tomate, muzzarella y aceitunas.",
+  "categoria": "Pizzas",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 11500,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p10",
+  "restauranteId": "r3",
+  "nombre": "Pizza napolitana",
+  "descripcion": "Muzzarella, rodajas de tomate, ajo y perejil.",
+  "categoria": "Pizzas",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 12900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p11",
+  "restauranteId": "r3",
+  "nombre": "Pizza calabresa picante",
+  "descripcion": "Muzzarella, longaniza calabresa y ají molido.",
+  "categoria": "Pizzas",
+  "etiquetas": [
+   "Picante"
+  ],
+  "precio": 13900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p12",
+  "restauranteId": "r3",
+  "nombre": "Empanadas de carne x 6",
+  "descripcion": "Carne cortada a cuchillo, al horno.",
+  "categoria": "Empanadas",
+  "etiquetas": [],
+  "precio": 9600,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p13",
+  "restauranteId": "r4",
+  "nombre": "Helado 1 kg",
+  "descripcion": "Hasta 4 sabores a elección.",
+  "categoria": "Helados",
+  "etiquetas": [
+   "Sin TACC"
+  ],
+  "precio": 12000,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p14",
+  "restauranteId": "r4",
+  "nombre": "Helado 1/2 kg",
+  "descripcion": "Hasta 3 sabores a elección.",
+  "categoria": "Helados",
+  "etiquetas": [
+   "Sin TACC"
+  ],
+  "precio": 7200,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p15",
+  "restauranteId": "r4",
+  "nombre": "Sundae de dulce de leche",
+  "descripcion": "Helado de crema americana con dulce de leche y nueces.",
+  "categoria": "Helados",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 5400,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p16",
+  "restauranteId": "r4",
+  "nombre": "Palito bombón x 6",
+  "descripcion": "Palitos de helado bañados en chocolate.",
+  "categoria": "Helados",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 6300,
+  "disponible": false,
+  "activo": true
+ },
+ {
+  "id": "p17",
+  "restauranteId": "r5",
+  "nombre": "Johnny classic burger",
+  "descripcion": "Doble carne, cheddar, cebolla caramelizada y pepinos.",
+  "categoria": "Hamburguesas",
+  "etiquetas": [],
+  "precio": 14500,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p18",
+  "restauranteId": "r5",
+  "nombre": "Costillas BBQ",
+  "descripcion": "Costillas de cerdo con salsa barbacoa y papas rústicas.",
+  "categoria": "Carnes",
+  "etiquetas": [],
+  "precio": 19800,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p19",
+  "restauranteId": "r5",
+  "nombre": "Nachos con cheddar",
+  "descripcion": "Nachos con salsa cheddar y jalapeños.",
+  "categoria": "Entradas",
+  "etiquetas": [
+   "Vegetariano",
+   "Picante"
+  ],
+  "precio": 8700,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p20",
+  "restauranteId": "r5",
+  "nombre": "Brownie con helado",
+  "descripcion": "Brownie tibio con helado de vainilla.",
+  "categoria": "Postres",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 6900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p21",
+  "restauranteId": "r6",
+  "nombre": "Sorrentinos de jamón y queso",
+  "descripcion": "Con salsa fileto o crema.",
+  "categoria": "Pastas",
+  "etiquetas": [],
+  "precio": 13200,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p22",
+  "restauranteId": "r6",
+  "nombre": "Ñoquis de papa",
+  "descripcion": "Con salsa bolognesa.",
+  "categoria": "Pastas",
+  "etiquetas": [],
+  "precio": 11400,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p23",
+  "restauranteId": "r6",
+  "nombre": "Lasaña de verduras",
+  "descripcion": "Capas de pasta, espinaca, ricota y salsa blanca.",
+  "categoria": "Pastas",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 12600,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p24",
+  "restauranteId": "r6",
+  "nombre": "Tiramisú",
+  "descripcion": "Bizcochos con café, mascarpone y cacao.",
+  "categoria": "Postres",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 6500,
+  "disponible": false,
+  "activo": true
+ },
+ {
+  "id": "p25",
+  "restauranteId": "r7",
+  "nombre": "Bowl de quinoa",
+  "descripcion": "Quinoa, garbanzos, palta, tomate cherry y hojas verdes.",
+  "categoria": "Ensaladas",
+  "etiquetas": [
+   "Vegano",
+   "Sin TACC"
+  ],
+  "precio": 10900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p26",
+  "restauranteId": "r7",
+  "nombre": "Ensalada César con pollo",
+  "descripcion": "Lechuga, pollo grillado, croutons y aderezo César.",
+  "categoria": "Ensaladas",
+  "etiquetas": [],
+  "precio": 11200,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p27",
+  "restauranteId": "r7",
+  "nombre": "Wrap de falafel",
+  "descripcion": "Falafel, hummus y vegetales en pan árabe.",
+  "categoria": "Wraps",
+  "etiquetas": [
+   "Vegano"
+  ],
+  "precio": 9800,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p28",
+  "restauranteId": "r7",
+  "nombre": "Jugo verde",
+  "descripcion": "Espinaca, manzana, jengibre y limón.",
+  "categoria": "Bebidas",
+  "etiquetas": [
+   "Vegano",
+   "Sin TACC"
+  ],
+  "precio": 4200,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p29",
+  "restauranteId": "r8",
+  "nombre": "Alfajores de chocolate x 6",
+  "descripcion": "Alfajores rellenos de dulce de leche bañados en chocolate.",
+  "categoria": "Alfajores",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 9900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p30",
+  "restauranteId": "r8",
+  "nombre": "Café con leche y medialunas",
+  "descripcion": "Café con leche y dos medialunas.",
+  "categoria": "Cafetería",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 5200,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p31",
+  "restauranteId": "r8",
+  "nombre": "Havannets x 6",
+  "descripcion": "Conitos de dulce de leche bañados en chocolate.",
+  "categoria": "Alfajores",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 8400,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p32",
+  "restauranteId": "r8",
+  "nombre": "Torta de ricota",
+  "descripcion": "Porción de torta de ricota.",
+  "categoria": "Postres",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 4900,
+  "disponible": false,
+  "activo": true
+ },
+ {
+  "id": "p33",
+  "restauranteId": "r9",
+  "nombre": "Big Pons doble",
+  "descripcion": "Doble carne, doble cheddar, panceta y huevo.",
+  "categoria": "Hamburguesas",
+  "etiquetas": [],
+  "precio": 15200,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p34",
+  "restauranteId": "r9",
+  "nombre": "Burger de pollo crispy",
+  "descripcion": "Pollo rebozado, lechuga y mayonesa de ajo.",
+  "categoria": "Hamburguesas",
+  "etiquetas": [],
+  "precio": 13600,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p35",
+  "restauranteId": "r9",
+  "nombre": "Papas con cheddar y panceta",
+  "descripcion": "Papas fritas con salsa cheddar y panceta.",
+  "categoria": "Acompañamientos",
+  "etiquetas": [],
+  "precio": 7400,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p36",
+  "restauranteId": "r9",
+  "nombre": "Aros de cebolla",
+  "descripcion": "Aros de cebolla rebozados.",
+  "categoria": "Acompañamientos",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 5600,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p37",
+  "restauranteId": "r10",
+  "nombre": "Balde de pollo x 8",
+  "descripcion": "Presas de pollo frito con receta original.",
+  "categoria": "Pollo",
+  "etiquetas": [],
+  "precio": 18900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p38",
+  "restauranteId": "r10",
+  "nombre": "Tiras de pollo picantes x 6",
+  "descripcion": "Tiras de pechuga crocantes y picantes.",
+  "categoria": "Pollo",
+  "etiquetas": [
+   "Picante"
+  ],
+  "precio": 11300,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p39",
+  "restauranteId": "r10",
+  "nombre": "Twister",
+  "descripcion": "Wrap de pollo crispy, lechuga, tomate y salsa.",
+  "categoria": "Wraps",
+  "etiquetas": [],
+  "precio": 9700,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p40",
+  "restauranteId": "r10",
+  "nombre": "Ensalada de repollo",
+  "descripcion": "Repollo y zanahoria con aderezo cremoso.",
+  "categoria": "Acompañamientos",
+  "etiquetas": [
+   "Vegetariano",
+   "Sin TACC"
+  ],
+  "precio": 3900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p41",
+  "restauranteId": "r11",
+  "nombre": "Milanesa napolitana",
+  "descripcion": "Milanesa de carne con jamón, muzzarella y salsa de tomate, con papas.",
+  "categoria": "Milanesas",
+  "etiquetas": [],
+  "precio": 16800,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p42",
+  "restauranteId": "r11",
+  "nombre": "Milanesa a caballo",
+  "descripcion": "Milanesa de carne con dos huevos fritos y papas.",
+  "categoria": "Milanesas",
+  "etiquetas": [],
+  "precio": 15900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p43",
+  "restauranteId": "r11",
+  "nombre": "Milanesa de pollo",
+  "descripcion": "Milanesa de pollo con puré.",
+  "categoria": "Milanesas",
+  "etiquetas": [],
+  "precio": 14200,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p44",
+  "restauranteId": "r11",
+  "nombre": "Milanesa de berenjena",
+  "descripcion": "Milanesa de berenjena con ensalada.",
+  "categoria": "Milanesas",
+  "etiquetas": [
+   "Vegano"
+  ],
+  "precio": 12400,
+  "disponible": false,
+  "activo": true
+ },
+ {
+  "id": "p45",
+  "restauranteId": "r12",
+  "nombre": "Donas glaseadas x 6",
+  "descripcion": "Donas clásicas con glaseado.",
+  "categoria": "Donas",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 10200,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p46",
+  "restauranteId": "r12",
+  "nombre": "Dona de chocolate",
+  "descripcion": "Dona rellena de chocolate.",
+  "categoria": "Donas",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 2900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p47",
+  "restauranteId": "r12",
+  "nombre": "Iced latte",
+  "descripcion": "Café espresso con leche y hielo.",
+  "categoria": "Cafetería",
+  "etiquetas": [
+   "Vegetariano",
+   "Sin TACC"
+  ],
+  "precio": 4800,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p48",
+  "restauranteId": "r12",
+  "nombre": "Munchkins x 12",
+  "descripcion": "Bocaditos de dona surtidos.",
+  "categoria": "Donas",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 7600,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p49",
+  "restauranteId": "r13",
+  "nombre": "Dean doble cheddar",
+  "descripcion": "Doble carne smash con cheddar y cebolla.",
+  "categoria": "Hamburguesas",
+  "etiquetas": [],
+  "precio": 13800,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p50",
+  "restauranteId": "r13",
+  "nombre": "Triple bacon",
+  "descripcion": "Triple carne smash, cheddar y panceta.",
+  "categoria": "Hamburguesas",
+  "etiquetas": [],
+  "precio": 16900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p51",
+  "restauranteId": "r13",
+  "nombre": "Papas Dean",
+  "descripcion": "Papas con piel y condimento de la casa.",
+  "categoria": "Acompañamientos",
+  "etiquetas": [
+   "Vegano"
+  ],
+  "precio": 5100,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p52",
+  "restauranteId": "r13",
+  "nombre": "Milkshake de vainilla",
+  "descripcion": "Batido de helado de vainilla.",
+  "categoria": "Bebidas",
+  "etiquetas": [
+   "Vegetariano",
+   "Sin TACC"
+  ],
+  "precio": 6200,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p53",
+  "restauranteId": "r14",
+  "nombre": "Combinado Pop x 15",
+  "descripcion": "Rolls variados de salmón y langostinos.",
+  "categoria": "Sushi",
+  "etiquetas": [
+   "Sin TACC"
+  ],
+  "precio": 19500,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p54",
+  "restauranteId": "r14",
+  "nombre": "Hot roll x 10",
+  "descripcion": "Rolls rebozados de salmón y queso crema.",
+  "categoria": "Sushi",
+  "etiquetas": [],
+  "precio": 15900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p55",
+  "restauranteId": "r14",
+  "nombre": "Ceviche de pescado blanco",
+  "descripcion": "Pescado blanco marinado en limón con cebolla morada.",
+  "categoria": "Entradas",
+  "etiquetas": [
+   "Sin TACC",
+   "Picante"
+  ],
+  "precio": 12800,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p56",
+  "restauranteId": "r14",
+  "nombre": "Wok de vegetales",
+  "descripcion": "Vegetales salteados con salsa de soja y arroz.",
+  "categoria": "Wok",
+  "etiquetas": [
+   "Vegano"
+  ],
+  "precio": 11600,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p57",
+  "restauranteId": "r15",
+  "nombre": "Ojo de bife",
+  "descripcion": "Ojo de bife de 400 g con guarnición.",
+  "categoria": "Carnes",
+  "etiquetas": [
+   "Sin TACC"
+  ],
+  "precio": 29800,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p58",
+  "restauranteId": "r15",
+  "nombre": "Bife de chorizo",
+  "descripcion": "Bife de chorizo de 400 g con papas.",
+  "categoria": "Carnes",
+  "etiquetas": [
+   "Sin TACC"
+  ],
+  "precio": 27500,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p59",
+  "restauranteId": "r15",
+  "nombre": "Provoleta",
+  "descripcion": "Provolone a la parrilla con orégano.",
+  "categoria": "Entradas",
+  "etiquetas": [
+   "Vegetariano",
+   "Sin TACC"
+  ],
+  "precio": 8900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p60",
+  "restauranteId": "r15",
+  "nombre": "Flan casero",
+  "descripcion": "Flan con dulce de leche y crema.",
+  "categoria": "Postres",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 5800,
+  "disponible": false,
+  "activo": true
+ },
+ {
+  "id": "p61",
+  "restauranteId": "r16",
+  "nombre": "Tostado de jamón y queso",
+  "descripcion": "Pan de miga tostado con jamón y queso.",
+  "categoria": "Cafetería",
+  "etiquetas": [],
+  "precio": 6900,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p62",
+  "restauranteId": "r16",
+  "nombre": "Café en grano 250 g",
+  "descripcion": "Café tostado molido para llevar.",
+  "categoria": "Cafetería",
+  "etiquetas": [
+   "Vegano",
+   "Sin TACC"
+  ],
+  "precio": 9500,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p63",
+  "restauranteId": "r16",
+  "nombre": "Cheesecake de frutos rojos",
+  "descripcion": "Porción de cheesecake con salsa de frutos rojos.",
+  "categoria": "Postres",
+  "etiquetas": [
+   "Vegetariano"
+  ],
+  "precio": 6700,
+  "disponible": true,
+  "activo": true
+ },
+ {
+  "id": "p64",
+  "restauranteId": "r16",
+  "nombre": "Licuado de banana",
+  "descripcion": "Banana, leche y miel.",
+  "categoria": "Bebidas",
+  "etiquetas": [
+   "Vegetariano",
+   "Sin TACC"
+  ],
+  "precio": 5300,
+  "disponible": true,
+  "activo": false
+ }
+]

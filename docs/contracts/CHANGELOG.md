@@ -2,15 +2,20 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versiones según [SemVer](https://semver.org/lang/es/): los cambios compatibles suben la versión menor y siguen en `/v1`; los incompatibles van a `/v2` (ver la [guía](README.md#versiones)).
 
+## [Sin publicar]
+
+### Aclarado
+- La guía decía que todas las respuestas traen `RateLimit-Remaining`. El gateway lo manda solo en el `429` (con valor `0`); `RateLimit-Limit: 60` sí va en todas. Los dos headers ya eran opcionales en el OpenAPI, así que **no cambia el contrato**: sigue siendo 1.1.0.
+
+### Implementado
+- La versión real de las cinco operaciones (Entrega 2), atendida por Búsqueda detrás del gateway en `/public/v1`. Mismo contrato que el mock.
+
 ## [1.1.0] — 2026-10-12
 
 ### Agregado
 - `calcularProximidad` (`POST /v1/proximidad`): ubicacionCliente, ubicacionSede, radio configurable (> 0 y hasta 500 km) e incluirDarkKitchen; compara una sede externa y opcionalmente ofrece nuestra cocina cercana al cliente.
 - Reglas de Haversine, rango inclusivo, sin persistencia de coordenadas externas y estados independientes de cocina con cobertura máxima de 25 km. Empates por ID solo entre cocinas propias.
 - Esquemas, ejemplos y error 413 para cuerpos mayores de 64 KiB. Las reglas de negocio se implementarán en Entrega 2; el mock solo simula.
-
-### Precisión del diseño
-- El contrato 1.1.0 sigue como revisión local de Entrega 1: reemplaza el borrador de listas por la comparación de exactamente dos ubicaciones antes de publicarlo.
 
 ### Compatibilidad
 - Conserva sin cambios las cuatro operaciones GET de 1.0.0 y sus esquemas. Se agrega una operación; la ruta sigue en `/v1`.

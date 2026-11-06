@@ -6,21 +6,21 @@ Un ADR es un archivo donde anotamos **una decisión**: qué elegimos, qué otras
 
 ## Índice
 
-| ADR | Decisión | Estado | Fecha |
-| --- | --- | --- | --- |
-| [ADR-001](ADR-001-limites-de-los-servicios.md) | D1 — Cómo separamos los servicios | Aceptada | 2026-10-09 |
-| ADR-002 | D2 — Cómo se organiza cada servicio por dentro | Pendiente (Entrega 2) | — |
-| [ADR-003](ADR-003-persistencia.md) | D3 — Qué base usa cada servicio | Primera versión | 2026-10-09 |
-| ADR-004 | D4 — Consistencia y concurrencia | Pendiente; definir antes de implementar el flujo crítico y demostrar en la defensa individual | — |
-| [ADR-005](ADR-005-comunicacion-entre-servicios.md) | D5 — Cómo se comunican los servicios | Primera versión | 2026-10-09 |
-| ADR-006 | D6 — Búsqueda | Pendiente (Entrega 2) | — |
-| ADR-007 | D7 — Caché | Pendiente (Entrega 2) | — |
-| [ADR-008](ADR-008-contrato-propio.md) | D8 — Lo que publicamos para otro grupo | Aceptada | 2026-10-09 |
-| ADR-009 | D9 — Lo que consumimos de otro grupo | Pendiente (Entrega 2) | — |
-| ADR-010 | D10 — Qué pasa cuando algo falla | Pendiente (Entrega 2) | — |
-| ADR-011 | D11 — Monitoreo | Pendiente (Entrega 2) | — |
-| ADR-012 | D12 — Balanceo de carga | Pendiente (Entrega 2) | — |
-| ADR-013 | D13 — Capacidad y costos | Pendiente (Entrega 2) | — |
+| ADR | Decisión | Estado | Responsable | Fecha |
+| --- | --- | --- | --- | --- |
+| [ADR-001](ADR-001-limites-de-los-servicios.md) | D1 — Cómo separamos los servicios | Aceptada; validada en la Entrega 2 | Guillermina | 2026-10-09; validada 2026-10-16 |
+| [ADR-002](ADR-002-arquitectura-interna.md) | D2 — Cómo se organiza cada servicio por dentro | Aceptada para Búsqueda y Catálogo; propuesta para los demás | Valentina | 2026-10-16 |
+| [ADR-003](ADR-003-persistencia.md) | D3 — Qué base usa cada servicio | Aceptada; validada para MongoDB y Solr, MySQL pendiente | Valentina | 2026-10-09; validada 2026-10-16 |
+| ADR-004 | D4 — Consistencia y concurrencia | Pendiente; definir antes de implementar el flujo crítico y demostrar en la defensa individual | — | — |
+| [ADR-005](ADR-005-comunicacion-entre-servicios.md) | D5 — Cómo se comunican los servicios | Aceptada; validada la parte síncrona | Lucía | 2026-10-09; validada 2026-10-16 |
+| [ADR-006](ADR-006-busqueda.md) | D6 — Búsqueda | Aceptada | Guillermina | 2026-10-16 |
+| [ADR-007](ADR-007-cache.md) | D7 — Caché | Propuesta | Guillermina | 2026-10-16 |
+| [ADR-008](ADR-008-contrato-propio.md) | D8 — Lo que publicamos para otro grupo | Aceptada; implementada, contrato 1.1.0 sin cambios | Lucía | 2026-10-09; actualizada 2026-10-16 |
+| [ADR-009](ADR-009-consumo-del-proveedor.md) | D9 — Lo que consumimos de otro grupo | Propuesta (falta que la cátedra asigne el proveedor) | Lucía | 2026-10-16 |
+| [ADR-010](ADR-010-resiliencia.md) | D10 — Qué pasa cuando algo falla | Aceptada | Lucía | 2026-10-16 |
+| [ADR-011](ADR-011-observabilidad.md) | D11 — Monitoreo | Primera versión | Guillermina | 2026-10-16 |
+| [ADR-012](ADR-012-balanceo-de-carga.md) | D12 — Balanceo de carga | Propuesta | Guillermina | 2026-10-16 |
+| [ADR-013](ADR-013-capacidad-y-costos.md) | D13 — Capacidad y costos | Primera versión | Valentina | 2026-10-16 |
 
 **Estados:** Propuesta → Aceptada → Reemplazada u Obsoleta. "Primera versión" quiere decir que el enunciado pide un borrador en esta entrega y la versión validada en la siguiente.
 
@@ -31,6 +31,7 @@ Un ADR es un archivo donde anotamos **una decisión**: qué elegimos, qué otras
 
 - **Estado:** Propuesta | Aceptada | Reemplazada por ADR-YYY | Obsoleta
 - **Fecha:** AAAA-MM-DD
+- **Responsable:** Nombre
 - **Decisión del enunciado:** DX
 - **Reemplaza a:** (si corresponde)
 

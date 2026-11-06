@@ -1,0 +1,146 @@
+[
+  {
+    "id": "barrio-jardin",
+    "nombre": "Cocina Barrio Jardín",
+    "localidad": "Barrio Jardín",
+    "direccion": "Av. Richieri 3150",
+    "ubicacion": {
+      "lat": -31.4531,
+      "lng": -64.1824
+    },
+    "tiempoEntregaMin": 30,
+    "tiempoEntregaMax": 40,
+    "costoEnvio": 1100,
+    "restaurantes": [
+      {
+        "id": "r13",
+        "nombre": "Dean & Dennys",
+        "activo": true
+      },
+      {
+        "id": "r14",
+        "nombre": "Sushi Pop",
+        "activo": true
+      },
+      {
+        "id": "r15",
+        "nombre": "La Cabrera",
+        "activo": true
+      },
+      {
+        "id": "r16",
+        "nombre": "Café Martínez",
+        "activo": true
+      }
+    ],
+    "activa": true
+  },
+  {
+    "id": "cerro",
+    "nombre": "Cocina Cerro",
+    "localidad": "Cerro de las Rosas",
+    "direccion": "Rafael Núñez 4520",
+    "ubicacion": {
+      "lat": -31.3682,
+      "lng": -64.2318
+    },
+    "tiempoEntregaMin": 30,
+    "tiempoEntregaMax": 40,
+    "costoEnvio": 1300,
+    "restaurantes": [
+      {
+        "id": "r5",
+        "nombre": "Johnny B. Good",
+        "activo": true
+      },
+      {
+        "id": "r6",
+        "nombre": "Il Gatto",
+        "activo": true
+      },
+      {
+        "id": "r7",
+        "nombre": "Green Eat",
+        "activo": true
+      },
+      {
+        "id": "r8",
+        "nombre": "Havanna",
+        "activo": true
+      }
+    ],
+    "activa": true
+  },
+  {
+    "id": "nueva-cordoba",
+    "nombre": "Cocina Nueva Córdoba",
+    "localidad": "Nueva Córdoba",
+    "direccion": "Obispo Trejo 1050",
+    "ubicacion": {
+      "lat": -31.4262,
+      "lng": -64.1883
+    },
+    "tiempoEntregaMin": 25,
+    "tiempoEntregaMax": 35,
+    "costoEnvio": 1200,
+    "restaurantes": [
+      {
+        "id": "r1",
+        "nombre": "Mostaza",
+        "activo": true
+      },
+      {
+        "id": "r2",
+        "nombre": "Sushi Club",
+        "activo": true
+      },
+      {
+        "id": "r3",
+        "nombre": "Kentucky",
+        "activo": true
+      },
+      {
+        "id": "r4",
+        "nombre": "Grido",
+        "activo": true
+      }
+    ],
+    "activa": true
+  },
+  {
+    "id": "villa-allende",
+    "nombre": "Cocina Villa Allende",
+    "localidad": "Villa Allende",
+    "direccion": "Av. Goycoechea 680",
+    "ubicacion": {
+      "lat": -31.2958,
+      "lng": -64.2951
+    },
+    "tiempoEntregaMin": 35,
+    "tiempoEntregaMax": 45,
+    "costoEnvio": 1500,
+    "restaurantes": [
+      {
+        "id": "r9",
+        "nombre": "Big Pons",
+        "activo": true
+      },
+      {
+        "id": "r10",
+        "nombre": "KFC",
+        "activo": true
+      },
+      {
+        "id": "r11",
+        "nombre": "El Club de la Milanesa",
+        "activo": true
+      },
+      {
+        "id": "r12",
+        "nombre": "Dunkin' Donuts",
+        "activo": true
+      }
+    ],
+    "activa": true
+  }
+]
