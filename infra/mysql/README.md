@@ -12,11 +12,12 @@ Copiar `.env.example` como `.env` si todavía no existe y completar las cuatro c
 
 ```powershell
 docker compose up -d mysql
-docker compose up --build usuarios-migrations inventario-migrations pedidos-migrations
-docker compose logs mysql usuarios-migrations inventario-migrations pedidos-migrations
+docker compose up --build usuarios-migrations pedidos-migrations
+docker compose up -d --build inventario
+docker compose logs mysql usuarios-migrations inventario pedidos-migrations
 ```
 
-Los tres trabajos terminan con código 0 después de aplicar las migraciones de su servicio; no son todavía las API de negocio. Repetir el comando comprueba las versiones y no vuelve a aplicar las ya ejecutadas. El `docker compose up --build` general también los incluye.
+Usuarios y Pedidos conservan trabajos que terminan con código 0 tras aplicar sus migraciones. Desde V5, Inventario ejecuta el runner en su propio entrypoint y después queda atendiendo HTTP; reemplaza al trabajo `inventario-migrations`. Repetir el arranque comprueba las versiones sin aplicar nuevamente las ya ejecutadas. El `docker compose up --build` general también los incluye.
 
 ## Inicialización y persistencia
 
@@ -75,8 +76,8 @@ python tools/mysql-startup/testdata/verify.py
 
 Incluye primer arranque, contraseña con comilla y barra invertida, migraciones repetidas, arranques concurrentes, permisos cruzados, persistencia, SQL inválido y estado dirty, bloqueo del comando si falla la migración, y respuestas 401/429 por IP y 200/429 por clave del gateway. El backend HTTP de esa prueba es un doble de Búsqueda: no prueba el negocio de búsqueda ni Solr.
 
-1. Ejecutar las migraciones dos veces: los tres trabajos deben terminar en 0 ambas veces.
-2. Consultar con cada usuario sus tablas `servicio_metadata` y `schema_migrations`: nombre correcto y versión 1 sin dirty.
+1. Ejecutar las migraciones dos veces: los trabajos de Usuarios y Pedidos terminan en 0; Inventario queda listo después de migrar.
+2. Consultar con cada usuario sus tablas `servicio_metadata` y `schema_migrations`: nombre correcto, versión 1 para Usuarios/Pedidos y 2 para Inventario, sin dirty.
 3. Con el usuario de Usuarios, intentar `SELECT * FROM inventario_db.servicio_metadata`: debe denegarse. Repetir las otras combinaciones.
 4. Reiniciar MySQL sin eliminar volúmenes: se conservan versiones y metadatos.
 5. En una base **descartable**, ejecutar la prueba de integración del runner con `MYSQL_STARTUP_INTEGRATION=1` y sus variables DB. Verifica repetición y bloqueo tras SQL inválido. Deja la base dirty deliberadamente; nunca usar una base del proyecto para esa prueba.

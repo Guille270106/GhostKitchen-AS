@@ -2,11 +2,66 @@
 
 **Responsable:** Valentina Rey.
 
-> **Ronda 1:** base `inventario_db`, usuario propio y plantilla SQL disponibles. El trabajo `inventario-migrations` aplica las versiones al arrancar Compose. Ver [guía de migraciones](../../infra/mysql/README.md) y [ADR-004](../../docs/adr/ADR-004-consistencia-y-concurrencia.md). Las tablas y reglas del negocio se implementan desde la ronda 2.
+> **V5 implementado:** servicio base hexagonal, MySQL e ingredientes (HU19). El entrypoint aplica sus migraciones antes de arrancar HTTP. Ver [guía de migraciones](../../infra/mysql/README.md) y [ADR-004](../../docs/adr/ADR-004-consistencia-y-concurrencia.md).
 
-> Entrega 1: diseño preliminar; todavía no hay implementación. Las carpetas, rutas, configuración y pruebas indicadas son previstas para el desarrollo desde la Entrega 2.
+> Recetas, reservas, movimientos y mensajería siguen siendo diseño previsto para V6 y siguientes. No están implementados en V5.
 
-Dice **con qué se hace cada plato y si alcanza**. Puerto **8084**. Es uno de los dos servicios donde no se puede equivocar nada. Lo programamos en la Entrega 2.
+Dice **con qué se hace cada plato y si alcanza**. Puerto interno **8084**.
+
+## Usar V5
+
+Desde la raíz del repositorio, con las contraseñas de MySQL configuradas en `.env`:
+
+```powershell
+docker compose up -d --build inventario
+docker compose logs inventario
+docker compose exec inventario wget -qO- http://127.0.0.1:8084/ready
+```
+
+`/health` comprueba que el proceso está vivo; `/ready` comprueba acceso a la tabla de ingredientes en MySQL. Un fallo de migración impide arrancar HTTP. El servicio no publica puertos al host. La migración 000002 crea `ingrediente` y las referencias de las cuatro cocinas iniciales de Catálogo, con versión 0; V12 actualizará esas referencias por eventos. Una referencia ausente o inactiva impide crear ingredientes.
+
+### Operaciones disponibles
+
+| Método y ruta interna | Resultado |
+| --- | --- |
+| `POST /cocina/ingredientes` | Crear ingrediente; 201 y Location del recurso |
+| `GET /cocina/ingredientes` | Listar únicamente ingredientes de la cocina asignada, en `items` |
+| `GET /cocina/ingredientes/{id}` | Consultar un ingrediente propio; 404 si no existe o pertenece a otra cocina |
+
+El POST recibe un único objeto JSON:
+
+```json
+{"nombre":"Harina","unidad":"gramos","stockInicial":1000}
+```
+
+Nombre y unidad son obligatorios (máximo 120 y 30 caracteres); el stock inicial es obligatorio, entero y no negativo. No admite `cocinaId`, `reservado` ni otros campos extra: la cocina se toma de la identidad. El ingrediente nace con reservado 0 y disponible igual al total. MySQL también impide stock negativo o reservado mayor al total. El POST todavía no tiene deduplicación: cada alta crea un ingrediente nuevo.
+
+### Límite de autenticación de V5
+
+El adaptador HTTP consume las cabeceras internas `X-Usuario-Id`, `X-Rol: cocina` y `X-Cocina-Id`. Sin identidad devuelve 401; otros roles, incluido Admin, reciben 403. **Estas cabeceras no prueban por sí solas un login.** Se usan en pruebas internas mientras Guille completa G9. Antes de habilitar acceso desde el frontend, el gateway debe verificar el JWT, eliminar cabeceras de identidad del cliente e inyectar las verificadas. V5 no incorpora rutas públicas ni un login alternativo.
+
+Ejemplo solo dentro del contenedor para probar la capa interna:
+
+```powershell
+docker compose exec inventario wget -qO- --header="Content-Type: application/json" --header="X-Usuario-Id: prueba-interna" --header="X-Rol: cocina" --header="X-Cocina-Id: cerro" --post-data='{"nombre":"Harina","unidad":"gramos","stockInicial":1000}' http://127.0.0.1:8084/cocina/ingredientes
+```
+
+### Configuración y pruebas de V5
+
+`PORT=8084`, `DB_HOST=mysql`, `DB_PORT=3306`, `DB_USER=inventario`, `DB_NAME=inventario_db` y `DB_PASSWORD` (obligatoria). En Compose, esta última sale de `INVENTARIO_DB_PASSWORD`. El runner recibe las mismas variables y usa `/migrations`.
+
+```powershell
+# Desde services/inventario: pruebas de validación, permisos y aislamiento HTTP.
+go test ./...
+
+# Desde la raíz: MySQL y API reales en un proyecto descartable.
+docker compose -p gk-v5-check -f services/inventario/testdata/compose.yml up -d --build --wait inventario
+docker compose -p gk-v5-check -f services/inventario/testdata/compose.yml run --rm --build pruebas
+# Eliminar solo los recursos y datos descartables de esa prueba.
+docker compose -p gk-v5-check -f services/inventario/testdata/compose.yml down -v
+```
+
+La prueba MySQL verifica persistencia, consulta por cocina, rechazo de referencias desconocidas/inactivas y restricciones de stock. Sin `TEST_MYSQL=1` se omite esa prueba; las pruebas HTTP usan un repositorio de memoria como doble, no como almacenamiento del servicio.
 
 ## Qué hace
 
@@ -105,7 +160,7 @@ Una devolución usa las cantidades efectivamente descontadas, no una receta que 
 
 ## Configuración prevista
 
-`INVENTARIO_DB_PASSWORD` y las credenciales comunes de MySQL/RabbitMQ están anticipadas en [`.env.example`](../../.env.example). La conexión, el puerto, la duración de reserva (10 min) y el intervalo del barrido (15 s) se definirán al implementar.
+La conexión MySQL y el puerto de V5 están definidos arriba. `INVENTARIO_DB_PASSWORD` y las credenciales comunes se describen en el [README principal](../../README.md#variables-del-env). La reserva de 10 minutos, el barrido cada 15 segundos y RabbitMQ se incorporan en sus tareas posteriores.
 
 ## Pruebas previstas
 

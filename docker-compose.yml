@@ -53,19 +53,30 @@ services:
         condition: service_healthy
     restart: "no"
 
-  inventario-migrations:
-    build: ./tools/mysql-startup
+  # V5: aplica sus migraciones antes de arrancar HTTP, también tras cada reinicio.
+  inventario:
+    build:
+      context: .
+      dockerfile: services/inventario/Dockerfile
     environment:
       DB_HOST: mysql
       DB_USER: inventario
       DB_PASSWORD: ${INVENTARIO_DB_PASSWORD:?Completá INVENTARIO_DB_PASSWORD en .env}
       DB_NAME: inventario_db
-    volumes:
-      - ./services/inventario/migrations:/migrations:ro
+      PORT: "8084"
+      GIN_MODE: release
+    expose:
+      - "8084"
     depends_on:
       mysql:
         condition: service_healthy
-    restart: "no"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8084/ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
   pedidos-migrations:
     build: ./tools/mysql-startup
