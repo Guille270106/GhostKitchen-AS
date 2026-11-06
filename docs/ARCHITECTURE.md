@@ -1,5 +1,7 @@
 # Arquitectura de GhostKitchen
 
+> **Actualización de ronda 1 (06/11/2026):** MySQL incorpora `usuarios_db`, `inventario_db` y `pedidos_db` con usuarios aislados y migraciones versionadas por servicio. Los trabajos de migración son plantillas ejecutables; las API de esos servicios siguen pendientes. Ver [guía de MySQL](../infra/mysql/README.md) y [ADR-004](adr/ADR-004-consistencia-y-concurrencia.md). La API publicada ahora limita por IP cuando falta API key y Búsqueda limita a 10 s la espera entre reintentos de arranque.
+
 > **Versión:** Entrega 2 (16/10/2026). Ya funcionan el **gateway**, **Búsqueda** (con Solr) y **Catálogo** (con MongoDB), con logs correlacionados y trazas en Jaeger, además del mock del contrato. El resto del documento sigue describiendo el diseño completo; lo que está implementado se marca en las secciones 11 y 13.
 
 En este documento explicamos cómo armamos el sistema: qué servicios tiene, qué hace cada uno, qué datos guarda, cómo se comunican, qué pasa cuando algo falla y cómo se despliegan. Por qué tomamos cada decisión está en los [ADR](adr/README.md), y qué tiene que hacer el sistema está en el [SPEC](../SPEC.md).
@@ -435,14 +437,15 @@ Las caídas de Inventario, RabbitMQ y el correo son las que vamos a provocar en 
 
 ## 11. Despliegue
 
-**En local, con un solo comando:** `docker compose up`. Las contraseñas y claves van en un archivo `.env` que **no se sube** al repo; solo subimos `.env.example` con los nombres.
+**En local, con un solo comando:** `docker compose up`. Las contraseñas y claves van en un archivo `.env` que **no se sube** al repo; los nombres de las variables están en el [README](../README.md#variables-del-env).
 
 | Qué | Estado |
 | --- | --- |
 | Mock del contrato | ✅ Funciona |
 | Gateway, Búsqueda con Solr, Catálogo con MongoDB | ✅ Entrega 2 |
 | Logs JSON correlacionados y trazas en Jaeger | ✅ Entrega 2 ([ADR-011](adr/ADR-011-observabilidad.md)) |
-| Usuarios, Inventario, Pedidos, Notificaciones, MySQL, RabbitMQ, Memcached, Mailpit y frontend | Entrega final |
+| MySQL con tres bases, usuarios y plantillas de migración | Ronda 1; ver [guía](../infra/mysql/README.md) |
+| Usuarios, Inventario, Pedidos, Notificaciones, RabbitMQ, Memcached, Mailpit y frontend | Entrega final |
 | Segunda copia de Catálogo ([ADR-012](adr/ADR-012-balanceo-de-carga.md)), métricas con Prometheus y tablero con Grafana | Entrega final |
 
 En local, Docker Compose levantará frontend, gateway, servicios y sus dependencias. La entrada del frontend será el gateway. Para publicar la capacidad externa se desplegará lo necesario para Búsqueda y su API; el resto se mantendrá dentro de la red prevista.
@@ -500,7 +503,7 @@ El objetivo es probar las reglas importantes y explicar los resultados. Un porce
 | [ADR-001](adr/ADR-001-limites-de-los-servicios.md) | D1 Cómo separamos los servicios | Aceptada, validada | 1 (validada en la 2) |
 | [ADR-002](adr/ADR-002-arquitectura-interna.md) | D2 Cómo se organiza cada servicio por dentro | Aceptada para Búsqueda y Catálogo | 2 |
 | [ADR-003](adr/ADR-003-persistencia.md) | D3 Qué base usa cada servicio | Aceptada; validada para MongoDB y Solr | 1 (validada en la 2) |
-| ADR-004 | D4 Consistencia y concurrencia | Pendiente (adelanto en las secciones 6.4 a 6.7) | Final |
+| [ADR-004](adr/ADR-004-consistencia-y-concurrencia.md) | D4 Consistencia y concurrencia | Propuesta; validación del flujo crítico pendiente | Ronda 1; validación final |
 | [ADR-005](adr/ADR-005-comunicacion-entre-servicios.md) | D5 Cómo se comunican | Aceptada; validada la parte síncrona | 1 (validada en la 2) |
 | [ADR-006](adr/ADR-006-busqueda.md) | D6 Búsqueda | Aceptada | 2 |
 | [ADR-007](adr/ADR-007-cache.md) | D7 Caché | Propuesta | 2 |

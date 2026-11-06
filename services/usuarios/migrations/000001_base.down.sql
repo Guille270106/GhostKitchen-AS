@@ -1,0 +1,1 @@
+DROP TABLE servicio_metadata;

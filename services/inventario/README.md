@@ -2,9 +2,9 @@
 
 **Responsable:** Valentina Rey.
 
-> Entrega 1: diseño preliminar; todavía no hay implementación. Las carpetas, rutas, configuración y pruebas indicadas son previstas para el desarrollo desde la Entrega 2.
+> **Ronda 1:** base `inventario_db`, usuario propio y plantilla SQL disponibles. El trabajo `inventario-migrations` aplica las versiones al arrancar Compose. Ver [guía de migraciones](../../infra/mysql/README.md) y [ADR-004](../../docs/adr/ADR-004-consistencia-y-concurrencia.md). Las tablas y reglas del negocio se implementan desde la ronda 2.
 
-Dice **con qué se hace cada plato y si alcanza**. Puerto **8084**. Es uno de los dos servicios donde no se puede equivocar nada. Lo programamos en la Entrega 2.
+Dice **con qué se hace cada plato y si alcanza**. Puerto **8084**. Es uno de los dos servicios donde no se puede equivocar nada. Se implementa en la ronda 2.
 
 ## Qué hace
 
@@ -103,7 +103,7 @@ Una devolución usa las cantidades efectivamente descontadas, no una receta que 
 
 ## Configuración prevista
 
-`INVENTARIO_DB_PASSWORD` y las credenciales comunes de MySQL/RabbitMQ están anticipadas en [`.env.example`](../../.env.example). La conexión, el puerto, la duración de reserva (10 min) y el intervalo del barrido (15 s) se definirán al implementar.
+`INVENTARIO_DB_PASSWORD` y las credenciales comunes de MySQL/RabbitMQ están en las [variables del `.env`](../../README.md#variables-del-env). La conexión, el puerto, la duración de reserva (10 min) y el intervalo del barrido (15 s) se definirán al implementar.
 
 ## Pruebas previstas
 
