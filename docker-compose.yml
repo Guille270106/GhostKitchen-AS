@@ -9,9 +9,11 @@
 #   - solr:          índice de Búsqueda (cores "cocinas" y "platos").
 #   - jaeger:        recibe las trazas (OpenTelemetry) del gateway, Búsqueda y Catálogo. UI en el puerto 16686.
 #   - contract-mock: mock de la capacidad publicada, servido desde el contrato OpenAPI (puerto 4010).
-# MySQL y las plantillas de migración se agregan en la ronda 1; los servicios de negocio
+#   - rabbitmq:      mensajería entre servicios. Exchange ghostkitchen.events, una cola por consumidor y su DLQ.
+#                    Panel en el puerto 15672 (usuario y contraseña de RABBITMQ_USER / RABBITMQ_PASSWORD).
+# MySQL, RabbitMQ y las plantillas de migración se agregan en la ronda 1; los servicios de negocio
 # Usuarios, Inventario y Pedidos se implementan en la ronda 2.
-# Los secretos se leen del archivo .env, que no se versiona (copiar .env.example como .env).
+# Los secretos se leen del archivo .env, que no se versiona (las variables están en el README, sección "Variables del .env").
 services:
   mysql:
     image: mysql:8.4
@@ -76,6 +78,51 @@ services:
       - ./services/pedidos/migrations:/migrations:ro
     depends_on:
       mysql:
+        condition: service_healthy
+    restart: "no"
+
+  # Mensajería (ADR-005). El usuario sale de .env; las colas las crea rabbitmq-topologia.
+  rabbitmq:
+    image: rabbitmq:3.13.7-management-alpine
+    container_name: ghostkitchen-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    expose:
+      - "5672"            # AMQP: solo dentro de la red de Docker
+    ports:
+      - "15672:15672"     # panel de administración (solo para desarrollo)
+    healthcheck:
+      # Se corre como el usuario rabbitmq: si lo hace root, la cookie de Erlang queda sin permisos.
+      test: ["CMD", "su-exec", "rabbitmq", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  # Trabajo de una sola vez: carga exchanges, colas, DLQ y bindings por la API de administración.
+  # Se puede repetir sin problema: importar las mismas definiciones no duplica nada.
+  # No se cargan al arrancar RabbitMQ porque así no crearía el usuario de .env.
+  rabbitmq-topologia:
+    image: curlimages/curl:8.10.1
+    environment:
+      RABBITMQ_USER: ${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}
+    volumes:
+      - ./infra/rabbitmq/definiciones.json:/definiciones.json:ro
+    command:
+      - sh
+      - -c
+      - >-
+        curl -sS -f -u "$$RABBITMQ_USER:$$RABBITMQ_PASSWORD"
+        -H "Content-Type: application/json" -X POST --data-binary @/definiciones.json
+        http://rabbitmq:15672/api/definitions
+        && echo "topologia de RabbitMQ cargada"
+    depends_on:
+      rabbitmq:
         condition: service_healthy
     restart: "no"
 
@@ -190,5 +237,6 @@ services:
 
 volumes:
   mysql-data:
+  rabbitmq-data:
   mongo-data:
   solr-data:
