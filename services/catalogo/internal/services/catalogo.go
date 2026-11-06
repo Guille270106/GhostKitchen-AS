@@ -75,13 +75,22 @@ func (s *Catalogo) Menu(ctx context.Context, cocinaID string) (domain.Cocina, []
 	return c, menu, nil
 }
 
-// ObtenerPlato devuelve un plato activo.
+// ObtenerPlato devuelve un plato activo de un restaurante activo de una cocina activa (RN19).
+// Si se desactiva la cocina o el restaurante, sus platos dejan de mostrarse aunque cada
+// plato siga marcado como activo: mismo criterio que Menu.
 func (s *Catalogo) ObtenerPlato(ctx context.Context, id string) (domain.Plato, error) {
 	p, ok, err := s.repo.ObtenerPlato(ctx, id)
 	if err != nil {
 		return domain.Plato{}, err
 	}
 	if !ok || !p.Activo {
+		return domain.Plato{}, domain.ErrPlatoNoEncontrado
+	}
+	c, ok, err := s.repo.ObtenerCocina(ctx, p.CocinaID)
+	if err != nil {
+		return domain.Plato{}, err
+	}
+	if !ok || !c.Activa || !restauranteActivo(c.Restaurantes, p.RestauranteID) {
 		return domain.Plato{}, domain.ErrPlatoNoEncontrado
 	}
 	return p, nil
@@ -105,6 +114,15 @@ func (s *Catalogo) PaginaPlatos(ctx context.Context, page, pageSize int) (domain
 		Items: platos, Page: page, PageSize: pageSize, Total: total,
 		TotalPages: int(math.Ceil(float64(total) / float64(pageSize))),
 	}, nil
+}
+
+func restauranteActivo(rs []domain.Restaurante, id string) bool {
+	for _, r := range rs {
+		if r.ID == id {
+			return r.Activo
+		}
+	}
+	return false
 }
 
 func restaurantesActivos(rs []domain.Restaurante) []domain.Restaurante {
