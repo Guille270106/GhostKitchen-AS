@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostkitchen.dev/eventos/sobre.schema.json",
+  "title": "Sobre común de los mensajes de GhostKitchen",
+  "description": "Forma de todos los mensajes que se publican en el exchange ghostkitchen.events (ADR-005). El contenido de datos depende de tipo.",
+  "type": "object",
+  "required": ["evento_id", "tipo", "version", "ocurrido_en", "correlation_id", "agregado_id", "secuencia", "datos"],
+  "additionalProperties": false,
+  "properties": {
+    "evento_id": { "type": "string", "format": "uuid", "description": "Único por mensaje; sirve para descartar repetidos." },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "cocina.creada", "cocina.actualizada", "cocina.desactivada",
+        "plato.creado", "plato.actualizado", "plato.desactivado",
+        "disponibilidad.cambiada", "reserva.vencida", "pedido.estado_cambiado"
+      ],
+      "description": "Nombre del evento. Es también la clave de ruteo."
+    },
+    "version": { "type": "integer", "minimum": 1, "description": "Versión del formato de datos para este tipo." },
+    "ocurrido_en": { "type": "string", "format": "date-time", "description": "Cuándo pasó el cambio, en UTC." },
+    "correlation_id": { "type": "string", "maxLength": 64, "description": "X-Correlation-Id de la solicitud que causó el cambio." },
+    "agregado_id": { "type": "string", "minLength": 1, "description": "Id de la cocina, plato, carrito o pedido que cambió." },
+    "secuencia": { "type": "integer", "minimum": 1, "description": "Crece con cada cambio del mismo agregado; sirve para ignorar mensajes viejos." },
+    "datos": { "type": "object", "description": "Contenido del evento; su forma depende de tipo (ver README)." }
+  }
+}

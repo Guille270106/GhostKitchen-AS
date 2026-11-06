@@ -1,0 +1,38 @@
+{
+  "vhosts": [{ "name": "/" }],
+  "exchanges": [
+    { "name": "ghostkitchen.events", "vhost": "/", "type": "topic", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "ghostkitchen.dlx", "vhost": "/", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} }
+  ],
+  "queues": [
+    { "name": "busqueda.indexador", "vhost": "/", "durable": true, "auto_delete": false,
+      "arguments": { "x-queue-type": "quorum", "x-delivery-limit": 5, "x-dead-letter-exchange": "ghostkitchen.dlx", "x-dead-letter-routing-key": "busqueda.indexador.dlq" } },
+    { "name": "busqueda.indexador.dlq", "vhost": "/", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "quorum" } },
+
+    { "name": "inventario.referencias", "vhost": "/", "durable": true, "auto_delete": false,
+      "arguments": { "x-queue-type": "quorum", "x-delivery-limit": 5, "x-dead-letter-exchange": "ghostkitchen.dlx", "x-dead-letter-routing-key": "inventario.referencias.dlq" } },
+    { "name": "inventario.referencias.dlq", "vhost": "/", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "quorum" } },
+
+    { "name": "pedidos.reservas", "vhost": "/", "durable": true, "auto_delete": false,
+      "arguments": { "x-queue-type": "quorum", "x-delivery-limit": 5, "x-dead-letter-exchange": "ghostkitchen.dlx", "x-dead-letter-routing-key": "pedidos.reservas.dlq" } },
+    { "name": "pedidos.reservas.dlq", "vhost": "/", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "quorum" } },
+
+    { "name": "notificaciones.mailer", "vhost": "/", "durable": true, "auto_delete": false,
+      "arguments": { "x-queue-type": "quorum", "x-delivery-limit": 5, "x-dead-letter-exchange": "ghostkitchen.dlx", "x-dead-letter-routing-key": "notificaciones.mailer.dlq" } },
+    { "name": "notificaciones.mailer.dlq", "vhost": "/", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "quorum" } }
+  ],
+  "bindings": [
+    { "source": "ghostkitchen.events", "vhost": "/", "destination": "busqueda.indexador", "destination_type": "queue", "routing_key": "cocina.*", "arguments": {} },
+    { "source": "ghostkitchen.events", "vhost": "/", "destination": "busqueda.indexador", "destination_type": "queue", "routing_key": "plato.*", "arguments": {} },
+    { "source": "ghostkitchen.events", "vhost": "/", "destination": "busqueda.indexador", "destination_type": "queue", "routing_key": "disponibilidad.cambiada", "arguments": {} },
+    { "source": "ghostkitchen.events", "vhost": "/", "destination": "inventario.referencias", "destination_type": "queue", "routing_key": "cocina.*", "arguments": {} },
+    { "source": "ghostkitchen.events", "vhost": "/", "destination": "inventario.referencias", "destination_type": "queue", "routing_key": "plato.*", "arguments": {} },
+    { "source": "ghostkitchen.events", "vhost": "/", "destination": "pedidos.reservas", "destination_type": "queue", "routing_key": "reserva.vencida", "arguments": {} },
+    { "source": "ghostkitchen.events", "vhost": "/", "destination": "notificaciones.mailer", "destination_type": "queue", "routing_key": "pedido.estado_cambiado", "arguments": {} },
+
+    { "source": "ghostkitchen.dlx", "vhost": "/", "destination": "busqueda.indexador.dlq", "destination_type": "queue", "routing_key": "busqueda.indexador.dlq", "arguments": {} },
+    { "source": "ghostkitchen.dlx", "vhost": "/", "destination": "inventario.referencias.dlq", "destination_type": "queue", "routing_key": "inventario.referencias.dlq", "arguments": {} },
+    { "source": "ghostkitchen.dlx", "vhost": "/", "destination": "pedidos.reservas.dlq", "destination_type": "queue", "routing_key": "pedidos.reservas.dlq", "arguments": {} },
+    { "source": "ghostkitchen.dlx", "vhost": "/", "destination": "notificaciones.mailer.dlq", "destination_type": "queue", "routing_key": "notificaciones.mailer.dlq", "arguments": {} }
+  ]
+}
