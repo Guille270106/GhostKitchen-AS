@@ -142,7 +142,7 @@ func TestPrepararEsquemaSoloAgregaLoQueFalta(t *testing.T) {
 	repo, sf := nuevoSolrFalso(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 			case strings.HasSuffix(r.URL.Path, "/schema/fieldtypes"):
-				_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"fieldTypes":[{"name":"string"},{"name":"text_gk"}]}`)
+				_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"fieldTypes":[{"name":"string"},{"name":"text_gk","analyzer":{"filters":[{"class":"solr.LowerCaseFilterFactory"},{"class":"solr.ASCIIFoldingFilterFactory"},{"class":"solr.SpanishLightStemFilterFactory"}]}}]}`)
 			case strings.HasSuffix(r.URL.Path, "/schema/fields"):
 				_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"fields":[{"name":"id"},{"name":"nombre"},{"name":"activo"}]}`)
 			case strings.HasSuffix(r.URL.Path, "/schema/copyfields"):
@@ -193,5 +193,71 @@ func TestGuardarPlatosArmaLosDocumentos(t *testing.T) {
 	}
 	if !strings.Contains(sf.cuerpos[0], `"cocina_id":"nueva-cordoba"`) || !strings.Contains(sf.cuerpos[0], `"actualizado_en":"2026-10-16T15:00:00Z"`) {
 		t.Fatalf("%s", sf.cuerpos[0])
+	}
+}
+
+// postsDeEsquema prepara el esquema contra un Solr que ya tiene todos los campos y la
+// definición de text_gk que se le pase ("" = el tipo no existe), y devuelve los POST.
+func postsDeEsquema(t *testing.T, textGK string) []string {
+	t.Helper()
+	tipos := `{"name":"string"}`
+	if textGK != "" {
+		tipos += "," + textGK
+	}
+	todos := `{"name":"id"}`
+	for _, c := range append(append([]map[string]any{}, camposCocinas...), camposPlatos...) {
+		todos += `,{"name":"` + c["name"].(string) + `"}`
+	}
+	repo, sf := nuevoSolrFalso(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/schema/fieldtypes"):
+			_, _ = io.WriteString(w, `{"responseHeader":{"status":0},"fieldTypes":[`+tipos+`]}`)
+		case strings.HasSuffix(r.URL.Path, "/schema/fields"):
+			_, _ = io.WriteString(w, `{"responseHeader":{"status":0},"fields":[`+todos+`]}`)
+		case strings.HasSuffix(r.URL.Path, "/schema/copyfields"):
+			_, _ = io.WriteString(w, `{"responseHeader":{"status":0},"copyFields":[{"source":"categoria","dest":"categoria_txt"}]}`)
+		default:
+			_, _ = io.WriteString(w, `{"responseHeader":{"status":0}}`)
+		}
+	})
+	if err := repo.PrepararEsquema(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var posts []string
+	for i, r := range sf.pedidos {
+		if r.Method == http.MethodPost {
+			posts = append(posts, sf.cuerpos[i])
+		}
+	}
+	return posts
+}
+
+func TestTipoDeTextoUsaRaicesEnEspanol(t *testing.T) {
+	b, _ := json.Marshal(tipoTexto)
+	if !strings.Contains(string(b), "solr.SpanishLightStemFilterFactory") {
+		t.Fatalf("text_gk no reduce las palabras a su raíz: %s", b)
+	}
+}
+
+func TestPrepararEsquemaCreaTextGKSiFalta(t *testing.T) {
+	posts := postsDeEsquema(t, "")
+	if len(posts) != 1 || !strings.Contains(posts[0], `"add-field-type"`) || !strings.Contains(posts[0], "SpanishLightStem") {
+		t.Fatalf("esperaba crear text_gk con raíces en español: %v", posts)
+	}
+}
+
+func TestPrepararEsquemaActualizaTextGKViejo(t *testing.T) {
+	viejo := `{"name":"text_gk","analyzer":{"filters":[{"class":"solr.LowerCaseFilterFactory"},{"class":"solr.ASCIIFoldingFilterFactory"}]}}`
+	posts := postsDeEsquema(t, viejo)
+	if len(posts) != 1 || !strings.Contains(posts[0], `"replace-field-type"`) {
+		t.Fatalf("esperaba reemplazar el text_gk viejo: %v", posts)
+	}
+}
+
+func TestPrepararEsquemaNoTocaTextGKAlDia(t *testing.T) {
+	// Solr puede devolver el nombre corto del filtro en lugar de la clase.
+	alDia := `{"name":"text_gk","analyzer":{"filters":[{"name":"lowercase"},{"name":"asciiFolding"},{"name":"spanishLightStem"}]}}`
+	if posts := postsDeEsquema(t, alDia); len(posts) != 0 {
+		t.Fatalf("no tenía que cambiar nada: %v", posts)
 	}
 }
