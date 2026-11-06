@@ -164,6 +164,8 @@ Para no mandar datos sensibles a Jaeger, los spans llevan la ruta como plantilla
 
 ## Estructura del repositorio
 
+**Ronda 1 — MySQL:** se agregaron una instancia con bases y usuarios separados para Usuarios, Inventario y Pedidos, y tres plantillas ejecutables de migración. Completar las cuatro contraseñas MySQL de `.env` antes de ejecutar Compose. La [guía de MySQL y migraciones](infra/mysql/README.md) describe el arranque, la persistencia y la integración del runner a los servicios de la ronda 2. Las API de esos tres servicios todavía no están implementadas.
+
 ```
 GhostKitchen/
 ├── README.md

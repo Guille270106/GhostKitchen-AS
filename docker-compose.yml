@@ -9,9 +9,76 @@
 #   - solr:          índice de Búsqueda (cores "cocinas" y "platos").
 #   - jaeger:        recibe las trazas (OpenTelemetry) del gateway, Búsqueda y Catálogo. UI en el puerto 16686.
 #   - contract-mock: mock de la capacidad publicada, servido desde el contrato OpenAPI (puerto 4010).
-# Los demás servicios, MySQL, RabbitMQ, las métricas y el tablero se agregan en las próximas entregas.
+# MySQL y las plantillas de migración se agregan en la ronda 1; los servicios de negocio
+# Usuarios, Inventario y Pedidos se implementan en la ronda 2.
 # Los secretos se leen del archivo .env, que no se versiona (copiar .env.example como .env).
 services:
+  mysql:
+    image: mysql:8.4
+    container_name: ghostkitchen-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Completá MYSQL_ROOT_PASSWORD en .env}
+      USUARIOS_DB_PASSWORD: ${USUARIOS_DB_PASSWORD:?Completá USUARIOS_DB_PASSWORD en .env}
+      INVENTARIO_DB_PASSWORD: ${INVENTARIO_DB_PASSWORD:?Completá INVENTARIO_DB_PASSWORD en .env}
+      PEDIDOS_DB_PASSWORD: ${PEDIDOS_DB_PASSWORD:?Completá PEDIDOS_DB_PASSWORD en .env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./infra/mysql:/docker-entrypoint-initdb.d:ro
+    expose:
+      - "3306"
+    healthcheck:
+      # TCP evita declarar listo el servidor temporal que usa la inicialización.
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysql --protocol=TCP -h 127.0.0.1 -uroot -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  # Plantillas ejecutables: cada trabajo usa únicamente las credenciales de su base.
+  # En ronda 2, mysql-startup será el ENTRYPOINT de cada servicio, antes de su binario.
+  usuarios-migrations:
+    build: ./tools/mysql-startup
+    environment:
+      DB_HOST: mysql
+      DB_USER: usuarios
+      DB_PASSWORD: ${USUARIOS_DB_PASSWORD:?Completá USUARIOS_DB_PASSWORD en .env}
+      DB_NAME: usuarios_db
+    volumes:
+      - ./services/usuarios/migrations:/migrations:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
+  inventario-migrations:
+    build: ./tools/mysql-startup
+    environment:
+      DB_HOST: mysql
+      DB_USER: inventario
+      DB_PASSWORD: ${INVENTARIO_DB_PASSWORD:?Completá INVENTARIO_DB_PASSWORD en .env}
+      DB_NAME: inventario_db
+    volumes:
+      - ./services/inventario/migrations:/migrations:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
+  pedidos-migrations:
+    build: ./tools/mysql-startup
+    environment:
+      DB_HOST: mysql
+      DB_USER: pedidos
+      DB_PASSWORD: ${PEDIDOS_DB_PASSWORD:?Completá PEDIDOS_DB_PASSWORD en .env}
+      DB_NAME: pedidos_db
+    volumes:
+      - ./services/pedidos/migrations:/migrations:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
   gateway:
     image: nginx:1.27-alpine-otel     # NGINX con el módulo de OpenTelemetry
     container_name: ghostkitchen-gateway
@@ -122,5 +189,6 @@ services:
       - "4010:4010"
 
 volumes:
+  mysql-data:
   mongo-data:
   solr-data:

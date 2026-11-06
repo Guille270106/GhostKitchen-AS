@@ -11,7 +11,7 @@ Un ADR es un archivo donde anotamos **una decisión**: qué elegimos, qué otras
 | [ADR-001](ADR-001-limites-de-los-servicios.md) | D1 — Cómo separamos los servicios | Aceptada; validada en la Entrega 2 | Guillermina | 2026-10-09; validada 2026-10-16 |
 | [ADR-002](ADR-002-arquitectura-interna.md) | D2 — Cómo se organiza cada servicio por dentro | Aceptada para Búsqueda y Catálogo; propuesta para los demás | Valentina | 2026-10-16 |
 | [ADR-003](ADR-003-persistencia.md) | D3 — Qué base usa cada servicio | Aceptada; validada para MongoDB y Solr, MySQL pendiente | Valentina | 2026-10-09; validada 2026-10-16 |
-| ADR-004 | D4 — Consistencia y concurrencia | Pendiente; definir antes de implementar el flujo crítico y demostrar en la defensa individual | — | — |
+| [ADR-004](ADR-004-consistencia-y-concurrencia.md) | D4 — Consistencia y concurrencia | Propuesta; implementación y validación pendientes | Valentina | 2026-11-06 |
 | [ADR-005](ADR-005-comunicacion-entre-servicios.md) | D5 — Cómo se comunican los servicios | Aceptada; validada la parte síncrona | Lucía | 2026-10-09; validada 2026-10-16 |
 | [ADR-006](ADR-006-busqueda.md) | D6 — Búsqueda | Aceptada | Guillermina | 2026-10-16 |
 | [ADR-007](ADR-007-cache.md) | D7 — Caché | Propuesta | Guillermina | 2026-10-16 |

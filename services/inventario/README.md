@@ -2,6 +2,8 @@
 
 **Responsable:** Valentina Rey.
 
+> **Ronda 1:** base `inventario_db`, usuario propio y plantilla SQL disponibles. El trabajo `inventario-migrations` aplica las versiones al arrancar Compose. Ver [guía de migraciones](../../infra/mysql/README.md) y [ADR-004](../../docs/adr/ADR-004-consistencia-y-concurrencia.md). Las tablas y reglas del negocio se implementan desde la ronda 2.
+
 > Entrega 1: diseño preliminar; todavía no hay implementación. Las carpetas, rutas, configuración y pruebas indicadas son previstas para el desarrollo desde la Entrega 2.
 
 Dice **con qué se hace cada plato y si alcanza**. Puerto **8084**. Es uno de los dos servicios donde no se puede equivocar nada. Lo programamos en la Entrega 2.

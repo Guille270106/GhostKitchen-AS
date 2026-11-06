@@ -1,0 +1,86 @@
+# Entorno descartable de verificación. No usa .env ni volúmenes del proyecto.
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: test-root
+      USUARIOS_DB_PASSWORD: test-usuarios
+      INVENTARIO_DB_PASSWORD: "test'quote\\backslash"
+      PEDIDOS_DB_PASSWORD: test-pedidos
+    volumes:
+      - test-data:/var/lib/mysql
+      - ../../../infra/mysql/01-bases.sh:/docker-entrypoint-initdb.d/01-bases.sh:ro
+      - ./02-pruebas.sql:/docker-entrypoint-initdb.d/02-pruebas.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=test-root mysql --protocol=TCP -h 127.0.0.1 -uroot -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  usuarios:
+    build: ..
+    image: ghostkitchen-mysql-startup-test
+    environment:
+      DB_USER: usuarios
+      DB_PASSWORD: test-usuarios
+      DB_NAME: usuarios_db
+    volumes:
+      - ../../../services/usuarios/migrations:/migrations:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  inventario:
+    image: ghostkitchen-mysql-startup-test
+    environment:
+      DB_USER: inventario
+      DB_PASSWORD: "test'quote\\backslash"
+      DB_NAME: inventario_db
+    volumes:
+      - ../../../services/inventario/migrations:/migrations:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  pedidos:
+    image: ghostkitchen-mysql-startup-test
+    environment:
+      DB_USER: pedidos
+      DB_PASSWORD: test-pedidos
+      DB_NAME: pedidos_db
+    volumes:
+      - ../../../services/pedidos/migrations:/migrations:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  integration:
+    profiles: [test]
+    build:
+      context: ..
+      target: build
+    environment:
+      DB_USER: prueba
+      DB_PASSWORD: test-prueba
+      DB_NAME: integration_db
+      MYSQL_STARTUP_INTEGRATION: "1"
+    command: ["go", "test", "-v", "./..."]
+
+  busqueda:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./backend.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      default:
+        aliases: [catalogo, jaeger]
+
+  gateway:
+    image: nginx:1.27-alpine-otel
+    volumes:
+      - ../../../gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1::8080"
+    depends_on: [busqueda]
+
+volumes:
+  test-data:

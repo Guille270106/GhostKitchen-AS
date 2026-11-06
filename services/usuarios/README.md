@@ -2,6 +2,8 @@
 
 **Responsable:** Guillermina Sánchez.
 
+> **Ronda 1:** base `usuarios_db`, usuario propio y plantilla SQL disponibles. El trabajo `usuarios-migrations` aplica las versiones al arrancar Compose. La [guía de migraciones](../../infra/mysql/README.md) explica cómo incorporar el runner al arranque de la API en la ronda 2; las tablas de negocio todavía están pendientes.
+
 > Entrega 1: diseño preliminar; todavía no hay implementación. Las carpetas, rutas, configuración y pruebas indicadas son previstas para el desarrollo desde la Entrega 2.
 
 Se encarga de las cuentas y del login. Puerto **8081**. Lo programamos en la Entrega 2.

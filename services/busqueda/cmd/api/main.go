@@ -147,10 +147,13 @@ func inicializarIndice(ctx context.Context, log *slog.Logger, repo *solr.Reposit
 			return
 		case <-time.After(espera):
 		}
-		if espera < 10*time.Second {
-			espera *= 2
-		}
+		espera = siguienteEspera(espera)
 	}
+}
+
+// siguienteEspera limita el intervalo, no la duración de la reconstrucción.
+func siguienteEspera(actual time.Duration) time.Duration {
+	return min(actual*2, 10*time.Second)
 }
 
 // preparar hace un intento de armar el índice: desde Catálogo si hay CATALOGO_URL; si no,

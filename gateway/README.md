@@ -2,6 +2,8 @@
 
 **Responsable:** Guillermina Sánchez.
 
+> **Ronda 1 (V4):** `/public/v1/` conserva 60 solicitudes/minuto por API key y cuenta por IP cuando falta la clave, con la misma ráfaga de 60 y `429` con `Retry-After: 1`. Las solicitudes sin clave que están dentro del cupo siguen recibiendo `401`; el límite actúa antes de verificar credenciales. No se confía en `X-Forwarded-For` enviado por el cliente. Este ajuste no define todavía la política por IP de las rutas del frontend. En Búsqueda, la espera entre reintentos del índice al arrancar sigue 1, 2, 4, 8, 10, 10… segundos; el tope es del intervalo, no de toda la inicialización.
+
 > **Entrega 2:** implementada la entrada de la **capacidad publicada** en [`nginx.conf`](nginx.conf): `/public/v1/` → Búsqueda `/v1/`, verificación de `X-API-Key` con `auth_request` a Búsqueda (`/internal/apikey/verificar`), 60 solicitudes por minuto por clave (429 con `Retry-After`), cuerpo máximo de 64 KiB (413), `X-Correlation-Id` recibido o generado y reenviado, logs JSON sin parámetros ni claves, `/internal/` bloqueado y errores con Problem Details (401, 413, 429, 503). Las rutas del frontend (`/api/v1`), el login con Usuarios y el balanceo de Catálogo se agregan cuando esos servicios existan.
 >
 > **Trazas:** la imagen es `nginx:1.27-alpine-otel`, que trae el módulo oficial de OpenTelemetry. El gateway crea el primer span de la traza, lo manda a Jaeger (OTLP por gRPC, puerto 4317) y pasa el `traceparent` a los servicios. Como el módulo guarda la URL completa en el span, solo traza las solicitudes **sin parámetros**; las demás se trazan desde Búsqueda. El log JSON incluye `trace_id`. Las rutas `/api/v1/cocinas` y `/api/v1/platos/{id}` llevan a Catálogo.
