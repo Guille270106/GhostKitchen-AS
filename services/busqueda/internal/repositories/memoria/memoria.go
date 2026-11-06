@@ -10,6 +10,7 @@ import (
 
 	"ghostkitchen/busqueda/internal/domain"
 	"ghostkitchen/busqueda/internal/geo"
+	tx "ghostkitchen/busqueda/internal/texto"
 )
 
 // Repositorio guarda sedes y platos en mapas. Si Falla != nil, todas las lecturas devuelven ese error.
@@ -93,15 +94,16 @@ func (r *Repositorio) SedeMasCercana(ctx context.Context, punto domain.Ubicacion
 	return mejor, true, nil
 }
 
-// BuscarPlatos aplica los mismos filtros que Solr, pero el texto se busca como subcadena
-// (sin quitar acentos ni calcular puntaje) y "relevancia" ordena por id. Alcanza para probar las reglas.
+// BuscarPlatos aplica los mismos filtros que Solr y busca el texto igual que text_gk
+// (palabras enteras, sin acentos, con raíces en español y todas las palabras, como mm=100%),
+// usando el paquete texto. No calcula puntaje: "relevancia" ordena por id.
 func (r *Repositorio) BuscarPlatos(_ context.Context, f domain.FiltroPlatos) ([]domain.Plato, int, error) {
 	if r.Falla != nil {
 		return nil, 0, r.Falla
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	texto := strings.ToLower(strings.TrimSpace(f.Texto))
+	texto := strings.TrimSpace(f.Texto)
 	var res []domain.Plato
 	for _, p := range r.platos {
 		switch {
@@ -111,7 +113,7 @@ func (r *Repositorio) BuscarPlatos(_ context.Context, f domain.FiltroPlatos) ([]
 			f.RestauranteID != "" && p.Restaurante.ID != f.RestauranteID,
 			f.PrecioMax > 0 && p.Precio > f.PrecioMax,
 			f.Etiqueta != "" && !contiene(p.Etiquetas, f.Etiqueta),
-			texto != "" && !strings.Contains(strings.ToLower(p.Nombre+" "+p.Descripcion+" "+p.Categoria+" "+p.Restaurante.Nombre), texto):
+			texto != "" && !tx.Contiene(p.Nombre+" "+p.Descripcion+" "+p.Categoria+" "+p.Restaurante.Nombre, texto):
 			continue
 		}
 		res = append(res, p)
