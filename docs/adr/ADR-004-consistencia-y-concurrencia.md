@@ -1,6 +1,6 @@
 # ADR-004 — Consistencia y concurrencia
 
-- **Estado:** Propuesta; implementación y pruebas del flujo crítico pendientes.
+- **Estado:** Propuesta; reservas validadas parcialmente en V8. Saga, consumo y validación del flujo completo pendientes.
 - **Fecha:** 2026-11-06
 - **Responsable:** Valentina Rey
 - **Decisión del enunciado:** D4
@@ -122,11 +122,11 @@ Se observan antigüedad del outbox, confirmaciones y compensaciones pendientes, 
 
 ## Cómo lo vamos a validar
 
-Pruebas pendientes contra MySQL real y RabbitMQ, sin dar por comprobado el diseño:
+Plan de pruebas contra MySQL real y RabbitMQ. La validación parcial de V8 se registra abajo; no da por comprobado el flujo completo:
 
 | Escenario | Resultado exigido |
 | --- | --- |
-| 200 clientes reservando el último plato | Un ganador, ninguna reserva parcial y stock siempre válido |
+| 200 clientes reservando el último plato | Un ganador, ninguna reserva parcial y stock siempre válido; validado en V8 |
 | Falta el último ingrediente; falla un ajuste | Rollback completo y reserva anterior intacta |
 | Edición de receta tras reservar/consumir | Liberación, descuento y devolución usan cantidades guardadas |
 | Consumir y vencer simultáneamente | Una transición; ningún consumo vencido |
@@ -139,6 +139,29 @@ Pruebas pendientes contra MySQL real y RabbitMQ, sin dar por comprobado el dise�
 | Caída de RabbitMQ y reentrega al consumidor | Outbox conservado y un efecto transaccional por evento |
 
 La defensa debe mostrar respuestas, filas, restricciones y avance de recuperación. La evidencia se agregará al implementar el flujo.
+
+## Validación parcial V8 — 2026-11-06
+
+Se ejecutó `TestV8UltimoPlato200Solicitudes` contra la API real de Inventario y MySQL 8.4, en Docker, con las migraciones 000001–000004. Las 200 solicitudes POST usan claves y carritos distintos y se liberan mediante una barrera de inicio común. La receta necesita dos ingredientes; hay stock para una sola unidad del plato.
+
+| Comprobación | Resultado observado |
+| --- | --- |
+| Solicitudes | 200 HTTP, concurrentes |
+| Ganadores | 1 respuesta 201 y una reserva ACTIVA del mismo carrito |
+| Perdedoras | 199 respuestas 409 con código SIN_STOCK |
+| Errores técnicos o timeouts | 0 en la ejecución aprobada |
+| Stock total | 1000 y 1; sin descuento al reservar |
+| Stock reservado | 2 y 1; disponible 998 y 0 |
+| Datos persistidos | Una reserva, un plato de cantidad 1 y dos detalles de ingredientes |
+| Consistencia | Ninguna reserva parcial, ninguna sobre-reserva; reservado coincide con la suma del detalle |
+| Idempotencia | 200 resultados finales persistidos |
+| Duración del lote aprobado | 1,102 s en la ejecución local aislada |
+
+La primera ejecución encontró un ganador, pero solo 150 rechazos SIN_STOCK y 49 respuestas técnicas o de operación en proceso: no se consideró aprobada. La contención ocurría al intentar escribir un ingrediente abundante antes de detectar que faltaba el último. Se incorporó un rechazo temprano de stock ya insuficiente mediante lectura; las escrituras siguen condicionadas atómicamente en MySQL y dentro de una transacción. No se amplió el presupuesto HTTP de 3 s ni se relajaron las condiciones de la prueba.
+
+La suite completa de Inventario también pasó contra MySQL real después de la corrección, incluidas las pruebas anteriores de ingredientes, recetas, idempotencia, rollback, ajustes y liberación. En esa ejecución V8 repitió el resultado 1/199/0, con duración de lote 1,101 s.
+
+Esta evidencia cubre la fase de **reserva**, con una instancia del servicio; no prueba la creación de pedidos, el consumo, la saga ni los eventos de RabbitMQ. La duración es una observación local, no una garantía de rendimiento en otro entorno. La [guía de Inventario](../../services/inventario/README.md) contiene el comando de reproducción. El test inspecciona las filas antes de limpiar sus datos descartables y falla ante cualquier respuesta o estado final distinto del esperado.
 
 ## Referencias
 

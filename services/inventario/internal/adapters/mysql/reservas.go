@@ -234,6 +234,27 @@ func (r *Repositorio) aplicarItems(ctx context.Context, tx *sql.Tx, res domain.R
 		orden = append(orden, id)
 	}
 	sort.Strings(orden)
+	// Rechazar pronto el stock que ya sabemos insuficiente evita hacer esperar
+	// a todos los perdedores en un ingrediente que sí alcanza. Esta lectura no
+	// autoriza ninguna reserva: los UPDATE de abajo vuelven a comprobar el stock
+	// de forma atómica, porque otra transacción puede cambiarlo mientras tanto.
+	for _, id := range orden {
+		delta := despues[id] - antes[id]
+		if delta <= 0 {
+			continue
+		}
+		var disponible int64
+		err := tx.QueryRowContext(ctx, `SELECT total-reservado FROM ingrediente WHERE id=? AND cocina_id=?`, id, res.CocinaID).Scan(&disponible)
+		if errors.Is(err, sql.ErrNoRows) {
+			return res, domain.ErrSinStock
+		}
+		if err != nil {
+			return res, err
+		}
+		if disponible < delta {
+			return res, domain.ErrSinStock
+		}
+	}
 	for _, id := range orden {
 		delta := despues[id] - antes[id]
 		if delta == 0 {

@@ -4,7 +4,7 @@
 
 > **V5–V7 implementados:** base hexagonal, MySQL, ingredientes (HU19), recetas (HU18, RN18) y reservas todo o nada con idempotencia (RN04, RN05). El entrypoint aplica sus migraciones antes de arrancar HTTP. Ver [guía de migraciones](../../infra/mysql/README.md) y [ADR-004](../../docs/adr/ADR-004-consistencia-y-concurrencia.md).
 
-> La prueba de 200 solicitudes es V8; el vencimiento automático y sus eventos son V9; el consumo y devolución son V10. No se implementan en V7.
+> **V8:** prueba HTTP de 200 solicitudes sobre el último plato, con MySQL real. El vencimiento automático y sus eventos siguen siendo V9; el consumo y devolución son V10.
 
 Dice **con qué se hace cada plato y si alcanza**. Puerto interno **8084**.
 
@@ -127,6 +127,27 @@ Otros resultados: `SIN_STOCK`, `RESERVA_VENCIDA` y `RESERVA_CONFLICTO` dan 409; 
 Al alcanzar el plazo, GET informa VENCIDA y se rechazan aumentos o ajustes no vacíos. Se permite liberarla explícitamente. **El barrido que libera automáticamente el stock y publica `reserva.vencida` queda para V9**: en V7 el stock de una reserva vencida permanece apartado hasta su liberación explícita. GET no modifica datos ni publica eventos. No hay consumo, devolución, outbox ni publicador todavía.
 
 Las pruebas existentes ahora cubren rollback, claves reutilizadas, replay durable, duplicados simultáneos, ingredientes compartidos, ajustes tras cambiar recetas, vencimiento sin renovación y liberación repetida. No sustituyen el escenario de 200 solicitudes de V8. Se ejecutan con los mismos comandos de pruebas de arriba.
+
+## V8 — Prueba del último plato con 200 solicitudes
+
+`TestV8UltimoPlato200Solicitudes` prepara una cocina aislada y una receta que necesita 2 unidades de un ingrediente y 1 de otro. Hay stock total 1000 y 1, respectivamente: alcanza para un solo plato. Las 200 solicitudes HTTP usan carritos y claves distintos y esperan una barrera común de salida; se ejecutan contra la API real y sus transacciones MySQL, sin repositorios de memoria ni reintentos HTTP en el cliente de prueba.
+
+La prueba exige exactamente **1 respuesta 201 y 199 respuestas 409 SIN_STOCK**, sin errores técnicos. Después consulta MySQL y exige una reserva ACTIVA del ganador, un plato con cantidad 1, dos detalles de ingredientes con cantidades 2 y 1, stock total sin cambios, reservado 2 y 1, disponible 998 y 0, ningún reservado inválido y 200 resultados de idempotencia durables. Comprueba además que la suma del detalle reservado coincida con el stock apartado. Un timeout o una respuesta inesperada hace fallar la prueba.
+
+Para repetirla desde la raíz del repositorio, con Docker en ejecución:
+
+```powershell
+docker compose -p gk-v8-check -f services/inventario/testdata/compose.yml run --rm --build pruebas go test -count=1 -v -run '^TestV8UltimoPlato200Solicitudes$' ./internal/adapters/mysql
+
+# Al terminar, eliminar solo los contenedores y el volumen de este entorno descartable.
+docker compose -p gk-v8-check -f services/inventario/testdata/compose.yml down -v --remove-orphans
+```
+
+No usa `.env` ni los datos de desarrollo. El test elimina sus registros después de inspeccionarlos y muestra el resultado en la salida de Go. Sin `TEST_MYSQL=1` se omite: un `go test` local sin MySQL no demuestra V8. El servicio `pruebas` de ese Compose ya configura la variable.
+
+Durante V8 se incorporó una lectura previa para descartar stock ya insuficiente sin esperar a escribir otros ingredientes. Es una optimización: las escrituras siguen usando la condición atómica de stock y la transacción completa; esa lectura nunca autoriza por sí sola una reserva. No se amplió el plazo HTTP de 3 segundos.
+
+La duración registrada describe una ejecución local con una instancia de Inventario; no es una medición de capacidad en producción. Esta prueba comprueba la reserva sin sobreventa; no ejecuta creación de pedidos, consumo ni devolución de stock. La evidencia de ejecución se registra en el [ADR-004](../../docs/adr/ADR-004-consistencia-y-concurrencia.md).
 
 ## Diseño de las funciones restantes
 

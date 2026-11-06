@@ -1,6 +1,6 @@
 # Arquitectura de GhostKitchen
 
-> **V5–V7:** Inventario incorpora ingredientes, recetas y reservas internas todo o nada, con idempotencia persistida y vencimiento a 10 minutos. La exposición autenticada por gateway depende de G9. La prueba de 200 solicitudes queda para V8, el barrido de vencimientos y sus eventos para V9 y el consumo/devolución para V10. Ver [Inventario](../services/inventario/README.md).
+> **V5–V8:** Inventario incorpora ingredientes, recetas y reservas internas todo o nada, con idempotencia persistida y vencimiento a 10 minutos. V8 validó 200 solicitudes HTTP concurrentes con MySQL real: un ganador, 199 SIN_STOCK y ninguna reserva parcial. La exposición autenticada por gateway depende de G9; el barrido y sus eventos quedan para V9 y el consumo/devolución para V10. Ver [Inventario](../services/inventario/README.md).
 
 > **Actualización de ronda 1 (06/11/2026):** MySQL incorpora `usuarios_db`, `inventario_db` y `pedidos_db` con usuarios aislados y migraciones versionadas por servicio. Los trabajos de migración son plantillas ejecutables; las API de esos servicios siguen pendientes. Ver [guía de MySQL](../infra/mysql/README.md) y [ADR-004](adr/ADR-004-consistencia-y-concurrencia.md). La API publicada ahora limita por IP cuando falta API key y Búsqueda limita a 10 s la espera entre reintentos de arranque.
 
