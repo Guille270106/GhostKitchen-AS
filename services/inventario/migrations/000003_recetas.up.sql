@@ -1,0 +1,97 @@
+CREATE TABLE plato_ref (
+ id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ cocina_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ activo BOOLEAN NOT NULL,
+ version BIGINT UNSIGNED NOT NULL DEFAULT 0,
+ CONSTRAINT fk_plato_cocina FOREIGN KEY (cocina_id) REFERENCES cocina_ref(id),
+ UNIQUE KEY uq_plato_cocina (id,cocina_id)
+) ENGINE=InnoDB;
+
+-- Copia de identidad y estado del seed actual de Catálogo; actualización por eventos en V12.
+INSERT INTO plato_ref (id,cocina_id,activo) VALUES
+('p1','nueva-cordoba',TRUE),
+('p2','nueva-cordoba',TRUE),
+('p3','nueva-cordoba',TRUE),
+('p4','nueva-cordoba',TRUE),
+('p5','nueva-cordoba',TRUE),
+('p6','nueva-cordoba',TRUE),
+('p7','nueva-cordoba',TRUE),
+('p8','nueva-cordoba',TRUE),
+('p9','nueva-cordoba',TRUE),
+('p10','nueva-cordoba',TRUE),
+('p11','nueva-cordoba',TRUE),
+('p12','nueva-cordoba',TRUE),
+('p13','nueva-cordoba',TRUE),
+('p14','nueva-cordoba',TRUE),
+('p15','nueva-cordoba',TRUE),
+('p16','nueva-cordoba',TRUE),
+('p17','cerro',TRUE),
+('p18','cerro',TRUE),
+('p19','cerro',TRUE),
+('p20','cerro',TRUE),
+('p21','cerro',TRUE),
+('p22','cerro',TRUE),
+('p23','cerro',TRUE),
+('p24','cerro',TRUE),
+('p25','cerro',TRUE),
+('p26','cerro',TRUE),
+('p27','cerro',TRUE),
+('p28','cerro',TRUE),
+('p29','cerro',TRUE),
+('p30','cerro',TRUE),
+('p31','cerro',TRUE),
+('p32','cerro',TRUE),
+('p33','villa-allende',TRUE),
+('p34','villa-allende',TRUE),
+('p35','villa-allende',TRUE),
+('p36','villa-allende',TRUE),
+('p37','villa-allende',TRUE),
+('p38','villa-allende',TRUE),
+('p39','villa-allende',TRUE),
+('p40','villa-allende',TRUE),
+('p41','villa-allende',TRUE),
+('p42','villa-allende',TRUE),
+('p43','villa-allende',TRUE),
+('p44','villa-allende',TRUE),
+('p45','villa-allende',TRUE),
+('p46','villa-allende',TRUE),
+('p47','villa-allende',TRUE),
+('p48','villa-allende',TRUE),
+('p49','barrio-jardin',TRUE),
+('p50','barrio-jardin',TRUE),
+('p51','barrio-jardin',TRUE),
+('p52','barrio-jardin',TRUE),
+('p53','barrio-jardin',TRUE),
+('p54','barrio-jardin',TRUE),
+('p55','barrio-jardin',TRUE),
+('p56','barrio-jardin',TRUE),
+('p57','barrio-jardin',TRUE),
+('p58','barrio-jardin',TRUE),
+('p59','barrio-jardin',TRUE),
+('p60','barrio-jardin',TRUE),
+('p61','barrio-jardin',TRUE),
+('p62','barrio-jardin',TRUE),
+('p63','barrio-jardin',TRUE),
+('p64','barrio-jardin',FALSE);
+
+ALTER TABLE ingrediente ADD UNIQUE KEY uq_ingrediente_cocina (id,cocina_id);
+
+-- La cabecera es el punto de bloqueo compartido para editar y, en V7, reservar.
+CREATE TABLE receta (
+ plato_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ cocina_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ version BIGINT UNSIGNED NOT NULL DEFAULT 1,
+ UNIQUE KEY uq_receta_cocina (plato_id,cocina_id),
+ CONSTRAINT fk_receta_plato FOREIGN KEY (plato_id,cocina_id) REFERENCES plato_ref(id,cocina_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE receta_item (
+ plato_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ ingrediente_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ cocina_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ cantidad BIGINT NOT NULL,
+ PRIMARY KEY (plato_id,ingrediente_id),
+ CONSTRAINT chk_receta_cantidad CHECK (cantidad > 0),
+ CONSTRAINT fk_item_receta FOREIGN KEY (plato_id,cocina_id) REFERENCES receta(plato_id,cocina_id),
+ CONSTRAINT fk_item_ingrediente FOREIGN KEY (ingrediente_id,cocina_id) REFERENCES ingrediente(id,cocina_id)
+) ENGINE=InnoDB;
