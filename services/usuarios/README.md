@@ -4,9 +4,7 @@
 
 > **Ronda 1:** base `usuarios_db`, usuario propio y plantilla SQL disponibles. El trabajo `usuarios-migrations` aplica las versiones al arrancar Compose. La [guía de migraciones](../../infra/mysql/README.md) explica cómo incorporar el runner al arranque de la API en la ronda 2; las tablas de negocio todavía están pendientes.
 
-> Entrega 1: diseño preliminar; todavía no hay implementación. Las carpetas, rutas, configuración y pruebas indicadas son previstas para el desarrollo desde la Entrega 2.
-
-Se encarga de las cuentas y del login. Puerto **8081**. Lo programamos en la Entrega 2.
+Se encarga de las cuentas y del login. Puerto **8081**. Se implementa en la ronda 2.
 
 ## Qué hace
 
@@ -69,7 +67,7 @@ La consulta a Catálogo tiene un máximo de 800 ms por intento y un reintento, d
 
 ## Configuración prevista
 
-`JWT_SECRET`, `JWT_TTL_MINUTES` y `USUARIOS_DB_PASSWORD` están anticipadas en [`.env.example`](../../.env.example). La conexión a MySQL, el puerto y la dirección interna de Catálogo se definirán al implementar el servicio. Cada servicio accederá solo a su propia base.
+`JWT_SECRET`, `JWT_TTL_MINUTES` y `USUARIOS_DB_PASSWORD` están en las [variables del `.env`](../../README.md#variables-del-env). La conexión a MySQL, el puerto y la dirección interna de Catálogo se definirán al implementar el servicio. Cada servicio accederá solo a su propia base.
 
 ## Pruebas previstas
 

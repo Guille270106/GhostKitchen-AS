@@ -1,6 +1,8 @@
 # Microservicios
 
-Cada carpeta es un servicio aparte: va a tener su propio código, su `Dockerfile` y sus tests, y se levanta por separado. En esta entrega cada carpeta tiene solo su `README.md`, donde explicamos qué hace el servicio, qué datos guarda, cómo se organiza por dentro, qué rutas tiene y qué mensajes manda o escucha. El código lo agregamos desde la Entrega 2.
+Cada carpeta es un servicio aparte, con su propio código, su `Dockerfile` y sus tests, y se levanta por separado. Su `README.md` explica qué hace el servicio, qué datos guarda, cómo se organiza por dentro, qué rutas tiene y qué mensajes manda o escucha.
+
+Hoy funcionan **Catálogo** y **Búsqueda** (desde la Entrega 2). **Usuarios**, **Inventario** y **Pedidos** ya tienen su base MySQL y su carpeta `migrations/`, y su código llega en la ronda 2; **Notificaciones**, en la ronda 4.
 
 | Servicio | Qué hace | Base | Cómo se organiza por dentro | Puerto |
 | --- | --- | --- | --- | --- |
@@ -23,13 +25,14 @@ Las imágenes de contexto y contenedores están en `docs/diagrams/`. Las depende
 ## Reglas que siguen todos los servicios
 
 - **Go + Gin**, igual que en el práctico de la materia.
-- Todos van a tener tres rutas técnicas:
-  - `/health/live`: el servicio está prendido;
-  - `/health/ready`: el servicio puede atender (por ejemplo, llega a su base);
-  - `/metrics`: números para Prometheus.
+- Todos tienen tres rutas técnicas, igual que Catálogo y Búsqueda:
+  - `/health`: el servicio está prendido (lo usa Docker para saber si reiniciarlo);
+  - `/ready`: el servicio puede atender, por ejemplo porque llega a su base;
+  - `/metrics`: números para Prometheus (llega con el monitoreo).
 - Los logs se escriben en JSON y llevan un identificador para seguir una misma acción entre servicios. **Nunca** se escriben contraseñas ni tokens.
-- Las claves se leen de variables de entorno (ver `.env.example`), nunca van en el código.
+- Las claves se leen de variables de entorno (ver [Variables del `.env`](../README.md#variables-del-env)), nunca van en el código.
+- Los mensajes que publican o escuchan siguen el formato común de [`docs/contracts/eventos`](../docs/contracts/eventos/README.md).
 
-## Código compartido (`pkg/`, desde la Entrega 2)
+## Sin código compartido entre servicios
 
-Vamos a tener una carpeta `pkg/` con código técnico que usan todos los servicios, **sin reglas del negocio**: los logs, el seguimiento entre servicios, un cliente HTTP con tiempos máximos y reintentos, el formato de los mensajes y la lectura del usuario que manda el gateway.
+Cada servicio es un módulo de Go independiente y se compila solo con su carpeta, así que no hay una carpeta `pkg/` en común. Lo técnico que se repite (logs, correlation id, trazas, el sobre de los mensajes) lo tiene cada servicio en su `internal/`, con la misma forma. Es un poco de código repetido a cambio de que cada servicio se pueda compilar, probar y desplegar sin depender de los demás.

@@ -96,11 +96,7 @@ Las imágenes de los diagramas están únicamente en **`docs/diagrams/`**. Qué 
 
 Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedores Linux iniciados. La primera ejecución descarga las imágenes (MongoDB, Solr, NGINX, Go, Prism) y necesita conexión a Internet.
 
-1. Copiar `.env.example` como `.env` y completar, con letras y números:
-   - `PUBLIC_API_KEYS`: una clave de prueba, por ejemplo `clave-local`;
-   - `MONGO_ROOT_PASSWORD` y `CATALOGO_DB_PASSWORD`: contraseñas de MongoDB (Compose no arranca si faltan).
-
-   El `.env` no se sube al repositorio.
+1. Crear un archivo `.env` en la raíz del repositorio con las variables de la tabla [Variables del `.env`](#variables-del-env), una por línea (`NOMBRE=valor`). Las contraseñas, con letras y números. El `.env` no se sube al repositorio.
 2. Desde la raíz del repositorio:
 
    ```bash
@@ -123,8 +119,33 @@ Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedor
 | Panel de Solr (desarrollo) | http://localhost:8983 |
 | MongoDB con Compass (desarrollo) | `mongodb://root:<MONGO_ROOT_PASSWORD>@localhost:27017` |
 | Trazas en Jaeger | http://localhost:16686 |
+| Panel de RabbitMQ (desarrollo) | http://localhost:15672 (usuario y contraseña de `RABBITMQ_USER` y `RABBITMQ_PASSWORD`) |
 
 Para detener todo: `docker compose down`. Con `-v` se borran también los volúmenes de MongoDB y Solr: al arrancar de nuevo se cargan los datos iniciales y se reconstruye el índice.
+
+### Variables del `.env`
+
+Las marcadas como **obligatorias** las pide Docker Compose: si falta alguna, no arranca y dice cuál. Las demás las van a usar los servicios que todavía no están implementados. Para usar en local alcanza con valores inventados.
+
+| Variable | Para qué | Obligatoria hoy |
+| --- | --- | --- |
+| `PUBLIC_API_KEYS` | Claves de los grupos que consumen nuestra API, separadas por coma (por ejemplo `clave-local`). Si queda vacía, `/public/v1` responde 401 a todos | No, pero sin ella no se puede probar la API |
+| `MONGO_ROOT_PASSWORD` | Contraseña del usuario `root` de MongoDB | Sí |
+| `CATALOGO_DB_PASSWORD` | Contraseña del usuario de Catálogo en MongoDB | Sí |
+| `NOTIFICACIONES_DB_PASSWORD` | Contraseña del usuario de Notificaciones en MongoDB | No |
+| `MYSQL_ROOT_PASSWORD` | Contraseña del usuario `root` de MySQL | Sí |
+| `USUARIOS_DB_PASSWORD` | Contraseña del usuario de Usuarios en MySQL | Sí |
+| `INVENTARIO_DB_PASSWORD` | Contraseña del usuario de Inventario en MySQL | Sí |
+| `PEDIDOS_DB_PASSWORD` | Contraseña del usuario de Pedidos en MySQL | Sí |
+| `RABBITMQ_USER` | Usuario de RabbitMQ, para el panel y los servicios (por ejemplo `ghostkitchen`) | Sí |
+| `RABBITMQ_PASSWORD` | Contraseña de ese usuario | Sí |
+| `JWT_SECRET` | Clave larga y aleatoria con la que Usuarios firma los tokens del login | No |
+| `JWT_TTL_MINUTES` | Duración del token en minutos (por ejemplo `120`) | No |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Servidor de correo de Notificaciones (en local, Mailpit: `mailpit` y `1025`) | No |
+| `PROVIDER_BASE_URL`, `PROVIDER_API_KEY` | Dirección y clave de la API del grupo proveedor | No |
+| `GRAFANA_ADMIN_PASSWORD` | Contraseña del administrador de Grafana | No |
+
+Las contraseñas de MongoDB van dentro de una URL: usar solo letras y números. Si se cambia una contraseña de una base ya creada, hay que borrar su volumen (`docker compose down -v`).
 
 El mock (Prism) devuelve ejemplos estáticos: no calcula distancias ni filtros. Sin Docker, con Node.js y npm:
 
@@ -171,7 +192,6 @@ GhostKitchen/
 ├── README.md
 ├── SPEC.md                       # Alcance, reglas de negocio y criterios de aceptación
 ├── docker-compose.yml            # Puesta en marcha local con un solo comando
-├── .env.example                  # Variables necesarias (sin secretos reales)
 ├── docs/
 │   ├── ARCHITECTURE.md           # Arquitectura: diagramas, servicios, datos, comunicación
 │   ├── adr/                      # Decisiones arquitectónicas (D1, D3, D5 y D8 en esta entrega)
@@ -191,7 +211,7 @@ GhostKitchen/
   - `feature/...`, `docs/...`, `fix/...`: una rama por tarea. Sale de `develop` y vuelve a `develop` con un **pull request que revisa otro integrante**.
 - **Revisión automática:** desde la Entrega 2, GitHub Actions corre los tests en cada pull request.
 - **Decisiones:** cada decisión importante va en un ADR. Si cambiamos de idea, hacemos un ADR nuevo y no borramos el viejo.
-- **Contraseñas y claves:** nunca en el repositorio; solo subimos `.env.example` con los nombres de las variables.
+- **Contraseñas y claves:** nunca en el repositorio. Van en el `.env` de cada integrante, que está en `.gitignore`; los nombres de las variables están en [Variables del `.env`](#variables-del-env).
 
 ## Documentación
 
