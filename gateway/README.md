@@ -4,6 +4,8 @@
 
 > **Ronda 1 (V4):** `/public/v1/` conserva 60 solicitudes/minuto por API key y cuenta por IP cuando falta la clave, con la misma ráfaga de 60 y `429` con `Retry-After: 1`. Las solicitudes sin clave que están dentro del cupo siguen recibiendo `401`; el límite actúa antes de verificar credenciales. No se confía en `X-Forwarded-For` enviado por el cliente. Este ajuste no define todavía la política por IP de las rutas del frontend. En Búsqueda, la espera entre reintentos del índice al arrancar sigue 1, 2, 4, 8, 10, 10… segundos; el tope es del intervalo, no de toda la inicialización.
 
+> **Ronda 1 (L3):** el gateway usa el DNS interno de Docker (`resolver 127.0.0.11`) y `resolve` en cada `upstream`, así vuelve a buscar la dirección de Búsqueda y Catálogo cada 10 s. Antes la buscaba una sola vez al arrancar: si un servicio se recreaba con otra IP (por ejemplo con `docker compose up --build`), respondía `503` hasta reiniciar el gateway. Probado recreando Búsqueda con una IP nueva: el gateway la siguió sin reiniciarse.
+
 > **Entrega 2:** implementada la entrada de la **capacidad publicada** en [`nginx.conf`](nginx.conf): `/public/v1/` → Búsqueda `/v1/`, verificación de `X-API-Key` con `auth_request` a Búsqueda (`/internal/apikey/verificar`), 60 solicitudes por minuto por clave (429 con `Retry-After`), cuerpo máximo de 64 KiB (413), `X-Correlation-Id` recibido o generado y reenviado, logs JSON sin parámetros ni claves, `/internal/` bloqueado y errores con Problem Details (401, 413, 429, 503). Las rutas del frontend (`/api/v1`), el login con Usuarios y el balanceo de Catálogo se agregan cuando esos servicios existan.
 >
 > **Trazas:** la imagen es `nginx:1.27-alpine-otel`, que trae el módulo oficial de OpenTelemetry. El gateway crea el primer span de la traza, lo manda a Jaeger (OTLP por gRPC, puerto 4317) y pasa el `traceparent` a los servicios. Como el módulo guarda la URL completa en el span, solo traza las solicitudes **sin parámetros**; las demás se trazan desde Búsqueda. El log JSON incluye `trace_id`. Las rutas `/api/v1/cocinas` y `/api/v1/platos/{id}` llevan a Catálogo.
@@ -59,7 +61,7 @@ El gateway no reintenta operaciones que cambian datos. Los reintentos seguros de
 
 - Sobrescribe los headers de identidad definidos por la aplicación con los valores verificados por Usuarios; ningún servicio confía en una identidad enviada por el navegador.
 - Las rutas públicas no heredan una identidad suministrada por el cliente. Los servicios se mantienen dentro de la red de Docker.
-- Las claves de consumidores se configuran con `PUBLIC_API_KEYS` de [`.env.example`](../.env.example), nunca en archivos versionados con claves reales.
+- Las claves de consumidores se configuran con `PUBLIC_API_KEYS` del `.env` (ver [Variables del `.env`](../README.md#variables-del-env)), nunca en archivos versionados con claves reales.
 - Limita la capacidad publicada a 60 solicitudes por minuto por clave, con `429` y `Retry-After`; la política por usuario/IP del frontend se definirá al implementar.
 - Reenvía o genera `X-Correlation-Id` y registra ruta, estado, duración e instancia de destino. Las contraseñas, tokens y API keys no aparecen en logs.
 - CORS se restringe al origen del frontend. Las plantillas y variables propias de NGINX se definirán junto con su configuración.
