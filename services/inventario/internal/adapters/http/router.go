@@ -100,6 +100,19 @@ func Nuevo(svc *application.Ingredientes, ready func(context.Context) error, log
 
 func responderError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, domain.ErrClaveInvalida), errors.Is(err, domain.ErrReservaInvalida):
+		fallo(c, 400, "DATOS_INVALIDOS", err.Error())
+	case errors.Is(err, domain.ErrIdempotencia):
+		fallo(c, 409, "IDEMPOTENCIA_CONFLICTO", err.Error())
+	case errors.Is(err, domain.ErrSinStock):
+		fallo(c, 409, "SIN_STOCK", err.Error())
+	case errors.Is(err, domain.ErrReservaVencida):
+		fallo(c, 409, "RESERVA_VENCIDA", err.Error())
+	case errors.Is(err, domain.ErrReservaConflicto):
+		fallo(c, 409, "RESERVA_CONFLICTO", err.Error())
+	case errors.Is(err, domain.ErrEnProceso):
+		c.Header("Retry-After", "1")
+		fallo(c, 409, "OPERACION_EN_PROCESO", err.Error())
 	case errors.Is(err, domain.ErrRecetaInvalida):
 		fallo(c, 400, "RECETA_INVALIDA", err.Error())
 	case errors.Is(err, domain.ErrDatosInvalidos):

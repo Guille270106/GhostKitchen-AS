@@ -2,9 +2,9 @@
 
 **Responsable:** Valentina Rey.
 
-> **V5 y V6 implementados:** servicio base hexagonal, MySQL, ingredientes (HU19) y recetas (HU18, RN18). El entrypoint aplica sus migraciones antes de arrancar HTTP. Ver [guía de migraciones](../../infra/mysql/README.md) y [ADR-004](../../docs/adr/ADR-004-consistencia-y-concurrencia.md).
+> **V5–V7 implementados:** base hexagonal, MySQL, ingredientes (HU19), recetas (HU18, RN18) y reservas todo o nada con idempotencia (RN04, RN05). El entrypoint aplica sus migraciones antes de arrancar HTTP. Ver [guía de migraciones](../../infra/mysql/README.md) y [ADR-004](../../docs/adr/ADR-004-consistencia-y-concurrencia.md).
 
-> Reservas, movimientos y mensajería siguen pendientes para V7 y siguientes.
+> La prueba de 200 solicitudes es V8; el vencimiento automático y sus eventos son V9; el consumo y devolución son V10. No se implementan en V7.
 
 Dice **con qué se hace cada plato y si alcanza**. Puerto interno **8084**.
 
@@ -85,7 +85,50 @@ Guardar bloquea la referencia del plato y la cabecera de receta, valida ingredie
 
 Las pruebas se ejecutan con los comandos de V5. Agregan validación HTTP, permisos, persistencia de recetas, rollback ante ingredientes ajenos o inexistentes, restricciones SQL y reemplazos concurrentes completos. El GET lee cada receta completa en una sola consulta, para no mezclar versiones.
 
-## Qué hace
+## V7 — Reservas internas de Pedidos
+
+| Método y ruta | Resultado |
+| --- | --- |
+| `POST /reservas` | Crear la reserva única del carrito; 201 y Location |
+| `PATCH /reservas/{id}` | Reemplazar las cantidades finales de todos sus platos; 200 |
+| `POST /reservas/{id}/liberar` | Liberar todos los ingredientes; 200. Acepta cuerpo vacío o `{}` |
+| `GET /reservas/{id}` | Consultar la reserva actual, sin clave de escritura |
+
+Son operaciones internas solicitadas por Pedidos, dentro de la red Docker y sin rutas en el gateway. Pedidos valida que el carrito sea del cliente antes de llamar. No usan las cabeceras del rol Cocina ni proporcionan autenticación entre servicios por sí solas; no deben exponerse directamente al frontend.
+
+Las tres escrituras exigen `Idempotency-Key`, de 1 a 128 caracteres ASCII visibles, sin espacios. El POST recibe:
+
+```json
+{
+  "carritoId":"carrito-123",
+  "cocinaId":"nueva-cordoba",
+  "items":[{"platoId":"p1","cantidad":2},{"platoId":"p2","cantidad":1}]
+}
+```
+
+Los identificadores admiten hasta 64 letras ASCII, números, guiones y guiones bajos. Las cantidades son enteras positivas y no se repiten platos. El PATCH recibe solo `items` con el **contenido final completo**: omitir un plato libera sus ingredientes; `{"items":[]}` libera la reserva. Omitir `items` o enviar null es un error, no una orden de vaciar.
+
+La respuesta incluye `id`, `carritoId`, `cocinaId`, `estado`, `venceEn` UTC e `items` con plato y cantidad. Usar el ID devuelto para ajustar, liberar o consultar. Un segundo POST con otra clave para el mismo carrito devuelve 409: no crea otra reserva, tampoco si la anterior fue liberada. Para empezar de nuevo se necesita otro carrito.
+
+### Atomicidad, recetas e idempotencia
+
+La migración **000004** incorpora `reserva`, `reserva_plato`, `reserva_item` e `idempotencia`. Una transacción bloquea la reserva, lee las recetas coherentes bajo bloqueo de cabecera, agrupa ingredientes compartidos y actualiza su stock en orden de ID, solo si alcanza. Ante un ingrediente insuficiente se deshace **todo** el intento, incluida la reserva nueva; un ajuste fallido conserva su contenido anterior. También se rechazan cantidades cuyo cálculo desborda BIGINT.
+
+La primera reserva fija `venceEn` a 10 minutos con el reloj MySQL; ajustar no lo renueva. Los aumentos usan la receta actual solo para las unidades adicionales. Los lotes guardan cantidades y versión de receta: al reducir se liberan primero las últimas unidades agregadas; liberar usa el detalle efectivamente apartado. Cambiar la receta no modifica reservas existentes. Total no disminuye al reservar ni aumenta al liberar: solo cambia reservado.
+
+Cada clave se limita a una operación de Pedidos (reservar, ajustar o liberar), y su huella incluye recurso y datos normalizados. Reordenar los platos no crea una operación distinta. Con la misma clave y datos se devuelve el resultado original, incluso si después la reserva cambió; consultar GET para su estado actual. Reutilizar una clave con otros datos produce `IDEMPOTENCIA_CONFLICTO` (409).
+
+Efectos y resultado se guardan juntos; los rechazos de negocio, como `SIN_STOCK`, también quedan registrados sin cambios de stock. Para intentar otra vez tras reponer ingredientes se necesita una nueva clave. Fallos técnicos hacen rollback y permiten repetir la misma clave. Los duplicados simultáneos esperan el resultado; si vence el plazo al adquirir la clave, se informa `OPERACION_EN_PROCESO` (409, `Retry-After: 1`). Ante deadlock se reintenta hasta dos veces la transacción completa con la misma clave y dentro del contexto disponible. No se registra un éxito antes del commit.
+
+Otros resultados: `SIN_STOCK`, `RESERVA_VENCIDA` y `RESERVA_CONFLICTO` dan 409; referencias de cocina/plato desconocidas, inactivas o de otra cocina y platos sin receta dan 404; solicitudes inválidas dan 400. Una reserva liberada no se reactiva. Liberarla otra vez no vuelve a modificar stock.
+
+### Límite de vencimiento de V7
+
+Al alcanzar el plazo, GET informa VENCIDA y se rechazan aumentos o ajustes no vacíos. Se permite liberarla explícitamente. **El barrido que libera automáticamente el stock y publica `reserva.vencida` queda para V9**: en V7 el stock de una reserva vencida permanece apartado hasta su liberación explícita. GET no modifica datos ni publica eventos. No hay consumo, devolución, outbox ni publicador todavía.
+
+Las pruebas existentes ahora cubren rollback, claves reutilizadas, replay durable, duplicados simultáneos, ingredientes compartidos, ajustes tras cambiar recetas, vencimiento sin renovación y liberación repetida. No sustituyen el escenario de 200 solicitudes de V8. Se ejecutan con los mismos comandos de pruebas de arriba.
+
+## Diseño de las funciones restantes
 
 - Guarda los **ingredientes** de cada cocina con su stock: cuánto hay en total, cuánto está reservado y cuánto queda disponible (`total − reservado`, que nunca puede ser negativo).
 - Guarda las **recetas**: qué ingredientes y cuántos usa cada plato. Solo se pueden usar ingredientes de la cocina del plato.

@@ -77,7 +77,7 @@ python tools/mysql-startup/testdata/verify.py
 Incluye primer arranque, contraseña con comilla y barra invertida, migraciones repetidas, arranques concurrentes, permisos cruzados, persistencia, SQL inválido y estado dirty, bloqueo del comando si falla la migración, y respuestas 401/429 por IP y 200/429 por clave del gateway. El backend HTTP de esa prueba es un doble de Búsqueda: no prueba el negocio de búsqueda ni Solr.
 
 1. Ejecutar las migraciones dos veces: los trabajos de Usuarios y Pedidos terminan en 0; Inventario queda listo después de migrar.
-2. Consultar con cada usuario sus tablas `servicio_metadata` y `schema_migrations`: nombre correcto, versión 1 para Usuarios/Pedidos y 3 para Inventario (V6), sin dirty.
+2. Consultar con cada usuario sus tablas `servicio_metadata` y `schema_migrations`: nombre correcto, versión 1 para Usuarios/Pedidos y 4 para Inventario (V7), sin dirty.
 3. Con el usuario de Usuarios, intentar `SELECT * FROM inventario_db.servicio_metadata`: debe denegarse. Repetir las otras combinaciones.
 4. Reiniciar MySQL sin eliminar volúmenes: se conservan versiones y metadatos.
 5. En una base **descartable**, ejecutar la prueba de integración del runner con `MYSQL_STARTUP_INTEGRATION=1` y sus variables DB. Verifica repetición y bloqueo tras SQL inválido. Deja la base dirty deliberadamente; nunca usar una base del proyecto para esa prueba.

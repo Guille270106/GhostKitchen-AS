@@ -70,5 +70,7 @@ func (r *Repositorio) Ready(ctx context.Context) error {
 	var n int
 	return r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ingrediente i
  JOIN receta r ON r.cocina_id=i.cocina_id JOIN receta_item ri ON ri.plato_id=r.plato_id
- JOIN plato_ref p ON p.id=r.plato_id WHERE 1=0`).Scan(&n)
+ JOIN plato_ref p ON p.id=r.plato_id JOIN reserva rs ON rs.cocina_id=i.cocina_id
+ JOIN reserva_plato rp ON rp.reserva_id=rs.id JOIN reserva_item rsi ON rsi.reserva_id=rs.id
+ JOIN idempotencia idem ON 1=0 WHERE 1=0`).Scan(&n)
 }
