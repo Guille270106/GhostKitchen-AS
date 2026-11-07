@@ -19,8 +19,10 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 
+	"ghostkitchen/usuarios/internal/clients"
 	"ghostkitchen/usuarios/internal/handlers"
 	repomysql "ghostkitchen/usuarios/internal/repositories/mysql"
+	"ghostkitchen/usuarios/internal/seed"
 	"ghostkitchen/usuarios/internal/services"
 )
 
@@ -68,6 +70,35 @@ func tokens() (*services.Tokens, error) {
 	return services.NuevosTokens(os.Getenv("JWT_SECRET"), time.Duration(minutos)*time.Minute)
 }
 
+// sembrarAdmins carga las cuentas de admin que falten, con la contraseña de ADMIN_PASSWORD.
+// Sin esa variable no se crea ninguna (y se avisa): así no queda un admin con una contraseña
+// conocida escrita en el repositorio. Si falla, el servicio arranca igual: registro y login
+// de las cuentas que ya existen siguen andando.
+func sembrarAdmins(log *slog.Logger, svc *services.Usuarios) {
+	password := os.Getenv("ADMIN_PASSWORD")
+	if password == "" {
+		log.Warn("sin ADMIN_PASSWORD: no se cargan las cuentas de admin iniciales")
+		return
+	}
+	datos, err := seed.Admins()
+	if err != nil {
+		log.Error("no se pudieron leer los admins iniciales")
+		return
+	}
+	admins := make([]services.AdminInicial, len(datos))
+	for i, a := range datos {
+		admins[i] = services.AdminInicial{Nombre: a.Nombre, Email: a.Email, Localidad: a.Localidad}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	creados, err := svc.SembrarAdmins(ctx, password, admins)
+	if err != nil {
+		log.Error("no se pudieron cargar todos los admins iniciales", "creados", creados)
+		return
+	}
+	log.Info("admins iniciales al día", "creados", creados, "total", len(admins))
+}
+
 func run(log *slog.Logger) error {
 	tk, err := tokens()
 	if err != nil {
@@ -80,7 +111,9 @@ func run(log *slog.Logger) error {
 	}
 	defer db.Close()
 
-	svc := services.Nuevo(repomysql.Nuevo(db), tk)
+	svc := services.Nuevo(repomysql.Nuevo(db), tk).
+		ConCatalogo(clients.NuevoCatalogo(valor("CATALOGO_URL", "http://catalogo:8082")))
+	sembrarAdmins(log, svc)
 	puerto := valor("PORT", "8081")
 	srv := &http.Server{
 		Addr:              ":" + puerto,

@@ -22,9 +22,10 @@ const CostoBcrypt = 10
 
 // Usuarios agrupa las reglas de las cuentas.
 type Usuarios struct {
-	repo   repositories.Usuarios
-	tokens *Tokens
-	costo  int
+	repo     repositories.Usuarios
+	tokens   *Tokens
+	catalogo Catalogo
+	costo    int
 	// hashFalso se compara cuando el correo no existe, así el login tarda lo mismo con un
 	// correo inexistente que con una contraseña mal: por el tiempo no se sabe qué correos
 	// tienen cuenta.
@@ -66,10 +67,6 @@ func (s *Usuarios) Registrar(ctx context.Context, d DatosRegistro) (domain.Usuar
 	if direccion == "" {
 		return domain.Usuario{}, errors.Join(domain.ErrDatosInvalidos, errors.New("la dirección es obligatoria"))
 	}
-	if err := domain.ValidarPassword(d.Password); err != nil {
-		return domain.Usuario{}, err
-	}
-
 	u := domain.Usuario{
 		ID:        uuid.NewString(),
 		Nombre:    strings.TrimSpace(d.Nombre),
@@ -79,18 +76,30 @@ func (s *Usuarios) Registrar(ctx context.Context, d DatosRegistro) (domain.Usuar
 		Activo:    true,
 		CreadoEn:  time.Now().UTC().Truncate(time.Second),
 	}
-	// Se valida antes de calcular el hash, que es lo caro: un formulario mal armado no
-	// gasta 100 ms de CPU. PasswordHash se completa con un valor del largo correcto.
-	u.PasswordHash = strings.Repeat("x", 60)
-	if err := u.Validar(); err != nil {
+	if err := validarAntesDelHash(u, d.Password); err != nil {
 		return domain.Usuario{}, err
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(d.Password), s.costo)
+	return s.guardarConHash(ctx, u, d.Password)
+}
+
+// validarAntesDelHash revisa la contraseña y la cuenta antes de calcular el hash, que es lo
+// caro: un formulario mal armado no gasta 100 ms de CPU. Para validar la cuenta se usa un
+// hash de relleno del largo correcto.
+func validarAntesDelHash(u domain.Usuario, password string) error {
+	if err := domain.ValidarPassword(password); err != nil {
+		return err
+	}
+	u.PasswordHash = strings.Repeat("x", 60)
+	return u.Validar()
+}
+
+// guardarConHash calcula el hash bcrypt y guarda la cuenta.
+func (s *Usuarios) guardarConHash(ctx context.Context, u domain.Usuario, password string) (domain.Usuario, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), s.costo)
 	if err != nil {
 		return domain.Usuario{}, err
 	}
 	u.PasswordHash = string(hash)
-
 	if err := s.repo.Crear(ctx, u); err != nil {
 		return domain.Usuario{}, err
 	}

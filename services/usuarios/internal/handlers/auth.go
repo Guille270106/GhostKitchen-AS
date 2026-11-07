@@ -62,14 +62,8 @@ func registrarRutasAuth(r *gin.Engine, svc *services.Usuarios) {
 	// Verificación para el gateway (auth_request, G9). Responde 204 sin cuerpo y la identidad
 	// en headers, que el gateway copia hacia los servicios. Con un token que no sirve, 401.
 	r.GET("/auth/verify", func(c *gin.Context) {
-		token, ok := strings.CutPrefix(c.GetHeader("Authorization"), "Bearer ")
-		if !ok || token == "" {
-			noAutenticado(c)
-			return
-		}
-		id, err := svc.Verificar(strings.TrimSpace(token))
-		if err != nil {
-			noAutenticado(c)
+		id, ok := identidad(c, svc)
+		if !ok {
 			return
 		}
 		c.Header("X-Usuario-Id", id.UsuarioID)
@@ -84,6 +78,23 @@ func registrarRutasAuth(r *gin.Engine, svc *services.Usuarios) {
 		}
 		c.Status(http.StatusNoContent)
 	})
+}
+
+// identidad lee y verifica el token del header Authorization. Usuarios es quien firma los
+// tokens, así que lo verifica él mismo: no confía en headers de identidad que pudo haber
+// puesto cualquiera (README: "sin confiar en headers de identidad del cliente").
+func identidad(c *gin.Context, svc *services.Usuarios) (services.Identidad, bool) {
+	token, ok := strings.CutPrefix(c.GetHeader("Authorization"), "Bearer ")
+	if !ok || strings.TrimSpace(token) == "" {
+		noAutenticado(c)
+		return services.Identidad{}, false
+	}
+	id, err := svc.Verificar(strings.TrimSpace(token))
+	if err != nil {
+		noAutenticado(c)
+		return services.Identidad{}, false
+	}
+	return id, true
 }
 
 func noAutenticado(c *gin.Context) {
@@ -118,6 +129,15 @@ func responderError(c *gin.Context, err error) {
 	case errors.Is(err, services.ErrCredencialesInvalidas):
 		// El mismo mensaje si no existe el correo o si la contraseña está mal (HU02).
 		problema(c, http.StatusUnauthorized, "CREDENCIALES_INVALIDAS", "Correo o contraseña incorrectos")
+	case errors.Is(err, services.ErrSinPermiso):
+		problema(c, http.StatusForbidden, "SIN_PERMISO", "Solo un admin puede crear cuentas Cocina")
+	case errors.Is(err, services.ErrOtraLocalidad):
+		problema(c, http.StatusForbidden, "OTRA_LOCALIDAD", "La cocina no es de tu localidad")
+	case errors.Is(err, services.ErrCocinaInvalida):
+		problema(c, http.StatusUnprocessableEntity, "COCINA_INVALIDA", "La cocina no existe o está inactiva")
+	case errors.Is(err, services.ErrCatalogoNoDisponible):
+		c.Header("Retry-After", "5")
+		problema(c, http.StatusServiceUnavailable, "CATALOGO_NO_DISPONIBLE", "No se pudo comprobar la cocina; probá de nuevo en unos segundos")
 	case errors.Is(err, domain.ErrEmailRepetido):
 		// No se dice nada de la otra cuenta (HU01).
 		problema(c, http.StatusConflict, "EMAIL_REPETIDO", "Ya existe una cuenta con ese correo")
