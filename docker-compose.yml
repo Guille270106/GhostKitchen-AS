@@ -50,6 +50,9 @@ services:
       DB_USER: usuarios
       DB_PASSWORD: ${USUARIOS_DB_PASSWORD:?Completá USUARIOS_DB_PASSWORD en .env}
       DB_NAME: usuarios_db
+      # G7: clave para firmar los tokens (al menos 32 bytes) y cuánto duran.
+      JWT_SECRET: ${JWT_SECRET:?Completá JWT_SECRET en .env (al menos 32 caracteres)}
+      JWT_TTL_MINUTES: ${JWT_TTL_MINUTES:-120}
       PORT: "8081"
       GIN_MODE: release
     expose:

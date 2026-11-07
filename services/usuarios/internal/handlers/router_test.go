@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -39,7 +40,7 @@ func (r repoFalso) Listo(context.Context) error {
 func pedir(t *testing.T, repo repoFalso, ruta string, headers map[string]string) (*httptest.ResponseRecorder, *bytes.Buffer) {
 	t.Helper()
 	var logs bytes.Buffer
-	r := Nuevo(services.Nuevo(repo), slog.New(slog.NewJSONHandler(&logs, nil)))
+	r := Nuevo(services.Nuevo(repo, tokensDePrueba(t)), slog.New(slog.NewJSONHandler(&logs, nil)))
 	req := httptest.NewRequest(http.MethodGet, ruta, nil)
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -99,4 +100,13 @@ func TestCorrelationIdYLog(t *testing.T) {
 	if got := rec.Header().Get("X-Correlation-Id"); got == "<script>" || len(got) != 36 {
 		t.Fatalf("esperaba un id nuevo, obtuve %q", got)
 	}
+}
+
+func tokensDePrueba(t *testing.T) *services.Tokens {
+	t.Helper()
+	tk, err := services.NuevosTokens("un-secreto-de-prueba-de-32-bytes!!", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tk
 }

@@ -2,7 +2,7 @@
 
 **Responsable:** Guillermina Sánchez.
 
-> **Estado (G6):** el servicio arranca con MySQL, aplica sus migraciones al iniciar y ya registra clientes (`POST /auth/registro`). El login con JWT (G7), las cuentas Cocina (G8) y la verificación en el gateway (G9) vienen después.
+> **Estado (G7):** registra clientes (`POST /auth/registro`), hace el login de los tres roles con JWT (`POST /auth/login`) y verifica tokens para el gateway (`GET /auth/verify`). Las cuentas Cocina (G8) y la conexión con el gateway (G9) vienen después.
 
 Se encarga de las cuentas y del login. Puerto **8081**, solo dentro de Docker.
 
@@ -62,8 +62,8 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 | `GET /health` | Docker | El proceso está vivo (no mira MySQL) |
 | `GET /ready` | Docker y el gateway | MySQL responde y la tabla existe; si no, 503 |
 | `POST /auth/registro` | cualquiera | Crear una cuenta de cliente (G6, ver abajo) |
-| `POST /auth/login` | cualquiera | Iniciar sesión y recibir el token |
-| `GET /auth/verify` | el gateway | Ver si un token es válido |
+| `POST /auth/login` | cualquiera | Iniciar sesión y recibir el token (G7) |
+| `GET /auth/verify` | el gateway | Ver si un token es válido (G7) |
 | `PUT /usuarios/me/cocina` | cliente | Elegir o cambiar la cocina |
 | `POST /admin/cuentas-cocina` | admin | Crear la cuenta de una cocina de su localidad |
 
@@ -82,6 +82,48 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 
 El correo se guarda en minúsculas. La contraseña se guarda solo como hash bcrypt (costo 10) y no aparece en la respuesta ni en los logs. El tope de 72 bytes es el de bcrypt: una contraseña más larga se rechaza en vez de recortarse sin avisar.
 
+### `POST /auth/login` (HU02)
+
+```json
+{ "email": "ana@mail.com", "password": "clave-secreta-1" }
+```
+
+Con datos correctos, `200` (con `Cache-Control: no-store`):
+
+```json
+{ "token": "eyJ...", "tipo": "Bearer", "venceEn": "2026-11-13T12:00:00Z", "usuario": { "id": "...", "rol": "cliente", ... } }
+```
+
+Con el correo inexistente, la contraseña mal o la cuenta desactivada, siempre la misma respuesta: `401 CREDENCIALES_INVALIDAS` "Correo o contraseña incorrectos". Cuando el correo no existe, igual se compara contra un hash falso, así la respuesta tarda lo mismo y por el tiempo no se puede saber qué correos tienen cuenta.
+
+### El token (JWT)
+
+Firmado con HS256 y `JWT_SECRET`. Dura `JWT_TTL_MINUTES` (120 por defecto). Lleva solo lo necesario para autorizar:
+
+| Campo | Contenido |
+| --- | --- |
+| `sub` | id del usuario |
+| `email`, `rol` | correo y rol (`cliente`, `cocina` o `admin`) |
+| `cocina` | solo cuenta Cocina: su cocina |
+| `localidad` | solo admin: su localidad |
+| `iss`, `iat`, `exp` | `ghostkitchen-usuarios`, cuándo se emitió y cuándo vence |
+
+Nunca lleva la contraseña, el hash ni la dirección. Al verificar solo se acepta HS256 (un token con `alg: none` se rechaza), el emisor tiene que ser el nuestro, el vencimiento es obligatorio y los datos tienen que corresponder al rol.
+
+### `GET /auth/verify` (para el gateway)
+
+Recibe `Authorization: Bearer <token>`. Si el token sirve, responde `204` sin cuerpo y con la identidad en headers, que el gateway copia hacia los servicios (G9):
+
+| Header | Cuándo |
+| --- | --- |
+| `X-Usuario-Id` | siempre |
+| `X-Usuario-Email` | siempre |
+| `X-Rol` | siempre: `cliente`, `cocina` o `admin` |
+| `X-Cocina-Id` | solo cuenta Cocina (Inventario y Pedidos lo usan para ver solo lo suyo) |
+| `X-Localidad` | solo admin, codificada para URL porque un header solo admite ASCII: `Nueva%20C%C3%B3rdoba` |
+
+Si falta el token o no sirve, `401 NO_AUTENTICADO` con `WWW-Authenticate: Bearer`, sin decir por qué. No consulta MySQL: el token ya trae todo, así verificar tarda menos de 1 ms y sigue andando aunque la base esté lenta. La contra es que un token emitido sigue sirviendo hasta que vence, aunque se desactive la cuenta; por eso dura poco.
+
 El cierre de sesión descarta el token en el frontend; no implica revocación inmediata del token emitido. El gateway usa `/auth/verify` en una ubicación interna para `auth_request`, sin publicar esa operación al navegador.
 
 **El token lleva:** quién es, su rol y su mail. Si es admin, también su localidad; si es una cuenta Cocina, su cocina. Se firma con una clave que no está en el código.
@@ -95,7 +137,7 @@ El cierre de sesión descarta el token en el frontend; no implica revocación in
 
 | Dependencia | Para qué | Si falla |
 | --- | --- | --- |
-| MySQL (`usuarios_db`) | Cuentas, roles y cocina elegida | No se puede registrar, iniciar sesión ni verificar tokens; las rutas privadas quedan indisponibles |
+| MySQL (`usuarios_db`) | Cuentas, roles y cocina elegida | No se puede registrar ni iniciar sesión. Los tokens ya emitidos se siguen verificando, porque verificar no usa la base |
 | Catálogo | Validar la cocina y la localidad del admin al crear una cuenta Cocina | Se impide el alta; no se interpreta la falta de respuesta como una cocina inexistente |
 
 La consulta a Catálogo tiene un máximo de 800 ms por intento y un reintento, dentro del plazo total de 3 s de [ADR-005](../../docs/adr/ADR-005-comunicacion-entre-servicios.md). El gateway espera como máximo 300 ms por la verificación del token y no la reintenta.
@@ -108,8 +150,8 @@ La consulta a Catálogo tiene un máximo de 800 ms por intento y un reintento, d
 | `DB_USER`, `DB_NAME` | `usuarios`, `usuarios_db` | Usuario y base propios: no ve las otras bases |
 | `DB_PASSWORD` | (obligatoria) | `USUARIOS_DB_PASSWORD` del `.env` |
 | `PORT` | `8081` | Puerto HTTP |
-
-`JWT_SECRET` y `JWT_TTL_MINUTES` se usan desde G7.
+| `JWT_SECRET` | (obligatoria, al menos 32 bytes) | Clave para firmar los tokens. Sin ella el servicio no arranca |
+| `JWT_TTL_MINUTES` | `120` | Cuánto dura un token |
 
 ## Pruebas
 

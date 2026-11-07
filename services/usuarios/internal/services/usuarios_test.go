@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -54,8 +55,11 @@ func (m *memoria) Listo(context.Context) error { return nil }
 
 func nuevo() (*Usuarios, *memoria) {
 	m := nuevaMemoria()
-	return Nuevo(m).ConCostoBcrypt(bcrypt.MinCost), m
+	tk, _ := NuevosTokens(secretoDePrueba, time.Hour)
+	return Nuevo(m, tk).ConCostoBcrypt(bcrypt.MinCost), m
 }
+
+const secretoDePrueba = "un-secreto-de-prueba-de-32-bytes!!"
 
 var valido = DatosRegistro{Nombre: " Ana Pérez ", Email: " Ana@Mail.com ", Password: "clave-segura", Direccion: " Obispo Trejo 323 "}
 
@@ -110,5 +114,40 @@ func TestRegistrarFaltaUnDato(t *testing.T) {
 	}
 	if len(repo.datos) != 0 {
 		t.Fatal("con un dato mal no se guarda nada")
+	}
+}
+
+func TestLogin(t *testing.T) {
+	svc, repo := nuevo()
+	u, err := svc.Registrar(context.Background(), valido)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sesion, err := svc.Login(context.Background(), "ANA@mail.com ", "clave-segura")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sesion.Token == "" || sesion.Tipo != "Bearer" || sesion.Usuario.ID != u.ID || sesion.VenceEn.Before(time.Now()) {
+		t.Fatalf("sesión inesperada: %+v", sesion)
+	}
+	id, err := svc.Verificar(sesion.Token)
+	if err != nil || id.UsuarioID != u.ID || id.Rol != domain.RolCliente {
+		t.Fatalf("el token del login tiene que verificar: %+v %v", id, err)
+	}
+
+	// Mismo error si el correo no existe o si la contraseña está mal (HU02).
+	if _, err := svc.Login(context.Background(), "ana@mail.com", "otra-clave"); !errors.Is(err, ErrCredencialesInvalidas) {
+		t.Fatalf("contraseña mal: %v", err)
+	}
+	if _, err := svc.Login(context.Background(), "nadie@mail.com", "clave-segura"); !errors.Is(err, ErrCredencialesInvalidas) {
+		t.Fatalf("correo inexistente: %v", err)
+	}
+
+	// Una cuenta desactivada no entra.
+	inactivo := repo.datos[u.ID]
+	inactivo.Activo = false
+	repo.datos[u.ID] = inactivo
+	if _, err := svc.Login(context.Background(), "ana@mail.com", "clave-segura"); !errors.Is(err, ErrCredencialesInvalidas) {
+		t.Fatalf("cuenta inactiva: %v", err)
 	}
 }

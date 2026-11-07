@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -57,14 +58,29 @@ func abrirMySQL() (*sql.DB, error) {
 	return db, nil
 }
 
+// tokens lee JWT_SECRET y JWT_TTL_MINUTES (120 por defecto). Sin una clave de al menos 32
+// bytes el servicio no arranca: es preferible a firmar tokens que se puedan adivinar.
+func tokens() (*services.Tokens, error) {
+	minutos, err := strconv.Atoi(valor("JWT_TTL_MINUTES", "120"))
+	if err != nil {
+		return nil, errors.New("JWT_TTL_MINUTES tiene que ser un número de minutos")
+	}
+	return services.NuevosTokens(os.Getenv("JWT_SECRET"), time.Duration(minutos)*time.Minute)
+}
+
 func run(log *slog.Logger) error {
+	tk, err := tokens()
+	if err != nil {
+		log.Error("configuración inválida", "motivo", err.Error())
+		return err
+	}
 	db, err := abrirMySQL()
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	svc := services.Nuevo(repomysql.Nuevo(db))
+	svc := services.Nuevo(repomysql.Nuevo(db), tk)
 	puerto := valor("PORT", "8081")
 	srv := &http.Server{
 		Addr:              ":" + puerto,

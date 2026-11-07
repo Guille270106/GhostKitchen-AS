@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -38,6 +39,56 @@ func registrarRutasAuth(r *gin.Engine, svc *services.Usuarios) {
 		c.Header("Location", "/usuarios/"+u.ID)
 		c.JSON(http.StatusCreated, u) // PasswordHash tiene json:"-": nunca sale
 	})
+
+	// Login de los tres roles (HU02). El cierre de sesión lo hace el frontend descartando el
+	// token: no hay ruta de logout porque el token no se guarda en el servidor.
+	r.POST("/auth/login", func(c *gin.Context) {
+		var d struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+		if !leerJSON(c, &d) {
+			return
+		}
+		sesion, err := svc.Login(c.Request.Context(), d.Email, d.Password)
+		if err != nil {
+			responderError(c, err)
+			return
+		}
+		c.Header("Cache-Control", "no-store") // el token no se guarda en cachés intermedias
+		c.JSON(http.StatusOK, sesion)
+	})
+
+	// Verificación para el gateway (auth_request, G9). Responde 204 sin cuerpo y la identidad
+	// en headers, que el gateway copia hacia los servicios. Con un token que no sirve, 401.
+	r.GET("/auth/verify", func(c *gin.Context) {
+		token, ok := strings.CutPrefix(c.GetHeader("Authorization"), "Bearer ")
+		if !ok || token == "" {
+			noAutenticado(c)
+			return
+		}
+		id, err := svc.Verificar(strings.TrimSpace(token))
+		if err != nil {
+			noAutenticado(c)
+			return
+		}
+		c.Header("X-Usuario-Id", id.UsuarioID)
+		c.Header("X-Usuario-Email", id.Email)
+		c.Header("X-Rol", string(id.Rol))
+		if id.CocinaID != "" {
+			c.Header("X-Cocina-Id", id.CocinaID)
+		}
+		if id.Localidad != "" {
+			// Un header solo admite ASCII: "Nueva Córdoba" viaja como "Nueva%20C%C3%B3rdoba".
+			c.Header("X-Localidad", url.PathEscape(id.Localidad))
+		}
+		c.Status(http.StatusNoContent)
+	})
+}
+
+func noAutenticado(c *gin.Context) {
+	c.Header("WWW-Authenticate", `Bearer realm="ghostkitchen"`)
+	problema(c, http.StatusUnauthorized, "NO_AUTENTICADO", "Falta el token o no es válido")
 }
 
 // leerJSON lee un solo objeto JSON, con tope de tamaño y sin campos desconocidos: así un
@@ -64,6 +115,9 @@ func responderError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrDatosInvalidos):
 		problema(c, http.StatusBadRequest, "DATOS_INVALIDOS", motivo(err))
+	case errors.Is(err, services.ErrCredencialesInvalidas):
+		// El mismo mensaje si no existe el correo o si la contraseña está mal (HU02).
+		problema(c, http.StatusUnauthorized, "CREDENCIALES_INVALIDAS", "Correo o contraseña incorrectos")
 	case errors.Is(err, domain.ErrEmailRepetido):
 		// No se dice nada de la otra cuenta (HU01).
 		problema(c, http.StatusConflict, "EMAIL_REPETIDO", "Ya existe una cuenta con ese correo")
