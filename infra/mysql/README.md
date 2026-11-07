@@ -12,12 +12,12 @@ Copiar `.env.example` como `.env` si todavía no existe y completar las cuatro c
 
 ```powershell
 docker compose up -d mysql
-docker compose up --build usuarios-migrations pedidos-migrations
-docker compose up -d --build inventario
-docker compose logs mysql usuarios-migrations inventario pedidos-migrations
+docker compose up --build pedidos-migrations
+docker compose up -d --build usuarios inventario
+docker compose logs mysql usuarios inventario pedidos-migrations
 ```
 
-Usuarios y Pedidos conservan trabajos que terminan con código 0 tras aplicar sus migraciones. Desde V5, Inventario ejecuta el runner en su propio entrypoint y después queda atendiendo HTTP; reemplaza al trabajo `inventario-migrations`. Repetir el arranque comprueba las versiones sin aplicar nuevamente las ya ejecutadas. El `docker compose up --build` general también los incluye.
+Pedidos conserva un trabajo que termina con código 0 tras aplicar sus migraciones. Desde V5 (Inventario) y G5 (Usuarios), cada servicio ejecuta el runner en su propio entrypoint y después queda atendiendo HTTP; reemplazan a los trabajos `inventario-migrations` y `usuarios-migrations`. Repetir el arranque comprueba las versiones sin aplicar nuevamente las ya ejecutadas. El `docker compose up --build` general también los incluye.
 
 ## Inicialización y persistencia
 
