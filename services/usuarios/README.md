@@ -2,11 +2,9 @@
 
 **Responsable:** Guillermina Sánchez.
 
-> **Ronda 1:** base `usuarios_db`, usuario propio y plantilla SQL disponibles. El trabajo `usuarios-migrations` aplica las versiones al arrancar Compose. La [guía de migraciones](../../infra/mysql/README.md) explica cómo incorporar el runner al arranque de la API en la ronda 2; las tablas de negocio todavía están pendientes.
+> **Estado (G5):** el servicio arranca con MySQL, aplica sus migraciones al iniciar y responde `/health` y `/ready`. La tabla `usuario` ya existe. El registro (G6), el login con JWT (G7), las cuentas Cocina (G8) y la verificación en el gateway (G9) vienen después.
 
-> Entrega 1: diseño preliminar; todavía no hay implementación. Las carpetas, rutas, configuración y pruebas indicadas son previstas para el desarrollo desde la Entrega 2.
-
-Se encarga de las cuentas y del login. Puerto **8081**. Lo programamos en la Entrega 2.
+Se encarga de las cuentas y del login. Puerto **8081**, solo dentro de Docker.
 
 ## Qué hace
 
@@ -28,14 +26,32 @@ La contraseña **nunca** se guarda tal cual ni se devuelve.
 Es un servicio con pocas reglas, así que usamos las capas de siempre: el **handler** recibe el pedido HTTP, el **servicio** aplica las reglas y el **repositorio** habla con la base (Clase 8).
 
 ```
-cmd/api/              arranca el servicio
-internal/handlers/    rutas HTTP
-internal/services/    reglas: mail único, calcular el hash de contraseña, armar el token, permisos del admin
-internal/repositories/ acceso a MySQL
-internal/domain/      qué es un usuario y sus roles
-internal/clients/     para pedirle datos a Catálogo
-migrations/           tablas y carga de los admins
+cmd/api/                       arranca el servicio (conexión a MySQL, servidor HTTP, apagado ordenado)
+internal/handlers/             rutas HTTP, correlation id, log por solicitud y errores Problem Details
+internal/services/             reglas: mail único, hash de contraseña, token, permisos del admin (G6 a G8)
+internal/repositories/         qué necesita el servicio de la base (interfaz)
+internal/repositories/mysql/   la implementación con MySQL
+internal/domain/               qué es un usuario, sus roles y qué datos lleva cada rol
+migrations/                    000001 plantilla, 000002 tabla usuario
 ```
+
+En Docker, el `ENTRYPOINT` es `mysql-startup`: primero aplica las migraciones y después arranca el servicio. Si una migración falla, el servicio no arranca ([guía de migraciones](../../infra/mysql/README.md)).
+
+## La tabla `usuario`
+
+| Columna | Para qué |
+| --- | --- |
+| `id` | UUID que genera el servicio |
+| `nombre`, `direccion` | Datos de la persona |
+| `email` | En minúsculas y único (`uq_usuario_email`) |
+| `password_hash` | Hash bcrypt; la contraseña nunca se guarda |
+| `rol` | `cliente`, `cocina` o `admin` |
+| `cocina_elegida_id` | Solo cliente: la última cocina que eligió |
+| `cocina_asignada_id` | Solo cuenta Cocina: la cocina que administra (obligatoria) |
+| `localidad` | Solo admin: la localidad que administra (obligatoria) |
+| `activo`, `creado_en`, `actualizado_en` | Estado y fechas |
+
+Los `CHECK` de la tabla repiten las reglas por rol, así una cuenta mal armada no entra ni por error del código. El dominio las valida antes, para responder un 400 claro.
 
 ## Rutas
 
@@ -43,6 +59,8 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 
 | Ruta | Quién la usa | Para qué |
 | --- | --- | --- |
+| `GET /health` | Docker | El proceso está vivo (no mira MySQL) |
+| `GET /ready` | Docker y el gateway | MySQL responde y la tabla existe; si no, 503 |
 | `POST /auth/registro` | cualquiera | Crear una cuenta de cliente |
 | `POST /auth/login` | cualquiera | Iniciar sesión y recibir el token |
 | `GET /auth/verify` | el gateway | Ver si un token es válido |
@@ -67,11 +85,27 @@ El cierre de sesión descarta el token en el frontend; no implica revocación in
 
 La consulta a Catálogo tiene un máximo de 800 ms por intento y un reintento, dentro del plazo total de 3 s de [ADR-005](../../docs/adr/ADR-005-comunicacion-entre-servicios.md). El gateway espera como máximo 300 ms por la verificación del token y no la reintenta.
 
-## Configuración prevista
+## Configuración
 
-`JWT_SECRET`, `JWT_TTL_MINUTES` y `USUARIOS_DB_PASSWORD` están anticipadas en [`.env.example`](../../.env.example). La conexión a MySQL, el puerto y la dirección interna de Catálogo se definirán al implementar el servicio. Cada servicio accederá solo a su propia base.
+| Variable | Valor por defecto | Para qué |
+| --- | --- | --- |
+| `DB_HOST`, `DB_PORT` | `mysql`, `3306` | Dónde está MySQL |
+| `DB_USER`, `DB_NAME` | `usuarios`, `usuarios_db` | Usuario y base propios: no ve las otras bases |
+| `DB_PASSWORD` | (obligatoria) | `USUARIOS_DB_PASSWORD` del `.env` |
+| `PORT` | `8081` | Puerto HTTP |
 
-## Pruebas previstas
+`JWT_SECRET` y `JWT_TTL_MINUTES` se usan desde G7.
+
+## Pruebas
+
+```
+cd services/usuarios
+go test ./...
+```
+
+Las de MySQL real se omiten salvo con `TEST_MYSQL=1` y las variables `DB_*` de una base descartable.
+
+Previstas para G6 a G9:
 
 - Correo único, contraseña guardada como hash bcrypt y nunca devuelta, token vencido o mal firmado.
 - Alta de una cuenta Cocina rechazada si la cocina pertenece a otra localidad, está inactiva o no se puede verificar.

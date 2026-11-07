@@ -39,19 +39,31 @@ services:
 
   # Plantillas ejecutables: cada trabajo usa únicamente las credenciales de su base.
   # En ronda 2, mysql-startup será el ENTRYPOINT de cada servicio, antes de su binario.
-  usuarios-migrations:
-    build: ./tools/mysql-startup
+  # G5: igual que Inventario, aplica sus migraciones antes de arrancar HTTP. Reemplaza al
+  # trabajo usuarios-migrations. No se publica al host: entra por el gateway (G9).
+  usuarios:
+    build:
+      context: .
+      dockerfile: services/usuarios/Dockerfile
     environment:
       DB_HOST: mysql
       DB_USER: usuarios
       DB_PASSWORD: ${USUARIOS_DB_PASSWORD:?Completá USUARIOS_DB_PASSWORD en .env}
       DB_NAME: usuarios_db
-    volumes:
-      - ./services/usuarios/migrations:/migrations:ro
+      PORT: "8081"
+      GIN_MODE: release
+    expose:
+      - "8081"
     depends_on:
       mysql:
         condition: service_healthy
-    restart: "no"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
   # V5: aplica sus migraciones antes de arrancar HTTP, también tras cada reinicio.
   inventario:
