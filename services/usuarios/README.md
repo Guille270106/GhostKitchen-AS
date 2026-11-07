@@ -2,7 +2,7 @@
 
 **Responsable:** Guillermina Sánchez.
 
-> **Estado (G5):** el servicio arranca con MySQL, aplica sus migraciones al iniciar y responde `/health` y `/ready`. La tabla `usuario` ya existe. El registro (G6), el login con JWT (G7), las cuentas Cocina (G8) y la verificación en el gateway (G9) vienen después.
+> **Estado (G6):** el servicio arranca con MySQL, aplica sus migraciones al iniciar y ya registra clientes (`POST /auth/registro`). El login con JWT (G7), las cuentas Cocina (G8) y la verificación en el gateway (G9) vienen después.
 
 Se encarga de las cuentas y del login. Puerto **8081**, solo dentro de Docker.
 
@@ -61,11 +61,26 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 | --- | --- | --- |
 | `GET /health` | Docker | El proceso está vivo (no mira MySQL) |
 | `GET /ready` | Docker y el gateway | MySQL responde y la tabla existe; si no, 503 |
-| `POST /auth/registro` | cualquiera | Crear una cuenta de cliente |
+| `POST /auth/registro` | cualquiera | Crear una cuenta de cliente (G6, ver abajo) |
 | `POST /auth/login` | cualquiera | Iniciar sesión y recibir el token |
 | `GET /auth/verify` | el gateway | Ver si un token es válido |
 | `PUT /usuarios/me/cocina` | cliente | Elegir o cambiar la cocina |
 | `POST /admin/cuentas-cocina` | admin | Crear la cuenta de una cocina de su localidad |
+
+### `POST /auth/registro` (HU01)
+
+```json
+{ "nombre": "Ana", "email": "ana@mail.com", "password": "clave-secreta-1", "direccion": "Obispo Trejo 323" }
+```
+
+| Respuesta | Cuándo |
+| --- | --- |
+| `201` con la cuenta (sin contraseña ni hash) y `Location: /usuarios/{id}` | Se creó la cuenta, siempre con rol cliente |
+| `400 DATOS_INVALIDOS` | Falta un dato, el correo no es válido, la contraseña no tiene entre 8 caracteres y 72 bytes, o vino un campo de más (por ejemplo `rol` o `localidad`) |
+| `409 EMAIL_REPETIDO` | Ya existe una cuenta con ese correo, sin importar mayúsculas. No se muestra nada de la otra cuenta |
+| `503 SERVICIO_NO_DISPONIBLE` | MySQL no respondió |
+
+El correo se guarda en minúsculas. La contraseña se guarda solo como hash bcrypt (costo 10) y no aparece en la respuesta ni en los logs. El tope de 72 bytes es el de bcrypt: una contraseña más larga se rechaza en vez de recortarse sin avisar.
 
 El cierre de sesión descarta el token en el frontend; no implica revocación inmediata del token emitido. El gateway usa `/auth/verify` en una ubicación interna para `auth_request`, sin publicar esa operación al navegador.
 

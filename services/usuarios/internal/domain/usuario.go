@@ -48,6 +48,21 @@ var (
 	ErrNoEncontrado   = errors.New("usuario no encontrado")
 )
 
+// Largo permitido de la contraseña. El máximo es el de bcrypt: solo usa los primeros 72
+// bytes, así que una contraseña más larga se rechaza en lugar de recortarla sin avisar.
+const (
+	PasswordMin = 8
+	PasswordMax = 72
+)
+
+// ValidarPassword revisa el largo. No se guarda ni se registra en ningún lado: solo su hash.
+func ValidarPassword(p string) error {
+	if utf8.RuneCountInString(p) < PasswordMin || len(p) > PasswordMax {
+		return errors.Join(ErrDatosInvalidos, errors.New("la contraseña tiene que tener entre 8 caracteres y 72 bytes"))
+	}
+	return nil
+}
+
 // NormalizarEmail quita espacios y pasa a minúsculas, así "Ana@Mail.com" y "ana@mail.com"
 // son la misma cuenta. Devuelve "" si no es un correo.
 func NormalizarEmail(email string) string {

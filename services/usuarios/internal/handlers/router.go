@@ -22,7 +22,7 @@ const PlazoSolicitud = 3 * time.Second
 // texto largo o caracteres raros a través de ese header.
 var correlacionValida = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
 
-// Nuevo arma el router con las rutas técnicas. Las rutas de cuentas se suman en G6 a G8.
+// Nuevo arma el router: las rutas técnicas y las de cuentas.
 func Nuevo(svc *services.Usuarios, log *slog.Logger) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery(), registrar(log))
@@ -39,6 +39,8 @@ func Nuevo(svc *services.Usuarios, log *slog.Logger) *gin.Engine {
 		}
 		c.JSON(http.StatusOK, gin.H{"estado": "listo"})
 	})
+
+	registrarRutasAuth(r, svc)
 
 	r.NoRoute(func(c *gin.Context) { problema(c, http.StatusNotFound, "NO_ENCONTRADO", "Recurso no encontrado") })
 	return r

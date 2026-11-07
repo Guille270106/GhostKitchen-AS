@@ -28,10 +28,10 @@ const columnas = `id,nombre,email,password_hash,COALESCE(direccion,''),rol,
 // registros con el mismo correo al mismo tiempo no pueden pasar los dos.
 func (r *Repositorio) Crear(ctx context.Context, u domain.Usuario) error {
 	_, err := r.db.ExecContext(ctx, `INSERT INTO usuario
- (id,nombre,email,password_hash,direccion,rol,cocina_elegida_id,cocina_asignada_id,localidad,activo)
- VALUES (?,?,?,?,?,?,?,?,?,?)`,
+ (id,nombre,email,password_hash,direccion,rol,cocina_elegida_id,cocina_asignada_id,localidad,activo,creado_en)
+ VALUES (?,?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP))`,
 		u.ID, u.Nombre, u.Email, u.PasswordHash, nulo(u.Direccion), string(u.Rol),
-		nulo(u.CocinaElegidaID), nulo(u.CocinaAsignadaID), nulo(u.Localidad), u.Activo)
+		nulo(u.CocinaElegidaID), nulo(u.CocinaAsignadaID), nulo(u.Localidad), u.Activo, fecha(u))
 	if esClaveRepetida(err) {
 		return domain.ErrEmailRepetido
 	}
@@ -73,6 +73,15 @@ func nulo(s string) any {
 		return nil
 	}
 	return s
+}
+
+// fecha usa la de alta que armó el servicio, así lo que se devuelve coincide con lo guardado.
+// Si viene vacía, la pone la base.
+func fecha(u domain.Usuario) any {
+	if u.CreadoEn.IsZero() {
+		return nil
+	}
+	return u.CreadoEn
 }
 
 // esClaveRepetida reconoce el error 1062 de MySQL (Duplicate entry). En esta tabla la única

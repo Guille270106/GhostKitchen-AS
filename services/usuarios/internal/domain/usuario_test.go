@@ -56,3 +56,20 @@ func TestValidarPorRol(t *testing.T) {
 		}
 	}
 }
+
+func TestValidarPassword(t *testing.T) {
+	casos := map[string]bool{
+		"1234567":               false, // 7: corta
+		"12345678":              true,
+		"contraseña":            true, // la ñ cuenta como un carácter
+		strings.Repeat("a", 72): true,
+		strings.Repeat("a", 73): false, // bcrypt solo usa 72 bytes
+		strings.Repeat("ñ", 37): false, // 74 bytes
+	}
+	for p, valido := range casos {
+		err := ValidarPassword(p)
+		if valido != (err == nil) {
+			t.Errorf("ValidarPassword(%d runas, %d bytes): %v", len([]rune(p)), len(p), err)
+		}
+	}
+}
