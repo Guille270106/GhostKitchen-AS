@@ -34,7 +34,14 @@ func (m *repoMemoria) Crear(_ context.Context, u domain.Usuario) error {
 	m.datos = append(m.datos, u)
 	return nil
 }
-func (m *repoMemoria) PorEmail(context.Context, string) (domain.Usuario, error) {
+func (m *repoMemoria) PorEmail(_ context.Context, email string) (domain.Usuario, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, u := range m.datos {
+		if u.Email == email {
+			return u, nil
+		}
+	}
 	return domain.Usuario{}, domain.ErrNoEncontrado
 }
 func (m *repoMemoria) PorID(context.Context, string) (domain.Usuario, error) {
@@ -44,11 +51,20 @@ func (m *repoMemoria) Listo(context.Context) error { return nil }
 
 func pedirRegistro(t *testing.T, repo *repoMemoria, cuerpo string) (*httptest.ResponseRecorder, string) {
 	t.Helper()
+	return pedirA(t, repo, http.MethodPost, "/auth/registro", cuerpo, "")
+}
+
+// pedirA hace una solicitud al router completo y devuelve la respuesta y los logs.
+func pedirA(t *testing.T, repo *repoMemoria, metodo, ruta, cuerpo, autorizacion string) (*httptest.ResponseRecorder, string) {
+	t.Helper()
 	var logs bytes.Buffer
-	svc := services.Nuevo(repo).ConCostoBcrypt(bcrypt.MinCost)
+	svc := services.Nuevo(repo, tokensDePrueba(t)).ConCostoBcrypt(bcrypt.MinCost)
 	r := Nuevo(svc, slog.New(slog.NewJSONHandler(&logs, nil)))
-	req := httptest.NewRequest(http.MethodPost, "/auth/registro", strings.NewReader(cuerpo))
+	req := httptest.NewRequest(metodo, ruta, strings.NewReader(cuerpo))
 	req.Header.Set("Content-Type", "application/json")
+	if autorizacion != "" {
+		req.Header.Set("Authorization", autorizacion)
+	}
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	return rec, logs.String()
@@ -116,5 +132,62 @@ func TestRegistroDatosInvalidosDa400(t *testing.T) {
 	rec, _ := pedirRegistro(t, &repoMemoria{}, casos["falta la dirección"])
 	if !strings.Contains(rec.Body.String(), "dirección") {
 		t.Fatalf("el 400 tiene que decir qué dato falta: %s", rec.Body)
+	}
+}
+
+func TestLoginYVerify(t *testing.T) {
+	repo := &repoMemoria{}
+	pedirRegistro(t, repo, registroValido)
+
+	rec, logs := pedirA(t, repo, http.MethodPost, "/auth/login", `{"email":"ana@mail.com","password":"clave-secreta-1"}`, "")
+	if rec.Code != http.StatusOK || rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("esperaba 200 no-store: %d %s", rec.Code, rec.Body)
+	}
+	var s struct {
+		Token, Tipo string
+		Usuario     map[string]any
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &s)
+	if s.Token == "" || s.Tipo != "Bearer" || s.Usuario["rol"] != "cliente" {
+		t.Fatalf("cuerpo inesperado: %s", rec.Body)
+	}
+	if strings.Contains(rec.Body.String(), "clave-secreta-1") || strings.Contains(logs, s.Token) || strings.Contains(logs, "clave-secreta-1") {
+		t.Fatal("ni la contraseña ni el token van a la respuesta o al log que no corresponde")
+	}
+
+	rec, logs = pedirA(t, repo, http.MethodGet, "/auth/verify", "", "Bearer "+s.Token)
+	if rec.Code != http.StatusNoContent || rec.Header().Get("X-Rol") != "cliente" || rec.Header().Get("X-Usuario-Id") != s.Usuario["id"] || rec.Header().Get("X-Usuario-Email") != "ana@mail.com" {
+		t.Fatalf("verify: %d %v", rec.Code, rec.Header())
+	}
+	if rec.Header().Get("X-Cocina-Id") != "" || rec.Header().Get("X-Localidad") != "" {
+		t.Fatal("un cliente no lleva cocina ni localidad")
+	}
+	if strings.Contains(logs, s.Token) {
+		t.Fatal("el token no se registra en el log")
+	}
+}
+
+func TestLoginMalDaElMismo401(t *testing.T) {
+	repo := &repoMemoria{}
+	pedirRegistro(t, repo, registroValido)
+	mal, _ := pedirA(t, repo, http.MethodPost, "/auth/login", `{"email":"ana@mail.com","password":"otra-clave-99"}`, "")
+	nadie, _ := pedirA(t, repo, http.MethodPost, "/auth/login", `{"email":"nadie@mail.com","password":"clave-secreta-1"}`, "")
+	for _, rec := range []*httptest.ResponseRecorder{mal, nadie} {
+		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "CREDENCIALES_INVALIDAS") {
+			t.Fatalf("esperaba 401 CREDENCIALES_INVALIDAS: %d %s", rec.Code, rec.Body)
+		}
+	}
+	quitarId := func(s string) string { return s[:strings.Index(s, `"correlationId"`)] }
+	if quitarId(mal.Body.String()) != quitarId(nadie.Body.String()) {
+		t.Fatalf("las dos respuestas tienen que ser iguales:\n%s\n%s", mal.Body, nadie.Body)
+	}
+}
+
+func TestVerifySinTokenOConTokenMalo(t *testing.T) {
+	for _, auth := range []string{"", "Bearer ", "Basic YWJjOmRlZg==", "Bearer no.es.token"} {
+		rec, _ := pedirA(t, &repoMemoria{}, http.MethodGet, "/auth/verify", "", auth)
+		if rec.Code != http.StatusUnauthorized || rec.Header().Get("WWW-Authenticate") == "" || rec.Header().Get("X-Usuario-Id") != "" {
+			t.Errorf("%q: esperaba 401 con WWW-Authenticate y sin identidad: %d %v", auth, rec.Code, rec.Header())
+		}
 	}
 }
