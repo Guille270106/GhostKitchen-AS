@@ -41,6 +41,7 @@ func Nuevo(svc *services.Usuarios, log *slog.Logger) *gin.Engine {
 	})
 
 	registrarRutasAuth(r, svc)
+	registrarRutasAdmin(r, svc)
 
 	r.NoRoute(func(c *gin.Context) { problema(c, http.StatusNotFound, "NO_ENCONTRADO", "Recurso no encontrado") })
 	return r

@@ -53,6 +53,10 @@ services:
       # G7: clave para firmar los tokens (al menos 32 bytes) y cuánto duran.
       JWT_SECRET: ${JWT_SECRET:?Completá JWT_SECRET en .env (al menos 32 caracteres)}
       JWT_TTL_MINUTES: ${JWT_TTL_MINUTES:-120}
+      # G8: Catálogo confirma la cocina y su localidad al crear una cuenta Cocina.
+      CATALOGO_URL: http://catalogo:8082
+      # G8: contraseña inicial de los 4 admins (uno por localidad). Sin ella no se crean.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       PORT: "8081"
       GIN_MODE: release
     expose:

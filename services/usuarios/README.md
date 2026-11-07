@@ -2,7 +2,7 @@
 
 **Responsable:** Guillermina Sánchez.
 
-> **Estado (G7):** registra clientes (`POST /auth/registro`), hace el login de los tres roles con JWT (`POST /auth/login`) y verifica tokens para el gateway (`GET /auth/verify`). Las cuentas Cocina (G8) y la conexión con el gateway (G9) vienen después.
+> **Estado (G8):** registra clientes, hace el login de los tres roles con JWT, verifica tokens para el gateway, carga los admins iniciales y deja que cada admin cree cuentas Cocina de su localidad. La conexión con el gateway (G9) viene después.
 
 Se encarga de las cuentas y del login. Puerto **8081**, solo dentro de Docker.
 
@@ -32,6 +32,8 @@ internal/services/             reglas: mail único, hash de contraseña, token, 
 internal/repositories/         qué necesita el servicio de la base (interfaz)
 internal/repositories/mysql/   la implementación con MySQL
 internal/domain/               qué es un usuario, sus roles y qué datos lleva cada rol
+internal/clients/              cliente HTTP de Catálogo
+internal/seed/                 los admins iniciales
 migrations/                    000001 plantilla, 000002 tabla usuario
 ```
 
@@ -65,7 +67,7 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 | `POST /auth/login` | cualquiera | Iniciar sesión y recibir el token (G7) |
 | `GET /auth/verify` | el gateway | Ver si un token es válido (G7) |
 | `PUT /usuarios/me/cocina` | cliente | Elegir o cambiar la cocina |
-| `POST /admin/cuentas-cocina` | admin | Crear la cuenta de una cocina de su localidad |
+| `POST /admin/cuentas-cocina` | admin | Crear la cuenta de una cocina de su localidad (G8) |
 
 ### `POST /auth/registro` (HU01)
 
@@ -124,6 +126,39 @@ Recibe `Authorization: Bearer <token>`. Si el token sirve, responde `204` sin cu
 
 Si falta el token o no sirve, `401 NO_AUTENTICADO` con `WWW-Authenticate: Bearer`, sin decir por qué. No consulta MySQL: el token ya trae todo, así verificar tarda menos de 1 ms y sigue andando aunque la base esté lenta. La contra es que un token emitido sigue sirviendo hasta que vence, aunque se desactive la cuenta; por eso dura poco.
 
+### Admins iniciales
+
+Los admins no se registran: se cargan al arrancar el servicio, uno por localidad, las mismas de las cocinas de Catálogo. Están en `internal/seed/admins.json`:
+
+| Correo | Localidad |
+| --- | --- |
+| `admin.barrio-jardin@ghostkitchen.dev` | Barrio Jardín |
+| `admin.cerro@ghostkitchen.dev` | Cerro de las Rosas |
+| `admin.nueva-cordoba@ghostkitchen.dev` | Nueva Córdoba |
+| `admin.villa-allende@ghostkitchen.dev` | Villa Allende |
+
+La contraseña inicial de los cuatro es la de `ADMIN_PASSWORD` en el `.env`, así no queda escrita en el repositorio. Sin esa variable no se crea ninguno y el log lo avisa. La carga se puede repetir en cada arranque: si el correo ya existe, no lo toca ni le cambia la contraseña.
+
+### `POST /admin/cuentas-cocina` (HU15)
+
+Con `Authorization: Bearer <token de admin>`:
+
+```json
+{ "nombre": "Cocina Nueva Córdoba", "email": "cocina.nc@ghostkitchen.dev", "password": "clave-cocina-1", "cocinaId": "nueva-cordoba" }
+```
+
+Usuarios verifica el token él mismo: no confía en headers de identidad. Después valida los datos y recién ahí le pregunta a Catálogo por la cocina (`GET /cocinas/:id`, 800 ms y un reintento solo si no hubo respuesta o fue 5xx).
+
+| Respuesta | Cuándo |
+| --- | --- |
+| `201` con la cuenta (rol `cocina` y su `cocinaAsignadaId`) | La cocina existe, está activa y es de la localidad del admin |
+| `401 NO_AUTENTICADO` | Falta el token o no sirve |
+| `403 SIN_PERMISO` | Quien llama no es admin |
+| `403 OTRA_LOCALIDAD` | La cocina es de otra localidad |
+| `422 COCINA_INVALIDA` | Catálogo responde 404: no existe o está inactiva |
+| `409 EMAIL_REPETIDO` / `400 DATOS_INVALIDOS` | Igual que en el registro |
+| `503 CATALOGO_NO_DISPONIBLE` con `Retry-After: 5` | Catálogo no respondió: no se crea la cuenta, y no se toma como "no existe" |
+
 El cierre de sesión descarta el token en el frontend; no implica revocación inmediata del token emitido. El gateway usa `/auth/verify` en una ubicación interna para `auth_request`, sin publicar esa operación al navegador.
 
 **El token lleva:** quién es, su rol y su mail. Si es admin, también su localidad; si es una cuenta Cocina, su cocina. Se firma con una clave que no está en el código.
@@ -152,6 +187,8 @@ La consulta a Catálogo tiene un máximo de 800 ms por intento y un reintento, d
 | `PORT` | `8081` | Puerto HTTP |
 | `JWT_SECRET` | (obligatoria, al menos 32 bytes) | Clave para firmar los tokens. Sin ella el servicio no arranca |
 | `JWT_TTL_MINUTES` | `120` | Cuánto dura un token |
+| `CATALOGO_URL` | `http://catalogo:8082` | Dónde está Catálogo |
+| `ADMIN_PASSWORD` | (vacía) | Contraseña inicial de los admins; sin ella no se cargan |
 
 ## Pruebas
 
