@@ -161,6 +161,8 @@ services:
     container_name: ghostkitchen-gateway
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./gateway/proxy-comun.conf:/etc/nginx/proxy-comun.conf:ro
+      - ./gateway/identidad.conf:/etc/nginx/identidad.conf:ro
     ports:
       - "8080:8080"
     depends_on:
