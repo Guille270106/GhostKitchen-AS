@@ -2,6 +2,22 @@
 
 **Responsable:** Guillermina Sánchez.
 
+> **Ronda 2 (G9): login en el borde.** Las rutas privadas del frontend verifican el JWT antes de llegar al servicio:
+>
+> 1. `auth_request` le pregunta a Usuarios (`/auth/verify`) si el token sirve. Solo viajan los headers, con 300 ms de tope y sin reintento.
+> 2. Si sirve, el gateway copia la identidad que devuelve Usuarios hacia el servicio: `X-Usuario-Id`, `X-Usuario-Email`, `X-Rol`, `X-Cocina-Id` y `X-Localidad`. Siempre los pisa: si el cliente manda `X-Rol: admin` inventado, se reemplaza por el verdadero o se borra.
+> 3. Si no sirve, `401 NO_AUTENTICADO` con `WWW-Authenticate: Bearer`. Si Usuarios está caído o tarda más de 300 ms, `503` (**falla cerrada**): nunca se deja pasar sin verificar. Las rutas públicas siguen andando.
+>
+> Esas líneas están en [`identidad.conf`](identidad.conf), que se incluye en cada ruta privada, y las comunes de proxy en [`proxy-comun.conf`](proxy-comun.conf). Para proteger una ruta nueva (por ejemplo las de Pedidos), alcanza con `include /etc/nginx/identidad.conf;` adentro de su `location`.
+>
+> | Ruta | Destino | Login |
+> | --- | --- | --- |
+> | `POST /api/v1/auth/registro` y `POST /api/v1/auth/login` | Usuarios | No. Límite de 10 por minuto por IP (ráfaga de 5), contra quien prueba contraseñas: después, `429` con `Retry-After: 6` |
+> | `POST /api/v1/admin/cuentas-cocina` | Usuarios | Sí (Usuarios además controla que sea admin) |
+> | `/api/v1/cocina/ingredientes[/{id}]`, `/api/v1/cocina/recetas` y `/api/v1/cocina/platos/{id}/receta` | Inventario | Sí (Inventario controla que sea una cuenta Cocina y su cocina) |
+>
+> Probado con NGINX y Usuarios reales y un servicio de eco en lugar de Inventario: sin token y con token basura da 401; con `X-Rol: admin` inventado llega `X-Rol: cliente`; la cuenta Cocina llega con su `X-Cocina-Id`; con Usuarios apagado o tardando 2 s, 503 a los 300 ms; el login da 429 al pasar el límite. Ningún token aparece en los logs del gateway.
+
 > **Ronda 1 (V4):** `/public/v1/` conserva 60 solicitudes/minuto por API key y cuenta por IP cuando falta la clave, con la misma ráfaga de 60 y `429` con `Retry-After: 1`. Las solicitudes sin clave que están dentro del cupo siguen recibiendo `401`; el límite actúa antes de verificar credenciales. No se confía en `X-Forwarded-For` enviado por el cliente. Este ajuste no define todavía la política por IP de las rutas del frontend. En Búsqueda, la espera entre reintentos del índice al arrancar sigue 1, 2, 4, 8, 10, 10… segundos; el tope es del intervalo, no de toda la inicialización.
 
 > **Ronda 1 (L3):** el gateway usa el DNS interno de Docker (`resolver 127.0.0.11`) y `resolve` en cada `upstream`, así vuelve a buscar la dirección de Búsqueda y Catálogo cada 10 s. Antes la buscaba una sola vez al arrancar: si un servicio se recreaba con otra IP (por ejemplo con `docker compose up --build`), respondía `503` hasta reiniciar el gateway. Probado recreando Búsqueda con una IP nueva: el gateway la siguió sin reiniciarse.
