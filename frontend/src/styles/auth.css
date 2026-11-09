@@ -1,0 +1,33 @@
+.auth-page { min-height: calc(100vh - 76px); display: grid; grid-template-columns: 1fr 1fr; }
+.auth-visual { position: relative; min-height: 650px; color: white; }
+.auth-visual > img { height: 100%; object-fit: cover; position: absolute; inset: 0; }
+.auth-visual::after { content: ""; position: absolute; inset: 0; background: rgba(17,24,39,.64); }
+.auth-visual > div { position: absolute; z-index: 1; left: 9%; bottom: 10%; }
+.auth-visual .ghost-logo { width: 75px; height: 75px; }
+.auth-visual h1 { font-size: 32px; line-height: 1.05; margin: 15px 0 10px; }
+.auth-visual p { color: #e5e7eb; }
+.auth-form { display: flex; flex-direction: column; padding: 35px 10%; }
+.auth-box { width: 100%; max-width: 430px; margin: auto; }
+.auth-box h2 { font-size: 26px; margin: 5px 0 8px; }
+.auth-box > p { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+.auth-box label, .auth-box .field { display: block; font-size: 13px; font-weight: 700; margin: 13px 0; }
+.auth-box input, .auth-box select { display: block; width: 100%; height: 44px; margin-top: 6px; border: 1px solid var(--line); border-radius: 6px; padding: 0 12px; outline-color: var(--red); background: #fff; }
+.auth-box .btn { margin-top: 8px; }
+.auth-toggle { text-align: center; margin-top: 18px !important; font-size: 14px; }
+.auth-toggle a { color: var(--red); font-weight: 600; }
+.demo-accounts { margin-top: 26px; border: 1px dashed var(--line); border-radius: 6px; padding: 14px; display: grid; gap: 8px; background: var(--canvas); }
+.demo-accounts > strong { font-size: 13px; }
+.demo-accounts > small { color: var(--muted); font-size: 12px; margin-top: -4px; }
+.demo-accounts button { display: flex; justify-content: space-between; align-items: center; gap: 10px; border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 9px 11px; text-align: left; font-size: 13px; font-weight: 600; }
+.demo-accounts button:hover { border-color: #fda4af; }
+.demo-accounts button small { color: var(--muted); font-weight: 400; font-size: 12px; }
+
+@media (max-width: 620px) {
+  .auth-page { display: block; }
+  .auth-visual { display: none; }
+  .auth-form { padding: 28px 18px; min-height: calc(100vh - 64px); }
+  .demo-accounts button { flex-direction: column; align-items: flex-start; gap: 2px; }
+}
+
+/* En login y registro, el footer sigue al bloque de imagen y formulario. */
+.auth-page + .site-footer { margin-top: 0; }

@@ -1,13 +1,19 @@
 import { useEffect } from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 
-import EmptyState from "../components/common/EmptyState";
 import BottomNav from "../components/layout/BottomNav";
 import Footer from "../components/layout/Footer";
 import Header from "../components/layout/Header";
-import { SessionProvider } from "../context/SessionContext";
+import SedeSelector from "../components/sede/SedeSelector";
+import { CartProvider } from "../context/CartContext";
+import { SessionProvider, useSession } from "../context/SessionContext";
 import { ToastProvider } from "../context/ToastContext";
+import Home from "../pages/Home";
+import KitchenDetail from "../pages/KitchenDetail";
+import Login from "../pages/Login";
 import NotFound from "../pages/NotFound";
+import Register from "../pages/Register";
+import Search from "../pages/Search";
 
 // Las rutas se suman con cada parte del frontend:
 //   G18  /, /buscar, /cocinas/:id, /login, /registro y el selector de sede
@@ -26,13 +32,12 @@ function ScrollToTop() {
   return null;
 }
 
-// Pantalla de inicio provisoria hasta que llegue la de la sede elegida (G18).
-function InicioProvisorio() {
-  return (
-    <main className="container page-space">
-      <EmptyState title="GhostKitchen" text="Varias marcas, una misma cocina. Las pantallas se van sumando en cada parte del proyecto." />
-    </main>
-  );
+// El selector de sede aparece sobre las pantallas del cliente, no en los paneles ni en el login.
+function SedeGate() {
+  const { pathname } = useLocation();
+  const { user, selectorSedeAbierto } = useSession();
+  const panel = /^\/(cocina|admin|login|registro)(\/|$)/.test(pathname) || (user && user.rol !== "CLIENTE");
+  return selectorSedeAbierto && !panel ? <SedeSelector /> : null;
 }
 
 function PageFooter() {
@@ -45,16 +50,24 @@ function AppRouter() {
     <BrowserRouter>
       <ToastProvider>
         <SessionProvider>
-          <ScrollToTop />
-          <div className="app">
-            <Header />
-            <Routes>
-              <Route path="/" element={<InicioProvisorio />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-            <PageFooter />
-            <BottomNav />
-          </div>
+          <CartProvider>
+            <ScrollToTop />
+            <div className="app">
+              <Header />
+              <Routes>
+                {/* Públicas: se exploran los restaurantes de la sede elegida */}
+                <Route path="/" element={<Home />} />
+                <Route path="/buscar" element={<Search />} />
+                <Route path="/cocinas/:id" element={<KitchenDetail />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/registro" element={<Register />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+              <SedeGate />
+              <PageFooter />
+              <BottomNav />
+            </div>
+          </CartProvider>
         </SessionProvider>
       </ToastProvider>
     </BrowserRouter>
