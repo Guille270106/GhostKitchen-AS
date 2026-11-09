@@ -321,6 +321,21 @@ func TestPantallaDeLaCocinaPorHTTP(t *testing.T) {
 	}
 }
 
+func TestCancelarPorHTTP(t *testing.T) {
+	h := servidor(t, nil)
+	// El cliente lo cancela mientras está RECIBIDO.
+	if w, m := pedir(h, "POST", "/pedidos/ped-1/cancelar", "", clienteHeaders); w.Code != 200 || m["estado"] != "CANCELADO" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	// Otro cliente no puede (404) y la cocina no cancela: rechaza (403).
+	if w, _ := pedir(h, "POST", "/pedidos/ped-1/cancelar", "", map[string]string{"X-Usuario-Id": "u-2", "X-Rol": "cliente"}); w.Code != 404 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w, _ := pedir(h, "POST", "/pedidos/ped-1/cancelar", "", map[string]string{"X-Usuario-Id": "u-c", "X-Rol": "cocina", "X-Cocina-Id": "cerro"}); w.Code != 403 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
 // ConfirmacionesMock guarda las confirmaciones en un mapa (versión mínima para las rutas).
 type ConfirmacionesMock struct {
 	lista map[string]domain.Confirmacion

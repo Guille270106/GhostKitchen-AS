@@ -63,13 +63,17 @@ func main() {
 	catalogoCliente := catalogo.Nuevo(valor("CATALOGO_URL", "http://catalogo:8082"))
 	inventarioCliente := inventario.Nuevo(valor("INVENTARIO_URL", "http://inventario:8084"))
 
-	// El descuento de stock es la V10 de Inventario, que todavía no existe. Mientras tanto se
-	// usa el Inventario falso; con CONSUMO_INVENTARIO=real se usa el de verdad.
+	devolucionesRepo := mysqladapter.DevolucionesMySQL{DB: db}
+
+	// Descontar y devolver stock (V10 de Inventario). Con CONSUMO_INVENTARIO=real (lo que usa
+	// docker-compose) se llama a Inventario; con "simulado" no, para probar Pedidos solo.
 	var consumo ports.Consumo = inventario.ConsumoSimulado{}
+	var devolucion ports.Devolucion = inventario.DevolucionSimulada{}
 	if valor("CONSUMO_INVENTARIO", "simulado") == "real" {
 		consumo = inventarioCliente
+		devolucion = inventarioCliente
 	}
-	logger.Info("descuento de stock", "modo", valor("CONSUMO_INVENTARIO", "simulado"))
+	logger.Info("descuento y devolución de stock", "modo", valor("CONSUMO_INVENTARIO", "simulado"))
 
 	// 3. Casos de uso: reciben las interfaces, no MySQL ni HTTP.
 	pedidosService := application.PedidosService{Repo: pedidosRepo}
@@ -84,6 +88,7 @@ func main() {
 		Pedidos:  pedidosRepo,
 		Consumo:  consumo,
 	}
+	devolucionService := application.DevolucionService{Repo: devolucionesRepo, Inventario: devolucion}
 
 	// 4. Controllers (adaptador de entrada) y rutas.
 	router := httpadapter.Rutas(logger,
@@ -105,7 +110,19 @@ func main() {
 		}
 	}()
 
-	// 6. Servidor, con tiempos máximos para no quedar colgado con clientes lentos.
+	// 6. Otro proceso en segundo plano: cada 5 s devuelve los ingredientes de los pedidos cancelados.
+	go func() {
+		for range time.Tick(5 * time.Second) {
+			hechas, err := devolucionService.ProcesarPendientes(context.Background())
+			if err != nil {
+				logger.Error("no se pudieron procesar las devoluciones", "error", err.Error())
+			} else if hechas > 0 {
+				logger.Info("ingredientes devueltos a Inventario", "pedidos", hechas)
+			}
+		}
+	}()
+
+	// 7. Servidor, con tiempos máximos para no quedar colgado con clientes lentos.
 	puerto := valor("PORT", "8085")
 	servidor := &http.Server{
 		Addr:              ":" + puerto,
