@@ -68,6 +68,7 @@ func run(log *slog.Logger) error {
 	router := httpadapter.Nuevo(application.Nuevo(repo), repo.Ready, log)
 	httpadapter.RegistrarRecetas(router, application.NuevasRecetas(repo))
 	httpadapter.RegistrarReservas(router, application.NuevasReservas(repo))
+	httpadapter.RegistrarConsumos(router, application.NuevosConsumos(repo))
 	srv := &http.Server{Addr: ":" + valor("PORT", "8084"), Handler: router, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	fallos := make(chan error, 1)
 	go func() { fallos <- srv.ListenAndServe() }()
