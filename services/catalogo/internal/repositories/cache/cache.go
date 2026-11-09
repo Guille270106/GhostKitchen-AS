@@ -22,6 +22,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"ghostkitchen/catalogo/internal/domain"
 	"ghostkitchen/catalogo/internal/repositories"
 )
@@ -29,8 +32,16 @@ import (
 // TTL de cada clave (ADR-007): 60 s, con ±10 % al azar para que no venzan todas juntas.
 const TTL = 60 * time.Second
 
-// Estadisticas cuenta aciertos, fallos y errores de la caché. Las va a publicar /metrics (G19)
-// y sirven para medir si la caché sirve (ADR-007, punto 6).
+// usos cuenta en /metrics (G19) cada lectura de la caché, por tipo de clave (cocinas, cocina,
+// menu, plato) y resultado: acierto (estaba), fallo (no estaba: se leyó de MongoDB) o error
+// (Memcached no respondió). Es lo que mide si la caché sirve (ADR-007, punto 6).
+var usos = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "catalogo_cache_total",
+	Help: "Lecturas de la caché de Catálogo, por tipo de clave y resultado (acierto, fallo, error).",
+}, []string{"tipo", "resultado"})
+
+// Estadisticas cuenta aciertos, fallos y errores de la caché de este decorator (lo mismo que
+// catalogo_cache_total, pero por instancia: lo usan los tests).
 type Estadisticas struct {
 	Aciertos atomic.Int64 // estaba en la caché
 	Fallos   atomic.Int64 // no estaba: se leyó de MongoDB
@@ -111,6 +122,7 @@ func leer[T any](r *Repositorio, tipo, clave string, cargar func() (T, error)) (
 		var v T
 		if json.Unmarshal(b, &v) == nil {
 			r.Stats.Aciertos.Add(1)
+			usos.WithLabelValues(tipo, "acierto").Inc()
 			return v, nil
 		}
 	} else if !errors.Is(err, ErrNoEsta) {
@@ -121,6 +133,7 @@ func leer[T any](r *Repositorio, tipo, clave string, cargar func() (T, error)) (
 	// Miss: una sola solicitud por clave va a MongoDB; las que llegan mientras tanto esperan
 	// su resultado (contra el "stampede" cuando vence una clave muy pedida).
 	r.Stats.Fallos.Add(1)
+	usos.WithLabelValues(tipo, "fallo").Inc()
 	v, err, primera := r.vuelos.hacer(k, func() (any, error) { return cargar() })
 	if err != nil {
 		var cero T
@@ -142,6 +155,7 @@ func ttlConMargen() time.Duration {
 
 func (r *Repositorio) fallaCache(tipo string, err error) {
 	r.Stats.Errores.Add(1)
+	usos.WithLabelValues(tipo, "error").Inc()
 	r.log.Warn("Memcached no respondió; se lee de MongoDB", "clave", tipo, "motivo", err.Error())
 }
 

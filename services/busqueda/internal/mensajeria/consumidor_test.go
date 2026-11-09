@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	"ghostkitchen/busqueda/internal/indexer"
 )
 
@@ -48,5 +50,18 @@ func TestEsperaReintentoCrece(t *testing.T) {
 		if got := EsperaReintento(int64(i), 10*time.Second); got != q {
 			t.Errorf("entrega %d: %v, esperaba %v", i, got, q)
 		}
+	}
+}
+
+func TestManejarCuentaEnMetricas(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	antes := testutil.ToFloat64(eventos.WithLabelValues("plato.creado", "aplicado"))
+	atrasos := testutil.CollectAndCount(atraso)
+	NuevoConsumidor("", procFalso{}, log).Manejar(context.Background(), []byte(cuerpo), "plato.creado")
+	if got := testutil.ToFloat64(eventos.WithLabelValues("plato.creado", "aplicado")); got != antes+1 {
+		t.Fatalf("aplicados: %v, esperaba %v", got, antes+1)
+	}
+	if testutil.CollectAndCount(atraso) != atrasos {
+		t.Fatal("el histograma de atraso tiene que seguir siendo una sola serie")
 	}
 }

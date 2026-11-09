@@ -62,11 +62,11 @@ func Iniciar(ctx context.Context) (func(context.Context) error, error) {
 }
 
 // Middleware crea el span de servidor de cada solicitud HTTP (continúa la traza del gateway
-// si viene un traceparent). No traza /health ni /ready para no llenar Jaeger de chequeos.
+// si viene un traceparent). No traza /health, /ready ni /metrics para no llenar Jaeger de chequeos.
 // El span lleva la ruta como plantilla (ej. /v1/sedes/:sedeId/platos), sin parámetros.
 func Middleware() gin.HandlerFunc {
 	return otelgin.Middleware(Servicio, otelgin.WithFilter(func(r *http.Request) bool {
-		return r.URL.Path != "/health" && r.URL.Path != "/ready"
+		return r.URL.Path != "/health" && r.URL.Path != "/ready" && r.URL.Path != "/metrics"
 	}))
 }
 

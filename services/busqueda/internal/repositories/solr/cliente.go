@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -25,6 +27,15 @@ import (
 	"ghostkitchen/busqueda/internal/domain"
 	"ghostkitchen/busqueda/internal/trazas"
 )
+
+// llamadas mide cada llamada a Solr, por operación (ej. "platos/select") y resultado (ok o
+// error). Es el panel "Dependencias" del ADR-011: saber si lo lento es Solr. La operación no
+// lleva la URL con parámetros (ADR-011, privacidad).
+var llamadas = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "busqueda_solr_duration_seconds",
+	Help:    "Duración de las llamadas de Búsqueda a Solr, por operación y resultado.",
+	Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.3, 0.5, 1, 2, 5},
+}, []string{"operacion", "resultado"})
 
 // Cores (índices) que usa Búsqueda. Se crean al levantar Solr (docker-compose).
 const (
@@ -178,11 +189,15 @@ func (c *Cliente) hacer(ctx context.Context, cli *http.Client, metodo, ruta stri
 			attribute.String("db.operation", operacion),
 			attribute.String("http.request.method", metodo),
 		))
+	inicio := time.Now()
 	defer func() {
-		if err != nil {
+		resultado := "ok"
+		if err != nil && !errors.Is(err, ErrConflicto) { // un 409 es parte del protocolo, no una falla
+			resultado = "error"
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "falló la llamada a Solr")
 		}
+		llamadas.WithLabelValues(operacion, resultado).Observe(time.Since(inicio).Seconds())
 		span.End()
 	}()
 

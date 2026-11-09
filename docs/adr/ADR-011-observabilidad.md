@@ -1,6 +1,6 @@
 # ADR-011 — Observabilidad: logs, trazas, métricas y alertas
 
-- **Estado:** Primera versión. Logs y trazas implementados (Entrega 2); métricas, tablero y alertas para la presentación final
+- **Estado:** Primera versión. Logs y trazas implementados (Entrega 2); `/metrics` en los servicios (G19); tablero y alertas para la presentación final (G20)
 - **Fecha:** 2026-10-16
 - **Responsable:** Guillermina Sánchez
 - **Decisión del enunciado:** D11 (estrategia de logs, métricas, trazas y tableros, objetivo de servicio y criterios de alerta)
@@ -61,6 +61,27 @@ Prometheus lee `/metrics` de cada servicio; Grafana muestra un tablero con:
 | Índice | Atraso entre el cambio en Catálogo y su llegada a Solr | Controlar los 5 s aceptados ([ADR-006](ADR-006-busqueda.md)) |
 | Mensajería | Mensajes pendientes, reintentos y DLQ | Ver un consumidor detenido |
 | Pedidos | Confirmaciones pendientes y recuperadas | Ver pedidos a medias |
+
+#### Cómo quedó `/metrics` (G19)
+
+Cada servicio en Go (Usuarios, Catálogo, Búsqueda, Inventario y Pedidos) publica `GET /metrics` con `prometheus/client_golang`. Solo se llega desde adentro de Docker: el gateway no la publica. Notificaciones la suma cuando exista su código (V13), con el mismo paquete `internal/metricas`.
+
+| Métrica | Tipo | Etiquetas | Panel |
+| --- | --- | --- | --- |
+| `http_requests_total` | contador | `method`, `route`, `status` | Tráfico y errores (RED) |
+| `http_request_duration_seconds` | histograma (5 ms a 5 s, con 300 ms, 500 ms y 3 s) | `method`, `route` | Duración p50/p95/p99 |
+| `catalogo_cache_total` | contador | `tipo` (cocinas, cocina, menu, plato), `resultado` (acierto, fallo, error) | Caché ([ADR-007](ADR-007-cache.md)) |
+| `busqueda_solr_duration_seconds` | histograma | `operacion` (ej. `platos/select`), `resultado` | Dependencias |
+| `busqueda_eventos_total` | contador | `tipo`, `resultado` (aplicado, rechazado, reintento) | Mensajería |
+| `busqueda_indice_atraso_seconds` | histograma (0,1 a 60 s, con 5 s) | — | Índice: atraso del cambio hasta Solr |
+
+Además vienen las de Go y del proceso (memoria, goroutines, CPU). Decisiones:
+
+- **La ruta es la plantilla de Gin** (`/platos/:id`), nunca la URL real: no se registran ids, texto buscado ni coordenadas, y la cantidad de series queda acotada. Las rutas que no existen van todas a `sin_ruta`.
+- **El servicio y la copia no van como etiqueta:** los agrega Prometheus al leer (`job` e `instance`). Así las dos copias de Catálogo se ven por separado sin cambiar el código.
+- **El middleware va primero**, antes de `gin.Recovery`: una solicitud que termina en panic cuenta como 500.
+- **Las lecturas de `/metrics` no cuentan** como tráfico ni crean trazas en Jaeger.
+- Falta para G20: Prometheus y Grafana en el compose, el tablero y la alerta. Las métricas de Pedidos (confirmaciones pendientes) y de las colas (mensajes en la DLQ) se leen de MySQL y de RabbitMQ, así que se suman ahí.
 
 ### 4. Objetivos de servicio (SLO)
 
