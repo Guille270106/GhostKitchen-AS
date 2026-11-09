@@ -18,6 +18,7 @@ import (
 	httpadapter "ghostkitchen/pedidos/internal/adapters/http"
 	"ghostkitchen/pedidos/internal/adapters/inventario"
 	mysqladapter "ghostkitchen/pedidos/internal/adapters/mysql"
+	"ghostkitchen/pedidos/internal/adapters/rabbitmq"
 	"ghostkitchen/pedidos/internal/application"
 	"ghostkitchen/pedidos/internal/ports"
 	"github.com/go-sql-driver/mysql"
@@ -122,7 +123,24 @@ func main() {
 		}
 	}()
 
-	// 7. Servidor, con tiempos máximos para no quedar colgado con clientes lentos.
+	// 7. Y otro: cada 1 s publica en RabbitMQ los mensajes del outbox (pedido.estado_cambiado).
+	//    Si RabbitMQ está caído, los mensajes esperan en MySQL y Pedidos sigue atendiendo.
+	if url := os.Getenv("RABBITMQ_URL"); url != "" {
+		publicador := &rabbitmq.PublicadorRabbit{URL: url}
+		defer publicador.Cerrar()
+		outboxService := application.OutboxService{Repo: mysqladapter.OutboxMySQL{DB: db}, Publicador: publicador}
+		go func() {
+			for range time.Tick(time.Second) {
+				if _, err := outboxService.PublicarPendientes(context.Background()); err != nil {
+					logger.Warn("no se pudo publicar el outbox; se reintenta en 1 s", "error", err.Error())
+				}
+			}
+		}()
+	} else {
+		logger.Warn("falta RABBITMQ_URL: los mensajes quedan en el outbox sin publicar")
+	}
+
+	// 8. Servidor, con tiempos máximos para no quedar colgado con clientes lentos.
 	puerto := valor("PORT", "8085")
 	servidor := &http.Server{
 		Addr:              ":" + puerto,

@@ -145,6 +145,22 @@ Cuando un pedido pasa a `CANCELADO` (lo cancela el cliente o lo **rechaza la coc
 
 Con `CONSUMO_INVENTARIO: real` (lo que usa `docker-compose.yml`) se llama a la V10 de Inventario. Con `simulado` la devolución también es simulada: como el descuento no fue real, no hay nada que devolver.
 
+## Historial y aviso de cada cambio de estado (L13)
+
+- **Historial:** cada cambio queda en `pedido_historial` (estado anterior, nuevo, quién y cuándo) y se ve en `GET /api/v1/pedidos/{id}`, en `historial`.
+- **Aviso:** cada cambio (también la creación en `RECIBIDO`) publica `pedido.estado_cambiado` en RabbitMQ, con el sobre común de [`docs/contracts/eventos`](../../docs/contracts/eventos/README.md). Lo escucha Notificaciones (cola `notificaciones.mailer`) para mandarle el mail al cliente.
+
+Cómo no se pierde un aviso (**outbox**, ADR-005):
+
+1. El mensaje se guarda en la tabla `outbox` en la **misma transacción** que el cambio: si el cambio no se guarda, tampoco el aviso, y al revés.
+2. Un proceso en segundo plano (cada 1 s) los publica **en orden** y marca cada uno recién cuando RabbitMQ **confirma** que lo guardó (publisher confirms). Si uno falla, para ahí y reintenta en la vuelta siguiente, así no se adelanta un estado posterior.
+3. Si RabbitMQ está caído, Pedidos sigue atendiendo: los mensajes esperan en MySQL y salen cuando vuelve.
+4. Si Pedidos se cae justo después de publicar y antes de marcar, el mensaje sale dos veces. Por eso lleva `evento_id` (también como `message_id`) y `secuencia` (la versión del pedido): el consumidor descarta repetidos y viejos.
+
+| Variable | Para qué |
+| --- | --- |
+| `RABBITMQ_URL` | `amqp://usuario:clave@rabbitmq:5672/`, armada en `docker-compose.yml` con `RABBITMQ_USER` y `RABBITMQ_PASSWORD` del `.env`. Sin ella, los mensajes quedan en el outbox |
+
 ## Probar
 
 Sin Docker, las reglas del pedido y las rutas (con un repositorio en memoria):
@@ -191,6 +207,7 @@ La cocina lo avanza hasta EN_CAMINO y el cliente confirma que lo recibió (ENTRE
 | `pedido_historial` | Cada cambio de estado, cuándo y quién lo hizo |
 | `confirmacion` | En qué paso va cada confirmación (la saga), con una copia del carrito |
 | `devolucion` | Los ingredientes a devolver de cada pedido cancelado, y si ya se devolvieron |
+| `outbox` | Los avisos `pedido.estado_cambiado` que todavía no confirmó RabbitMQ (y cuándo se publicó cada uno) |
 
 ## Cómo se organiza por dentro: hexagonal + DDD
 
