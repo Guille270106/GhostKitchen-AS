@@ -10,6 +10,7 @@
 import { dishPhotos } from "../data/dishPhotos";
 import { FOTOS_COCINA, photos, zonas } from "../data/visual";
 import { clearAuthToken, getAuthToken, getCurrentUser, setAuthToken, setSessionProfile } from "../utils/auth";
+import { estadoLabel } from "../utils/formatters";
 
 // El frontend siempre habla con el gateway por la misma dirección: en desarrollo, Vite
 // reenvía /api al gateway (vite.config.js), así no hay problemas de CORS.
@@ -477,4 +478,131 @@ export async function confirmCart() {
 // El id del pedido es largo (UUID): para mostrarlo se usan sus primeros 8 caracteres.
 export function codigoPedido(id) {
   return String(id || "").slice(0, 8).toUpperCase();
+}
+
+// ---------------------------------------------------------------------------
+// Pedidos del cliente y tablero de la cocina (Pedidos, L18)
+// ---------------------------------------------------------------------------
+
+// Convierte un pedido de Pedidos a la forma que usan las pantallas. El total incluye el envío de
+// la cocina, igual que en el carrito. Los avisos por mail son uno por cambio de estado (cada
+// cambio publica pedido.estado_cambiado y Notificaciones manda el mail).
+function pedidoParaPantallas(p, cocina) {
+  const items = (p.items || []).map((it) => ({
+    platoId: it.platoId,
+    nombre: it.nombre,
+    precio: it.precioUnitario,
+    cantidad: it.cantidad,
+    restauranteId: it.restauranteId,
+  }));
+  const envio = cocina?.envio || 0;
+  const codigo = codigoPedido(p.id);
+  return {
+    id: p.id,
+    codigo,
+    cocinaId: p.cocinaId,
+    cocinaNombre: cocina?.nombre || p.cocinaId,
+    creadoEn: Date.parse(p.creadoEn),
+    estado: p.estado,
+    items,
+    restaurantes: porRestaurante(items, cocina?.marcas || [], (i) => i.restauranteId).map((g) => ({
+      restauranteId: g.restaurante.id,
+      nombre: g.restaurante.nombre,
+      color: g.restaurante.color,
+      items: g.items,
+    })),
+    cantidad: items.reduce((acc, i) => acc + i.cantidad, 0),
+    envio,
+    total: p.total + envio,
+    comprobante: p.comprobante || null,
+    notificaciones: (p.historial || [])
+      .slice()
+      .reverse()
+      .map((h) => ({ id: `${p.id}-${h.version}`, fecha: Date.parse(h.ocurridoEn), asunto: `Tu pedido #${codigo}: ${estadoLabel(h.estadoNuevo)}` })),
+  };
+}
+
+async function cocinasPorId() {
+  const cocinas = await getCocinas();
+  return new Map(cocinas.map((c) => [c.id, c]));
+}
+
+// Mis pedidos: los últimos 20, del más nuevo al más viejo, con su historial y su factura (por
+// eso se pide el detalle de cada uno).
+export async function getMyOrders() {
+  const [lista, cocinas] = await Promise.all([pedir("GET", "/pedidos"), cocinasPorId()]);
+  const detalles = await Promise.all((lista?.pedidos || []).map((p) => pedir("GET", `/pedidos/${p.id}`)));
+  return detalles.map((p) => pedidoParaPantallas(p, cocinas.get(p.cocinaId)));
+}
+
+// Solo mientras la cocina no lo aceptó. Los ingredientes vuelven a Inventario en segundo plano.
+export async function cancelOrder(pedidoId) {
+  const pedido = await pedir("POST", `/pedidos/${pedidoId}/cancelar`);
+  avisarCambio();
+  return pedido;
+}
+
+// "Ya lo recibí": solo cuando está en camino.
+export async function confirmDelivery(pedidoId) {
+  const pedido = await pedir("POST", `/pedidos/${pedidoId}/entregado`);
+  avisarCambio();
+  return pedido;
+}
+
+// Estados que la cocina todavía tiene que mover (las columnas del tablero).
+const ESTADOS_DEL_TABLERO = ["RECIBIDO", "ACEPTADO", "EN_PREPARACION", "LISTO"];
+
+// Todos los pedidos de la cocina de hoy, de a páginas (vienen del más nuevo al más viejo).
+async function pedidosDeHoy() {
+  const inicioDia = new Date().setHours(0, 0, 0, 0);
+  const deHoy = [];
+  for (let pagina = 1; pagina <= 10; pagina++) {
+    const respuesta = await pedir("GET", `/cocina/pedidos?pagina=${pagina}`);
+    const lista = respuesta?.pedidos || [];
+    const hoy = lista.filter((p) => Date.parse(p.creadoEn) >= inicioDia);
+    deHoy.push(...hoy);
+    if (hoy.length < lista.length || lista.length < respuesta.porPagina) break;
+  }
+  return deHoy;
+}
+
+// Tablero de la cocina: los pedidos a mover (de cualquier día), más los números de hoy.
+export async function getKitchenBoard() {
+  const cocinaId = getCurrentUser()?.cocinaId;
+  const [cocinas, deHoy, ...porEstado] = await Promise.all([
+    cocinasPorId(),
+    pedidosDeHoy(),
+    ...ESTADOS_DEL_TABLERO.map((estado) => pedir("GET", `/cocina/pedidos?estado=${estado}`)),
+  ]);
+  const cocina = cocinas.get(cocinaId) || { id: cocinaId, nombre: cocinaId, marcas: [], envio: 0 };
+  const pedidos = porEstado
+    .flatMap((r) => r?.pedidos || [])
+    .map((p) => pedidoParaPantallas(p, cocina))
+    .sort((a, b) => a.creadoEn - b.creadoEn); // el más viejo primero: es el que más espera
+  const vendidos = deHoy.filter((p) => p.estado !== "CANCELADO").map((p) => pedidoParaPantallas(p, cocina));
+  return {
+    cocina,
+    marcas: cocina.marcas,
+    pedidos,
+    stats: {
+      pedidosHoy: vendidos.length,
+      enPreparacion: pedidos.filter((p) => p.estado === "EN_PREPARACION").length,
+      ventasHoy: vendidos.reduce((acc, p) => acc + p.total, 0),
+    },
+  };
+}
+
+// Avanza el pedido un paso: un pedido nuevo se acepta; los demás pasan al estado siguiente.
+export async function advanceOrder(pedido) {
+  const accion = pedido.estado === "RECIBIDO" ? "aceptar" : "avanzar";
+  const actualizado = await pedir("POST", `/cocina/pedidos/${pedido.id}/${accion}`);
+  avisarCambio();
+  return actualizado;
+}
+
+// Rechazar cancela el pedido completo; los ingredientes vuelven a Inventario.
+export async function rejectOrder(pedidoId) {
+  const actualizado = await pedir("POST", `/cocina/pedidos/${pedidoId}/rechazar`);
+  avisarCambio();
+  return actualizado;
 }

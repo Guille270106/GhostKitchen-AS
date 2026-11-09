@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 
 import ProtectedRoute from "../components/auth/ProtectedRoute";
 import WorkspaceLayout from "../components/layout/WorkspaceLayout";
@@ -13,8 +13,10 @@ import { SessionProvider, useSession } from "../context/SessionContext";
 import { ToastProvider } from "../context/ToastContext";
 import Cart from "../pages/Cart";
 import Home from "../pages/Home";
+import KitchenOrders from "../pages/KitchenOrders";
 import KitchenDetail from "../pages/KitchenDetail";
 import Login from "../pages/Login";
+import MyOrders from "../pages/MyOrders";
 import NotFound from "../pages/NotFound";
 import RecetasMermas from "../pages/RecetasMermas";
 import Register from "../pages/Register";
@@ -76,9 +78,17 @@ function AppRouter() {
                     </ProtectedRoute>
                   }
                 />
+                <Route
+                  path="/pedidos"
+                  element={
+                    <ProtectedRoute allowedRoles={["CLIENTE"]}>
+                      <MyOrders />
+                    </ProtectedRoute>
+                  }
+                />
 
                 <Route path="/cocina" element={<ProtectedRoute allowedRoles={["COCINA"]}><WorkspaceLayout /></ProtectedRoute>}>
-                  <Route index element={<Navigate to="inventario" replace />} />
+                  <Route index element={<KitchenOrders />} />
                   <Route path="inventario" element={<StockIngredientes />} />
                   <Route path="platos" element={<RecetasMermas />} />
                 </Route>
