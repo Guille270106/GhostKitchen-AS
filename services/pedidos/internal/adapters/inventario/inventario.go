@@ -13,17 +13,59 @@ import (
 	"ghostkitchen/pedidos/internal/adapters/correlacion"
 	"ghostkitchen/pedidos/internal/domain"
 	"ghostkitchen/pedidos/internal/ports"
+	"github.com/sony/gobreaker"
 )
 
 // InventarioHTTP le habla a Inventario por HTTP (dentro de la red de Docker).
 type InventarioHTTP struct {
 	BaseURL string // por ejemplo http://inventario:8084
 	Client  *http.Client
+	// BreakerConsumo es el circuit breaker del descuento (ADR-010: uno por operación).
+	BreakerConsumo *gobreaker.CircuitBreaker
 }
 
 // Nuevo arma el cliente con el tiempo máximo de cada intento (800 ms, ADR-005).
 func Nuevo(baseURL string) InventarioHTTP {
-	return InventarioHTTP{BaseURL: baseURL, Client: &http.Client{Timeout: 800 * time.Millisecond}}
+	return InventarioHTTP{
+		BaseURL:        baseURL,
+		Client:         &http.Client{Timeout: 800 * time.Millisecond},
+		BreakerConsumo: NuevoBreaker("inventario-consumir"),
+	}
+}
+
+// NuevoBreaker arma un circuit breaker con los valores del ADR-010:
+//   - si en una ventana de al menos 10 llamadas falla la mitad, se ABRE: durante 10 s responde
+//     error al instante, sin llamar a Inventario (así no lo saturamos mientras se recupera);
+//   - después deja pasar hasta 3 llamadas de prueba (semiabierto) y, si andan, se cierra.
+//
+// Solo cuentan como falla las veces que Inventario no contestó. Que la reserva haya vencido es
+// una respuesta normal del negocio, no una falla de Inventario.
+func NuevoBreaker(nombre string) *gobreaker.CircuitBreaker {
+	return gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:        nombre,
+		MaxRequests: 3,                // llamadas de prueba en semiabierto
+		Interval:    60 * time.Second, // cada cuánto se reinician los contadores si está cerrado
+		Timeout:     10 * time.Second, // cuánto queda abierto
+		ReadyToTrip: func(c gobreaker.Counts) bool {
+			return c.Requests >= 10 && c.TotalFailures*2 >= c.Requests
+		},
+		IsSuccessful: func(err error) bool {
+			return !errors.Is(err, domain.ErrInventarioCaido)
+		},
+	})
+}
+
+// Consumir descuenta la reserva para el pedido (V10 de Inventario). Pasa por el circuit
+// breaker; los reintentos los hace la saga con backoff, por eso acá se intenta una sola vez.
+func (i InventarioHTTP) Consumir(ctx context.Context, clave, reservaID, pedidoID string) error {
+	_, err := i.BreakerConsumo.Execute(func() (any, error) {
+		return nil, i.intentar(ctx, http.MethodPost, "/reservas/"+reservaID+"/consumir", clave, map[string]any{"pedidoId": pedidoID}, nil)
+	})
+	// Con el circuito abierto no se llamó a Inventario: para la saga es "no sabemos".
+	if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
+		return domain.ErrInventarioCaido
+	}
+	return err
 }
 
 // reservaJSON es la parte de la reserva que devuelve Inventario y usamos.

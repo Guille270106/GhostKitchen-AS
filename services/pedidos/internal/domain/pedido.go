@@ -67,6 +67,7 @@ var (
 // X-Cocina-Id), nunca del cuerpo de la solicitud.
 type Actor struct {
 	UsuarioID string
+	Email     string // X-Usuario-Email: se copia en el pedido para el mail de Notificaciones
 	Rol       string
 	CocinaID  string
 }
