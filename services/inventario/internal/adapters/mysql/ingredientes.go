@@ -54,11 +54,13 @@ func (r *Repositorio) Listar(ctx context.Context, cocina string) ([]domain.Ingre
 	return items, rows.Err()
 }
 
+const consultaIngrediente = `SELECT i.id,i.cocina_id,i.nombre,i.unidad,i.total,i.reservado,i.total-i.reservado
+ FROM ingrediente i JOIN cocina_ref c ON c.id=i.cocina_id AND c.activa=1
+ WHERE i.id=? AND i.cocina_id=?`
+
 func (r *Repositorio) Obtener(ctx context.Context, cocina, id string) (domain.Ingrediente, error) {
 	var i domain.Ingrediente
-	err := r.db.QueryRowContext(ctx, `SELECT i.id,i.cocina_id,i.nombre,i.unidad,i.total,i.reservado,i.total-i.reservado
- FROM ingrediente i JOIN cocina_ref c ON c.id=i.cocina_id AND c.activa=1
- WHERE i.id=? AND i.cocina_id=?`, id, cocina).Scan(&i.ID, &i.CocinaID, &i.Nombre, &i.Unidad, &i.Total, &i.Reservado, &i.Disponible)
+	err := r.db.QueryRowContext(ctx, consultaIngrediente, id, cocina).Scan(&i.ID, &i.CocinaID, &i.Nombre, &i.Unidad, &i.Total, &i.Reservado, &i.Disponible)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = domain.ErrNoEncontrado
 	}
@@ -72,5 +74,5 @@ func (r *Repositorio) Ready(ctx context.Context) error {
  JOIN receta r ON r.cocina_id=i.cocina_id JOIN receta_item ri ON ri.plato_id=r.plato_id
  JOIN plato_ref p ON p.id=r.plato_id JOIN reserva rs ON rs.cocina_id=i.cocina_id
  JOIN reserva_plato rp ON rp.reserva_id=rs.id JOIN reserva_item rsi ON rsi.reserva_id=rs.id
- JOIN idempotencia idem ON 1=0 WHERE 1=0`).Scan(&n)
+ JOIN idempotencia idem ON 1=0 JOIN movimiento_stock m ON 1=0 WHERE 1=0`).Scan(&n)
 }

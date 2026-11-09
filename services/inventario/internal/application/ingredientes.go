@@ -33,3 +33,16 @@ func (s *Ingredientes) Obtener(ctx context.Context, quien domain.Identidad, id s
 	}
 	return s.repo.Obtener(ctx, quien.CocinaID, id)
 }
+
+func (s *Ingredientes) MoverStock(ctx context.Context, quien domain.Identidad, id string, cantidad int64, merma bool) (domain.Ingrediente, error) {
+	if err := quien.Validar(); err != nil {
+		return domain.Ingrediente{}, err
+	}
+	if !domain.IdentificadorValido(id) || cantidad <= 0 {
+		return domain.Ingrediente{}, domain.ErrDatosInvalidos
+	}
+	if merma {
+		cantidad = -cantidad
+	}
+	return s.repo.MoverStock(ctx, quien.CocinaID, id, quien.UsuarioID, cantidad)
+}

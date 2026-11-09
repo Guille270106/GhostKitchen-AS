@@ -42,6 +42,7 @@ func TestMySQLIngredientes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Exec("DELETE FROM ingrediente WHERE id=?", i.ID)
+	defer db.Exec("DELETE FROM movimiento_stock WHERE ingrediente_id=?", i.ID)
 	obtenido, err := repo.Obtener(ctx, "cerro", i.ID)
 	if err != nil || obtenido != i {
 		t.Fatalf("persistencia: %+v, %v", obtenido, err)
@@ -75,5 +76,27 @@ func TestMySQLIngredientes(t *testing.T) {
 		if _, err := db.Exec(query, i.ID); err == nil {
 			t.Fatal("faltó restricción de stock", query)
 		}
+	}
+	if _, err := repo.MoverStock(ctx, "villa-allende", i.ID, "cocinera", 10); !errors.Is(err, domain.ErrNoEncontrado) {
+		t.Fatal("movimiento en cocina ajena", err)
+	}
+	repuesto, err := repo.MoverStock(ctx, "cerro", i.ID, "cocinera", 10)
+	if err != nil || repuesto.Total != 10 || repuesto.Disponible != 10 {
+		t.Fatal(repuesto, err)
+	}
+	if _, err := db.Exec("UPDATE ingrediente SET reservado=6 WHERE id=?", i.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.MoverStock(ctx, "cerro", i.ID, "cocinera", -5); !errors.Is(err, domain.ErrSinStock) {
+		t.Fatal("merma sobre stock reservado", err)
+	}
+	mermado, err := repo.MoverStock(ctx, "cerro", i.ID, "cocinera", -4)
+	if err != nil || mermado.Total != 6 || mermado.Reservado != 6 || mermado.Disponible != 0 {
+		t.Fatal(mermado, err)
+	}
+	var movimientos, neto int
+	err = db.QueryRow("SELECT COUNT(*),SUM(delta) FROM movimiento_stock WHERE ingrediente_id=?", i.ID).Scan(&movimientos, &neto)
+	if err != nil || movimientos != 2 || neto != 6 {
+		t.Fatal(movimientos, neto, err)
 	}
 }

@@ -78,6 +78,8 @@ func Nuevo(svc *application.Ingredientes, ready func(context.Context) error, log
 		c.Header("Location", "/cocina/ingredientes/"+i.ID)
 		c.JSON(201, i)
 	})
+	cocina.POST("/ingredientes/:id/reposiciones", moverStock(svc, false))
+	cocina.POST("/ingredientes/:id/mermas", moverStock(svc, true))
 	cocina.GET("/ingredientes", func(c *gin.Context) {
 		items, err := svc.Listar(c.Request.Context(), identidad(c))
 		if err != nil {
@@ -104,6 +106,8 @@ func responderError(c *gin.Context, err error) {
 		fallo(c, 400, "DATOS_INVALIDOS", err.Error())
 	case errors.Is(err, domain.ErrIdempotencia):
 		fallo(c, 409, "IDEMPOTENCIA_CONFLICTO", err.Error())
+	case errors.Is(err, domain.ErrStockExcedido):
+		fallo(c, 409, "STOCK_EXCEDIDO", err.Error())
 	case errors.Is(err, domain.ErrSinStock):
 		fallo(c, 409, "SIN_STOCK", err.Error())
 	case errors.Is(err, domain.ErrReservaVencida):
@@ -131,4 +135,29 @@ func responderError(c *gin.Context, err error) {
 func fallo(c *gin.Context, status int, code, detail string) {
 	c.Header("Content-Type", "application/problem+json")
 	c.JSON(status, gin.H{"type": "https://ghostkitchen.dev/errores/" + strings.ToLower(strings.ReplaceAll(code, "_", "-")), "title": http.StatusText(status), "status": status, "code": code, "detail": detail, "correlationId": c.GetString("cid")})
+}
+
+func moverStock(svc *application.Ingredientes, merma bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var datos struct {
+			Cantidad int64 `json:"cantidad"`
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64*1024)
+		decoder := json.NewDecoder(c.Request.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&datos); err != nil {
+			responderError(c, domain.ErrDatosInvalidos)
+			return
+		}
+		if err := decoder.Decode(new(any)); err != io.EOF {
+			responderError(c, domain.ErrDatosInvalidos)
+			return
+		}
+		i, err := svc.MoverStock(c.Request.Context(), identidad(c), c.Param("id"), datos.Cantidad, merma)
+		if err != nil {
+			responderError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, i)
+	}
 }
