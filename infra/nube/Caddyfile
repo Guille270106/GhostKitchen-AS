@@ -1,0 +1,20 @@
+# Caddy en la nube (L19): HTTPS automático para la API publicada.
+# Saca solo el certificado de Let's Encrypt para DOMINIO_PUBLICO (por eso necesita los puertos 80
+# y 443 abiertos) y lo renueva solo. Detrás está el gateway, que verifica la API key y el límite
+# de uso. Solo se publica /public (la API para otros grupos) y /health: lo demás responde 404.
+# Sin la directiva "log", Caddy no registra cada solicitud: así no quedan coordinadas en sus logs
+# (el gateway ya registra la ruta sin parámetros, ADR-011).
+{$DOMINIO_PUBLICO} {
+	encode gzip
+
+	handle /public/* {
+		reverse_proxy gateway:8080
+	}
+	handle /health {
+		reverse_proxy gateway:8080
+	}
+	handle {
+		header Content-Type application/problem+json
+		respond `{"type":"https://ghostkitchen.dev/errores/no-encontrado","title":"Not Found","status":404,"code":"NO_ENCONTRADO","detail":"Recurso no encontrado"}` 404
+	}
+}

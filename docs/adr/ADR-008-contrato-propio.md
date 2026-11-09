@@ -144,7 +144,7 @@ Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción
 
 - **Entrega 1:** contrato validado con `swagger-cli` 4.0.4 y mock probado con Prism 5.16.0. Las cuatro operaciones y los errores documentados (404, 429, 503, latitud inválida y falta de API key) responden; cómo probarlo está en la [guía del contrato](../contracts/README.md#probar-sin-esperar-al-backend-mock). Que Prism arranque, por sí solo, no sustituye la validación formal de OpenAPI.
 - **Ampliación 1.1.0:** validar formalmente OpenAPI y los ejemplos del nuevo POST; comprobar 200, validaciones estructurales y errores simulados. Las reglas de distancia, rango inclusivo, comparación con el cliente y cobertura se prueban con la implementación real.
-- **Entrega 2 (hecho en parte):** la versión real funciona detrás del gateway y sus respuestas se validaron contra el contrato. Pendiente: el test automático en cada pull request y la URL pública, que llega con el despliegue.
+- **Entrega 2 (hecho en parte):** la versión real funciona detrás del gateway y sus respuestas se validaron contra el contrato. La URL pública ya está publicada (`https://57-156-56-219.sslip.io/public`, ver [infra/nube](../../infra/nube/README.md)). Pendiente: el test automático en cada pull request.
 - **Durante la integración:** si el otro grupo nos pide un cambio, lo anotamos acá con la versión nueva.
 
 ## Referencias

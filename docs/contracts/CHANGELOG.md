@@ -4,6 +4,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+### Publicado
+- **URL pública:** `https://57-156-56-219.sslip.io/public/v1` (Azure, con HTTPS). Se agregó a `servers` del OpenAPI. **No cambia el contrato**: sigue siendo 1.1.0, con las mismas operaciones, el mismo `X-API-Key` y el mismo límite de 60 solicitudes por minuto.
+
 ### Aclarado
 - La guía decía que todas las respuestas traen `RateLimit-Remaining`. El gateway lo manda solo en el `429` (con valor `0`); `RateLimit-Limit: 60` sí va en todas. Los dos headers ya eran opcionales en el OpenAPI, así que **no cambia el contrato**: sigue siendo 1.1.0.
 
