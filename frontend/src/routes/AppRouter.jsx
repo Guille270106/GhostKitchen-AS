@@ -11,6 +11,7 @@ import SedeSelector from "../components/sede/SedeSelector";
 import { CartProvider } from "../context/CartContext";
 import { SessionProvider, useSession } from "../context/SessionContext";
 import { ToastProvider } from "../context/ToastContext";
+import Cart from "../pages/Cart";
 import Home from "../pages/Home";
 import KitchenDetail from "../pages/KitchenDetail";
 import Login from "../pages/Login";
@@ -65,6 +66,17 @@ function AppRouter() {
                 <Route path="/cocinas/:id" element={<KitchenDetail />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/registro" element={<Register />} />
+
+                {/* Cliente */}
+                <Route
+                  path="/carrito"
+                  element={
+                    <ProtectedRoute allowedRoles={["CLIENTE"]}>
+                      <Cart />
+                    </ProtectedRoute>
+                  }
+                />
+
                 <Route path="/cocina" element={<ProtectedRoute allowedRoles={["COCINA"]}><WorkspaceLayout /></ProtectedRoute>}>
                   <Route index element={<Navigate to="inventario" replace />} />
                   <Route path="inventario" element={<StockIngredientes />} />
