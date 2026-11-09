@@ -25,16 +25,21 @@ import (
 var datos embed.FS
 
 type cocinaSeed struct {
-	ID               string              `json:"id"`
-	Nombre           string              `json:"nombre"`
-	Localidad        string              `json:"localidad"`
-	Direccion        string              `json:"direccion"`
-	Ubicacion        domain.Ubicacion    `json:"ubicacion"`
-	TiempoEntregaMin int                 `json:"tiempoEntregaMin"`
-	TiempoEntregaMax int                 `json:"tiempoEntregaMax"`
-	CostoEnvio       int                 `json:"costoEnvio"`
-	Restaurantes     []domain.Referencia `json:"restaurantes"`
-	Activa           bool                `json:"activa"`
+	ID               string            `json:"id"`
+	Nombre           string            `json:"nombre"`
+	Localidad        string            `json:"localidad"`
+	Direccion        string            `json:"direccion"`
+	Ubicacion        domain.Ubicacion  `json:"ubicacion"`
+	TiempoEntregaMin int               `json:"tiempoEntregaMin"`
+	TiempoEntregaMax int               `json:"tiempoEntregaMax"`
+	CostoEnvio       int               `json:"costoEnvio"`
+	Restaurantes     []restauranteSeed `json:"restaurantes"`
+	Activa           bool              `json:"activa"`
+}
+
+type restauranteSeed struct {
+	domain.Referencia
+	Activo *bool `json:"activo"`
 }
 
 type platoSeed struct {
@@ -60,7 +65,10 @@ func Leer(ahora time.Time) ([]domain.Sede, []domain.Plato, error) {
 		return nil, nil, err
 	}
 
-	type ubicacionRest struct{ rest, sede domain.Referencia }
+	type ubicacionRest struct {
+		rest, sede domain.Referencia
+		activo     bool
+	}
 	porRestaurante := map[string]ubicacionRest{}
 	sedes := make([]domain.Sede, 0, len(cs))
 	for _, c := range cs {
@@ -68,13 +76,22 @@ func Leer(ahora time.Time) ([]domain.Sede, []domain.Plato, error) {
 			ID: c.ID, Nombre: c.Nombre, Localidad: c.Localidad, Direccion: c.Direccion,
 			Ubicacion: c.Ubicacion, TiempoEntregaMin: c.TiempoEntregaMin,
 			TiempoEntregaMax: c.TiempoEntregaMax, CostoEnvio: c.CostoEnvio,
-			Restaurantes: c.Restaurantes, Activa: c.Activa,
+			Activa: c.Activa,
 		}
-		if len(s.Restaurantes) > 4 {
+		if len(c.Restaurantes) > 4 {
 			return nil, nil, fmt.Errorf("seed: la cocina %s tiene más de 4 restaurantes (RN20)", s.ID)
 		}
-		for _, r := range s.Restaurantes {
-			porRestaurante[r.ID] = ubicacionRest{rest: r, sede: s.Ref()}
+		for _, r := range c.Restaurantes {
+			// El seed original no trae activo para restaurantes.
+			activo := r.Activo == nil || *r.Activo
+			if activo {
+				s.Restaurantes = append(s.Restaurantes, r.Referencia)
+			} else {
+				s.RestaurantesInactivos = append(s.RestaurantesInactivos, r.Referencia)
+			}
+			porRestaurante[r.ID] = ubicacionRest{
+				rest: r.Referencia, sede: s.Ref(), activo: activo && s.Activa,
+			}
 		}
 		sedes = append(sedes, s)
 	}
@@ -97,7 +114,7 @@ func Leer(ahora time.Time) ([]domain.Sede, []domain.Plato, error) {
 		platos = append(platos, domain.Plato{
 			ID: p.ID, Nombre: p.Nombre, Descripcion: p.Descripcion, Categoria: p.Categoria,
 			Etiquetas: etq, Precio: p.Precio, Moneda: "ARS", Disponible: p.Disponible,
-			Activo: p.Activo, PlatoActivo: p.Activo, Restaurante: u.rest, Sede: u.sede, ActualizadoEn: ahora.UTC(),
+			Activo: p.Activo && u.activo, PlatoActivo: p.Activo, Restaurante: u.rest, Sede: u.sede, ActualizadoEn: ahora.UTC(),
 		})
 	}
 	return sedes, platos, nil
