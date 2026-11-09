@@ -172,6 +172,18 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # G14: frontend (React + Vite) en modo desarrollo, en http://localhost:5173. Le pide todo al
+  # gateway por /api: Vite reenvía esas solicitudes a GATEWAY_URL (frontend/vite.config.js).
+  frontend:
+    build: ./frontend
+    environment:
+      GATEWAY_URL: http://gateway:8080
+    ports:
+      - "5173:5173"
+    depends_on:
+      - gateway
+    restart: unless-stopped
+
   gateway:
     image: nginx:1.27-alpine-otel     # NGINX con el módulo de OpenTelemetry
     container_name: ghostkitchen-gateway
