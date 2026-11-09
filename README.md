@@ -139,8 +139,9 @@ Las marcadas como **obligatorias** las pide Docker Compose: si falta alguna, no 
 | `PEDIDOS_DB_PASSWORD` | Contraseña del usuario de Pedidos en MySQL | Sí |
 | `RABBITMQ_USER` | Usuario de RabbitMQ, para el panel y los servicios (por ejemplo `ghostkitchen`) | Sí |
 | `RABBITMQ_PASSWORD` | Contraseña de ese usuario | Sí |
-| `JWT_SECRET` | Clave larga y aleatoria con la que Usuarios firma los tokens del login | No |
-| `JWT_TTL_MINUTES` | Duración del token en minutos (por ejemplo `120`) | No |
+| `JWT_SECRET` | Clave aleatoria de al menos 32 caracteres con la que Usuarios firma los tokens del login (por ejemplo, la que da `openssl rand -base64 48`) | Sí |
+| `JWT_TTL_MINUTES` | Duración del token en minutos (si falta, `120`) | No |
+| `ADMIN_PASSWORD` | Contraseña inicial de los 4 admins (una por localidad), de 8 caracteres o más. Si falta, los admins no se crean | No, pero sin ella no hay admins |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Servidor de correo de Notificaciones (en local, Mailpit: `mailpit` y `1025`) | No |
 | `PROVIDER_BASE_URL`, `PROVIDER_API_KEY` | Dirección y clave de la API del grupo proveedor | No |
 | `GRAFANA_ADMIN_PASSWORD` | Contraseña del administrador de Grafana | No |
