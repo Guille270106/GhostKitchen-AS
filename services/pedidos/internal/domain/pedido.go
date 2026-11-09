@@ -79,6 +79,7 @@ type Actor struct {
 	Email     string // X-Usuario-Email: se copia en el pedido para el mail de Notificaciones
 	Rol       string
 	CocinaID  string
+	Localidad string // X-Localidad: la del admin, para las métricas de sus cocinas (G21)
 }
 
 // Validar exige la identidad mínima: sin usuario o sin rol, el pedido no viene del gateway.

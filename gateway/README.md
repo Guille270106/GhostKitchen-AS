@@ -20,6 +20,7 @@
 > | `/api/v1/admin/cocinas[/{id}[/restaurantes[/{rid}]]]` (G11) | Catálogo | Sí (Catálogo controla que sea admin y que la cocina sea de su localidad) |
 > | `/api/v1/cocina/platos[/{id}]` y `/api/v1/cocina/restaurantes/{rid}/platos` (G12) | Catálogo | Sí (Catálogo controla que sea la cocina del plato) |
 > | `/api/v1/cocina/ingredientes[/{id}]`, `/api/v1/cocina/recetas` y `/api/v1/cocina/platos/{id}/receta` | Inventario | Sí (Inventario controla que sea una cuenta Cocina y su cocina) |
+> | `GET /api/v1/admin/metricas[?cocinaId=]` (G21) | Pedidos | Sí (Pedidos controla que sea admin y que la cocina sea de su localidad, según Catálogo) |
 >
 > Probado con NGINX y Usuarios reales y un servicio de eco en lugar de Inventario: sin token y con token basura da 401; con `X-Rol: admin` inventado llega `X-Rol: cliente`; la cuenta Cocina llega con su `X-Cocina-Id`; con Usuarios apagado o tardando 2 s, 503 a los 300 ms; el login da 429 al pasar el límite. Ningún token aparece en los logs del gateway.
 

@@ -134,3 +134,12 @@
 @media (max-width: 620px) {
   .cocina-selector, .estado-select { width: 100%; }
 }
+
+/* G21: iniciales chicas de cada restaurante (los colores están en cart.css, L17), restaurante
+   pausado, y dos campos en la misma fila del formulario de la cocina nueva. */
+.brand-avatar.small { width: 32px; height: 32px; font-size: 11px; }
+.brand-list li > div { flex: 1; min-width: 0; }
+.brand-list li.is-paused .brand-avatar { filter: grayscale(1); opacity: 0.6; }
+.modal-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modal-form .campo { display: block; font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+.modal-form .campo .gk-select { margin-top: 6px; }

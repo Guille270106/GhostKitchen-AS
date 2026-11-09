@@ -197,6 +197,15 @@ Lo que consumimos de otro grupo es la **API de comprobantes del Grupo 4**: con e
 - `GET /api/v1/pedidos/{id}` muestra cómo va: `"comprobante": {"estado": "EMITIDO", "numero": "B-0001-00000042"}`.
 - Configuración: `PROVIDER_BASE_URL` y `PROVIDER_API_KEY` del `.env`. Mientras estén vacías (el Grupo 4 todavía no publicó su URL), `docker-compose.yml` usa su mock, `comprobantes-mock`, que valida cada solicitud contra su contrato.
 
+## Métricas del negocio para el admin (G21, HU22)
+
+`GET /api/v1/admin/metricas[?cocinaId=]` devuelve, para los **últimos 7 días** (hoy y los 6 anteriores, cortando los días en hora de Córdoba):
+
+- cuántos pedidos tuvo cada cocina de la localidad del admin (`cocinas`);
+- el detalle de una cocina (`detalle`, la elegida o la primera): pedidos y facturación sin contar los cancelados, cancelados, ticket promedio, pedidos por día, los 5 platos más vendidos, en qué porcentaje de los pedidos aparece cada restaurante y los minutos promedio de recibido a entregado.
+
+Solo el **admin**, y solo de **su localidad**: la lista de cocinas de la localidad la da Catálogo (`/internal/cocinas`), nunca lo que mande el cliente. Una cocina de otra localidad responde `403`. Son consultas de solo lectura sobre `pedido`, `pedido_item` y `pedido_historial`, que usan el índice `idx_pedido_cocina`. Las prueban `application/metricas_test.go` (permisos, cocina de otra localidad, sin cocinas) y `adapters/mysql/metricas_integration_test.go` contra MySQL real (cancelados, día en hora de Córdoba, ranking y tiempo de entrega).
+
 ## Probar
 
 Sin Docker, las reglas del pedido y las rutas (con un repositorio en memoria):
@@ -300,7 +309,7 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 | `POST /pedidos/{id}/cancelar` · `/entregado` | cliente | Cancelar o confirmar que lo recibió |
 | `GET /cocina/pedidos` | cocina | Ver los pedidos de su cocina |
 | `POST /cocina/pedidos/{id}/aceptar` · `/rechazar` · `/avanzar` | cocina | Cambiar el estado |
-| `GET /admin/cocinas/{id}/metricas` | admin | Ver métricas de su cocina |
+| `GET /admin/metricas?cocinaId=` (G21) | admin | Ver las métricas de las cocinas de su localidad |
 
 **Permisos:** un cliente solo ve sus pedidos y solo compra en una cocina activa; una cocina solo ve y cambia sus propios pedidos.
 

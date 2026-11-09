@@ -101,6 +101,10 @@ export const FOTOS_COCINA = {
   "barrio-jardin": photos.sushiTabla,
 };
 
+// Una cocina tiene como máximo 4 restaurantes (RN20). Catálogo lo controla igual; acá solo
+// sirve para desactivar el botón antes de intentarlo.
+export const MAX_RESTAURANTES = 4;
+
 // Cuentas para probar el sistema. Las contraseñas no están acá: son las del .env
 // (ADMIN_PASSWORD) o las que se eligieron al crear cada cuenta.
 export const CUENTAS_DEMO = [
