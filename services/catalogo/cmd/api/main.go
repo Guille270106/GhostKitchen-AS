@@ -23,6 +23,8 @@ import (
 	"ghostkitchen/catalogo/internal/config"
 	"ghostkitchen/catalogo/internal/handlers"
 	"ghostkitchen/catalogo/internal/mensajeria"
+	"ghostkitchen/catalogo/internal/repositories"
+	"ghostkitchen/catalogo/internal/repositories/cache"
 	repomongo "ghostkitchen/catalogo/internal/repositories/mongo"
 	"ghostkitchen/catalogo/internal/router"
 	"ghostkitchen/catalogo/internal/seed"
@@ -78,10 +80,26 @@ func main() {
 		log.Warn("sin RABBITMQ_URL: los eventos quedan en el outbox sin publicar")
 	}
 
+	// Caché (G16, ADR-007). Las lecturas públicas pasan por el decorator de Memcached. Las
+	// escrituras también pasan por él para invalidar; pero las lecturas que deciden algo (la
+	// cocina o el plato que se va a modificar) van directo a MongoDB, la fuente de verdad.
+	var lecturas repositories.Repositorio = repo
+	var escritor interface {
+		repositories.Escritor
+		repositories.EscritorPlatos
+	} = repo
+	if cfg.CacheHabilitada {
+		dec := cache.Nuevo(repo, repo, repo, cache.NuevoMemcached(cfg.MemcachedAddr), log)
+		lecturas, escritor = dec, dec
+		log.Info("caché habilitada", "memcached", cfg.MemcachedAddr)
+	} else {
+		log.Info("caché deshabilitada (CACHE_HABILITADA=false)")
+	}
+
 	r := router.Nuevo(log,
-		handlers.Nuevo(services.Nuevo(repo), repo.Ping),
-		handlers.NuevoAdmin(services.NuevoAdmin(repo, repo)),
-		handlers.NuevoPlatos(services.NuevoPlatosCocina(repo, repo, clients.NuevoInventario(cfg.InventarioURL))))
+		handlers.Nuevo(services.Nuevo(lecturas), repo.Ping),
+		handlers.NuevoAdmin(services.NuevoAdmin(repo, escritor)),
+		handlers.NuevoPlatos(services.NuevoPlatosCocina(repo, escritor, clients.NuevoInventario(cfg.InventarioURL))))
 	srv := &http.Server{
 		Addr:              ":" + cfg.Puerto,
 		Handler:           r,

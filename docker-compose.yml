@@ -221,6 +221,9 @@ services:
       INVENTARIO_URL: http://inventario:8084
       # G13: el publicador del outbox manda cocina.* y plato.* al exchange ghostkitchen.events.
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      # G16: caché de lecturas públicas en Memcached (ADR-007). false para medir sin caché.
+      CACHE_HABILITADA: ${CACHE_HABILITADA:-true}
+      MEMCACHED_ADDR: memcached:11211
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     expose:
       - "8082"            # solo dentro de la red de Docker
@@ -232,6 +235,16 @@ services:
       interval: 5s
       timeout: 2s
       retries: 10
+    restart: unless-stopped
+
+  # G16: caché compartida de Catálogo (ADR-007). Sin datos propios: si se reinicia, solo se
+  # pierden copias. 64 MB alcanzan de sobra para 4 cocinas y sus menús.
+  memcached:
+    image: memcached:1.6-alpine
+    container_name: ghostkitchen-memcached
+    command: ["memcached", "-m", "64"]
+    expose:
+      - "11211"
     restart: unless-stopped
 
   # G10: MongoDB corre como replica set de un solo nodo (rs0). Hace falta para las

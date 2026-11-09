@@ -101,6 +101,12 @@ docker compose exec mongo sh -c 'mongosh --quiet -u root -p "$MONGO_INITDB_ROOT_
 
 Y los mensajes que llegaron, en el panel de RabbitMQ (`http://localhost:15672`, colas `busqueda.indexador` e `inventario.referencias`).
 
+## Caché (G16)
+
+Las lecturas públicas (cocinas, una cocina, el menú y el detalle de un plato) pasan por **Memcached**, compartido por las copias de Catálogo. Patrón cache-aside con un decorator del repositorio, TTL de 60 s ±10 % e **invalidación por generación**: cada escritura hace `incr` sobre `catalogo:v1:gen`, y las claves llevan la generación en el nombre. Después de un cambio guardado no se sirve el dato viejo. Si Memcached no responde en 50 ms, se lee de MongoDB y se sigue. El detalle y por qué está en el [ADR-007](../../docs/adr/ADR-007-cache.md).
+
+Para medir con y sin caché: `CACHE_HABILITADA=false` en el `.env` y `docker compose up -d catalogo`.
+
 ## Qué datos guarda (MongoDB)
 
 | Colección | Qué guarda |
@@ -173,6 +179,8 @@ MongoDB debe correr como **replica set**: el cambio comercial y el evento del ou
 | `MONGO_TIMEOUT_MS` | `2000` | Tiempo máximo de cada operación contra MongoDB |
 | `INVENTARIO_URL` | `http://inventario:8084` | Para saber si un plato tiene receta antes de activarlo (G12) |
 | `RABBITMQ_URL` | (vacía) | Donde se publican los eventos (G13). Sin ella, los eventos quedan en el outbox |
+| `CACHE_HABILITADA` | `true` | Prende o apaga la caché (G16) |
+| `MEMCACHED_ADDR` | `memcached:11211` | Dónde está Memcached |
 | `SEED_AL_INICIAR` | `true` | Insertar los datos iniciales que falten (no pisa los existentes) |
 
 El usuario `catalogo` lo crea [`infra/mongo/01-catalogo.js`](../../infra/mongo/01-catalogo.js) la primera vez que arranca MongoDB, con permiso `readWrite` solo sobre `catalogo_db`. Si se cambia la contraseña en `.env`, hay que borrar el volumen (`docker compose down -v`). Más adelante se suman Memcached (TTL de 60 s), RabbitMQ y el identificador de cada instancia.

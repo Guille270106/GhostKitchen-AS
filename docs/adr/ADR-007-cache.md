@@ -1,6 +1,6 @@
 # ADR-007 — Caché
 
-- **Estado:** Propuesta (se implementa y mide para la presentación final)
+- **Estado:** Aceptada. Implementada en G16 (`services/catalogo/internal/repositories/cache`); la medición con y sin caché va en el ADR-013
 - **Fecha:** 2026-10-16
 - **Responsable:** Guillermina Sánchez
 - **Decisión del enunciado:** D7 (qué se guarda temporalmente, cómo se invalida, cuánto dura, qué pasa si falla y cómo medimos si sirve)
@@ -23,12 +23,13 @@ Las lecturas de Catálogo sobre MongoDB (`catalogo_db`), que es la fuente de ver
 | Clave | Contenido | Quién la lee |
 | --- | --- | --- |
 | `catalogo:v1:cocinas:g{gen}` | Cocinas activas con sus restaurantes activos | Frontend (`/api/v1/cocinas`) |
+| `catalogo:v1:cocina:{cocinaId}:g{gen}` | Una cocina (la usan el detalle, el menú y el detalle de un plato) | Frontend |
 | `catalogo:v1:menu:{cocinaId}:g{gen}` | Menú de una cocina | Frontend (`/api/v1/cocinas/{id}/platos`) |
 | `catalogo:v1:plato:{platoId}:g{gen}` | Detalle público de un plato | Frontend (`/api/v1/platos/{id}`) |
 
 **No se cachea:**
 - el **stock** ni la disponibilidad (son de Inventario y no se pueden equivocar);
-- las lecturas que usa **Pedidos para el precio** al agregar al carrito, ni las que usa **Usuarios** para validar una cocina: van siempre a MongoDB, porque deciden algo;
+- las lecturas con las que **el admin y la cuenta Cocina modifican** una cocina o un plato: van siempre a MongoDB, porque deciden algo (la versión que se va a guardar);
 - las lecturas internas de reconstrucción de Búsqueda (`/internal/...`): leen todo una sola vez y llenarían la caché de datos que nadie más pide.
 
 ### 3. Dónde vive y con qué patrón
@@ -55,6 +56,14 @@ Las lecturas de Catálogo sobre MongoDB (`catalogo_db`), que es la fuente de ver
 - Métricas ([ADR-011](ADR-011-observabilidad.md)): aciertos y fallos por tipo de clave, latencia con acierto y con fallo, errores y timeouts de Memcached, y consultas por segundo a MongoDB.
 - La prueba de carga ([ADR-013](ADR-013-capacidad-y-costos.md)) compara p50, p95, errores y consultas a MongoDB del menú de una cocina, con caché y sin caché.
 - **Criterio para quedarnos con la caché:** que baje el p95 del menú o la carga sobre MongoDB de forma visible, sin servir datos viejos después de una escritura. Si no mejora, lo documentamos y la sacamos.
+
+### 7. Cómo quedó implementado (G16)
+
+- `cache.Repositorio` es el decorator: implementa las mismas interfaces que el repositorio de MongoDB. `main` le pasa al servicio público el decorator y a las escrituras del admin y de la cocina el repositorio de MongoDB para leer, y el decorator para escribir (así invalidan).
+- La generación vive en Memcached (`incr`), así la ven las dos copias de Catálogo. Si no existe (Memcached recién arrancado), se crea con la hora en nanosegundos y no con 1, para no repetir una generación de antes de un reinicio.
+- `singleflight` propio (sin dependencias): con 50 lecturas a la vez de una clave vacía, va una sola a MongoDB.
+- **Una diferencia con lo planeado:** Pedidos lee el precio con `GET /platos/{id}`, que es una lectura pública y pasa por la caché. Lo dejamos así porque la invalidación es inmediata: después de un cambio guardado, la generación nueva hace que nadie lea el precio viejo. El único caso con atraso es que Memcached no responda justo al invalidar; ahí el precio viejo puede verse hasta 60 s, y queda registrado en el log.
+- Tests: devuelve lo mismo que MongoDB, no sirve el dato viejo después de escribir, la lectura concurrente no lo reinserta, con Memcached caído lee de MongoDB y la escritura no falla, una sola lectura por clave, TTL de 54 a 66 s, y contra un Memcached real (generación, `incr`, timeout de 50 ms).
 
 ## Alternativas que pensamos
 
