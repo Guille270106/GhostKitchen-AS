@@ -43,7 +43,7 @@ Puede pasar que llegue un mail repetido si el servicio se cae justo después de 
 
 ## Si algo falla
 
-- Si el correo falla, reintenta esperando cada vez más. Si no puede, el mensaje va a la cola de errores `notificaciones.dlq` para revisarlo.
+- Si el correo falla, reintenta esperando cada vez más. Si no puede, el mensaje va a la cola de errores `notificaciones.mailer.dlq` para revisarlo.
 - Si el mensaje viene roto, va directo a esa cola.
 - Que falle el mail **no frena el pedido**: la cocina lo sigue preparando.
 - En local usamos **Mailpit**, que tiene una página web para ver los mails sin mandarlos de verdad.
@@ -54,7 +54,7 @@ Puede pasar que llegue un mail repetido si el servicio se cae justo después de 
 | --- | --- | --- |
 | RabbitMQ | Recibir cambios de estado | Los eventos publicados quedan en la cola durable; los aún no publicados permanecen en el outbox de Pedidos |
 | MongoDB (`notificaciones_db`) | Estado de envío y deduplicación | No se hace ACK sin persistir el resultado; el evento queda disponible para recuperación |
-| Servidor SMTP | Enviar correos | Se reintenta según ADR-005; si se agotan los intentos va a `notificaciones.dlq` |
+| Servidor SMTP | Enviar correos | Se reintenta según ADR-005; si se agotan los intentos va a `notificaciones.mailer.dlq` |
 
 ## Configuración prevista
 
@@ -72,4 +72,10 @@ El paquete interno valida el sobre de L13 y registra cada evento en MongoDB con 
 
 Para probarlo con instancias descartables, configurar MONGO_URI y RABBITMQ_URL, enlazar la cola notificaciones.v13.prueba a ghostkitchen.events con la clave pedido.estado_cambiado y publicar evento-prueba.json. Ejecutar go run ./cmd/prueba dos veces. El lector vuelve a poner el mensaje en cola para simular la reentrega. Debe quedar un solo documento PENDIENTE en notificaciones_v13_prueba.notificaciones.
 
-El worker continuo, el correo y el ACK después de guardar ENVIADO corresponden a V14.
+El lector de un mensaje sigue disponible para reproducir la prueba de V13.
+
+## V14 · Mailpit y reintentos
+
+Definí NOTIFICACIONES_DB_PASSWORD en .env y ejecutá docker compose --profile notificaciones up -d --build notificaciones. El trabajo notificaciones-mongo crea un usuario dedicado también en un volumen existente. Mailpit muestra los correos en http://127.0.0.1:8025.
+
+El worker confirma la entrega después de persistir ENVIADO. Para una falla transitoria, reencola tras 5 s, 30 s y 2 min. Si se agotan los intentos o el mensaje es inválido, la topología lo deriva a notificaciones.mailer.dlq. La configuración SMTP de esta tarea es para Mailpit local.

@@ -178,6 +178,55 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # V14: el perfil activa el correo de pruebas sin cambiar el arranque habitual.
+  mailpit:
+    profiles: ["notificaciones"]
+    image: axllent/mailpit@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
+    ports:
+      - "127.0.0.1:8025:8025"
+
+  notificaciones-mongo:
+    profiles: ["notificaciones"]
+    image: mongo:7
+    environment:
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Completá MONGO_ROOT_PASSWORD en .env}
+      NOTIFICACIONES_DB_PASSWORD: ${NOTIFICACIONES_DB_PASSWORD:-}
+    entrypoint: ["sh", "-ec"]
+    command:
+      - |
+        test -n "$$NOTIFICACIONES_DB_PASSWORD" || {
+          echo "Completá NOTIFICACIONES_DB_PASSWORD en .env" >&2
+          exit 1
+        }
+        mongosh --quiet --host mongo -u root -p "$$MONGO_ROOT_PASSWORD" --authenticationDatabase admin --eval '
+          const base = db.getSiblingDB("notificaciones_db");
+          if (!base.getUser("notificaciones")) {
+            base.createUser({user: "notificaciones", pwd: process.env.NOTIFICACIONES_DB_PASSWORD,
+              roles: [{role: "readWrite", db: "notificaciones_db"}]});
+          }
+        '
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  notificaciones:
+    profiles: ["notificaciones"]
+    build: ./services/notificaciones
+    environment:
+      NOTIFICACIONES_DB_PASSWORD: ${NOTIFICACIONES_DB_PASSWORD:-}
+      RABBITMQ_USER: ${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}
+      SMTP_ADDR: mailpit:1025
+    depends_on:
+      notificaciones-mongo:
+        condition: service_completed_successfully
+      rabbitmq-topologia:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+
+
   # G14: frontend (React + Vite) en modo desarrollo, en http://localhost:5173. Le pide todo al
   # gateway por /api: Vite reenvía esas solicitudes a GATEWAY_URL (frontend/vite.config.js).
   frontend:
