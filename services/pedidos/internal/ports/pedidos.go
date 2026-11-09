@@ -18,6 +18,18 @@ type PedidosRepo interface {
 	// GuardarCambio guarda el nuevo estado solo si el pedido sigue en la versión anterior.
 	// Si otro cambio se guardó antes, devuelve domain.ErrConflictoVersion.
 	GuardarCambio(ctx context.Context, p domain.Pedido, c domain.CambioEstado) error
+	// Listar devuelve los pedidos de un cliente o de una cocina, del más nuevo al más viejo.
+	Listar(ctx context.Context, f FiltroPedidos) ([]domain.Pedido, error)
 	// Ready comprueba la conexión y que las migraciones estén aplicadas.
 	Ready(ctx context.Context) error
+}
+
+// FiltroPedidos es qué pedidos listar: los de un cliente o los de una cocina (uno de los dos),
+// y si se quiere, solo los de un estado. Se lista de a una página.
+type FiltroPedidos struct {
+	ClienteID string
+	CocinaID  string
+	Estado    domain.Estado // vacío: todos los estados
+	Pagina    int           // desde 1
+	PorPagina int
 }

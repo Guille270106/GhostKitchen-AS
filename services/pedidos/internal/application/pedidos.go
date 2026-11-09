@@ -21,6 +21,9 @@ const (
 	ConfirmarEntrega Accion = "entregado"
 )
 
+// PorPagina es cuántos pedidos trae cada página de la lista.
+const PorPagina = 20
+
 // PedidosService tiene los casos de uso sobre pedidos ya creados.
 type PedidosService struct {
 	// Inyectamos la interfaz, no la base de datos real.
@@ -84,4 +87,37 @@ func (s PedidosService) CambiarEstado(ctx context.Context, actor domain.Actor, i
 		return domain.Pedido{}, err
 	}
 	return pedido, nil
+}
+
+// Listar devuelve una página de pedidos: el cliente ve los suyos y la cocina los de su cocina.
+// estado es opcional (vacío = todos) y pagina empieza en 1.
+func (s PedidosService) Listar(ctx context.Context, actor domain.Actor, estado domain.Estado, pagina int) ([]domain.Pedido, error) {
+	if err := actor.Validar(); err != nil {
+		return nil, err
+	}
+
+	// 1. Quién pide decide qué pedidos ve (nunca un id que venga en la URL).
+	filtro := ports.FiltroPedidos{Estado: estado, Pagina: pagina, PorPagina: PorPagina}
+	switch actor.Rol {
+	case domain.RolCliente:
+		filtro.ClienteID = actor.UsuarioID
+	case domain.RolCocina:
+		if actor.CocinaID == "" {
+			return nil, domain.ErrSinIdentidad
+		}
+		filtro.CocinaID = actor.CocinaID
+	default:
+		return nil, domain.ErrSinPermiso
+	}
+
+	// 2. Validamos el filtro.
+	if estado != "" && !domain.EstadoValido(estado) {
+		return nil, domain.ErrDatosInvalidos
+	}
+	if pagina < 1 || pagina > 1000 {
+		return nil, domain.ErrDatosInvalidos
+	}
+
+	// 3. Buscamos la página.
+	return s.Repo.Listar(ctx, filtro)
 }

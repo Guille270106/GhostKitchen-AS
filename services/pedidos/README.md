@@ -89,6 +89,27 @@ Confirmar toca Pedidos e Inventario, así que no entra en una sola transacción:
 
 **Mientras no exista la V10**, el descuento es simulado: siempre sale bien, pero **no descuenta stock de verdad** (la reserva queda activa y se libera sola cuando venza). Cuando Vale la termine se cambia `CONSUMO_INVENTARIO: real` en `docker-compose.yml`; el adaptador real ya está hecho y probado con un Inventario falso.
 
+## Mis pedidos y confirmar que lo recibí (L11)
+
+| Ruta (por el gateway) | Qué hace |
+| --- | --- |
+| `GET /api/v1/pedidos` | Mis pedidos (cliente) o los de mi cocina, de a 20 y del más nuevo al más viejo, con sus platos |
+| `GET /api/v1/pedidos?estado=EN_CAMINO&pagina=2` | Los mismos, filtrados por estado y por página (los dos son opcionales) |
+| `POST /api/v1/pedidos/{id}/entregado` | El cliente avisa que lo recibió: `EN_CAMINO` → `ENTREGADO` |
+
+- Qué pedidos se ven lo decide la identidad del gateway (`X-Usuario-Id`, `X-Rol`, `X-Cocina-Id`), nunca un id de la URL.
+- El gateway reenvía los parámetros `?...` a Pedidos, que los valida. Su log guarda la ruta sin ellos.
+
+| Respuesta | Cuándo |
+| --- | --- |
+| `200` + `{"pedidos": [...], "pagina": 1, "porPagina": 20}` | La lista (vacía si esa página no tiene pedidos) |
+| `200` + el pedido | Se confirmó la entrega |
+| `400 DATOS_INVALIDOS` | Estado que no existe o página que no es un número desde 1 |
+| `409 TRANSICION_INVALIDA` | El pedido todavía no salió (no está `EN_CAMINO`) |
+| `409 PEDIDO_MODIFICADO` | Otro cambio se guardó primero |
+| `403 SIN_PERMISO` | El admin no tiene pedidos; la cocina no confirma entregas |
+| `404 PEDIDO_NO_ENCONTRADO` | El pedido no existe o es de otro cliente |
+
 ## Probar
 
 Sin Docker, las reglas del pedido y las rutas (con un repositorio en memoria):
