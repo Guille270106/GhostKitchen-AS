@@ -79,3 +79,13 @@ El lector de un mensaje sigue disponible para reproducir la prueba de V13.
 Definí NOTIFICACIONES_DB_PASSWORD en .env y ejecutá docker compose --profile notificaciones up -d --build notificaciones. El trabajo notificaciones-mongo crea un usuario dedicado también en un volumen existente. Mailpit muestra los correos en http://127.0.0.1:8025.
 
 El worker confirma la entrega después de persistir ENVIADO. Para una falla transitoria, reencola tras 5 s, 30 s y 2 min. Si se agotan los intentos o el mensaje es inválido, la topología lo deriva a notificaciones.mailer.dlq. La configuración SMTP de esta tarea es para Mailpit local.
+
+## V15 · Prueba de deduplicación
+
+Desde la raíz del repositorio, ejecutá en PowerShell:
+
+```powershell
+& ./services/notificaciones/prueba-v15.ps1
+```
+
+Requiere Go, Docker y las imágenes locales mongo:7 y rabbitmq:3-management. El script usa Mailpit en la misma versión que Compose. Crea contenedores descartables en puertos locales y publica dos veces el mismo evento. La prueba verifica un solo correo en Mailpit y un solo registro ENVIADO con un intento en MongoDB. También comprueba que un evento inválido llegue a la DLQ. Al finalizar, retira los contenedores de prueba.
