@@ -4,9 +4,7 @@
 
 > **Ronda 1:** base `pedidos_db`, usuario propio y plantilla SQL disponibles. El trabajo `pedidos-migrations` aplica las versiones al arrancar Compose. Ver [guía de migraciones](../../infra/mysql/README.md) y [ADR-004](../../docs/adr/ADR-004-consistencia-y-concurrencia.md). El agregado y la saga se implementan desde la ronda 2.
 
-> Entrega 1: diseño preliminar; todavía no hay implementación. Las carpetas, rutas, configuración y pruebas indicadas son previstas para el desarrollo desde la Entrega 2.
-
-Maneja **el pedido de principio a fin**. Puerto **8085**. Es uno de los dos servicios donde no se puede equivocar nada. Lo programamos en la Entrega 2.
+Maneja **el pedido de principio a fin**. Puerto **8085**. Es uno de los dos servicios donde no se puede equivocar nada. Se implementa en la ronda 2.
 
 ## Qué hace
 
@@ -102,7 +100,7 @@ El cambio de estado, su historial y el evento se guardan en una sola transacció
 
 ## Configuración prevista
 
-`PEDIDOS_DB_PASSWORD`, `PROVIDER_BASE_URL` y `PROVIDER_API_KEY`, junto con las credenciales comunes de MySQL/RabbitMQ, están anticipadas en [`.env.example`](../../.env.example). Las conexiones, el puerto y las direcciones internas de Catálogo e Inventario se definirán al implementar. El proveedor todavía no fue asignado.
+`PEDIDOS_DB_PASSWORD`, `PROVIDER_BASE_URL` y `PROVIDER_API_KEY`, junto con las credenciales comunes de MySQL/RabbitMQ, están en las [variables del `.env`](../../README.md#variables-del-env). Las conexiones, el puerto y las direcciones internas de Catálogo e Inventario se definirán al implementar. El proveedor todavía no fue asignado.
 
 ## Pruebas previstas
 

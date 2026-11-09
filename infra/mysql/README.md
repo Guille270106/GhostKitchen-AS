@@ -8,7 +8,7 @@ Una instancia MySQL 8.4, tres bases y tres usuarios. Cada usuario tiene permisos
 | Inventario | inventario_db | inventario | INVENTARIO_DB_PASSWORD |
 | Pedidos | pedidos_db | pedidos | PEDIDOS_DB_PASSWORD |
 
-Copiar `.env.example` como `.env` si todavía no existe y completar las cuatro contraseñas MySQL, además de las de MongoDB que ya requiere el proyecto. No sobrescribir un `.env` existente ni versionarlo.
+Completar en el `.env` las cuatro contraseñas MySQL, además de las de MongoDB que ya requiere el proyecto (ver [Variables del `.env`](../../README.md#variables-del-env)). No sobrescribir un `.env` existente ni versionarlo.
 
 ```powershell
 docker compose up -d mysql

@@ -6,7 +6,7 @@
 
 ## Cómo levantarlo y probarlo
 
-1. Copiar `.env.example` como `.env` y completar `PUBLIC_API_KEYS` con una clave de prueba, por ejemplo `PUBLIC_API_KEYS=clave-local`. **No subir el `.env`.**
+1. Crear el `.env` con las variables del [README](../../README.md#variables-del-env), poniendo una clave de prueba en `PUBLIC_API_KEYS`, por ejemplo `PUBLIC_API_KEYS=clave-local`. **No subir el `.env`.**
 2. Desde la raíz del repo: `docker compose up --build`. La primera vez tarda porque descarga Solr y compila el servicio. Búsqueda espera a que Solr y Catálogo respondan, crea los campos que faltan y arma el índice con los datos de Catálogo (en el log aparece `índice reconstruido desde Catálogo` y después `índice listo`).
 3. Probar por el gateway:
    ```powershell

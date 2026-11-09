@@ -439,7 +439,7 @@ Las caídas de Inventario, RabbitMQ y el correo son las que vamos a provocar en 
 
 ## 11. Despliegue
 
-**En local, con un solo comando:** `docker compose up`. Las contraseñas y claves van en un archivo `.env` que **no se sube** al repo; solo subimos `.env.example` con los nombres.
+**En local, con un solo comando:** `docker compose up`. Las contraseñas y claves van en un archivo `.env` que **no se sube** al repo; los nombres de las variables están en el [README](../README.md#variables-del-env).
 
 | Qué | Estado |
 | --- | --- |

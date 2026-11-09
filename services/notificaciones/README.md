@@ -2,9 +2,7 @@
 
 **Responsable:** Valentina Rey.
 
-> Entrega 1: diseño preliminar; todavía no hay implementación. Las carpetas, rutas, configuración y pruebas indicadas son previstas para el desarrollo desde la Entrega 2.
-
-Manda un **mail al cliente cada vez que cambia el estado de su pedido**. Puerto **8086**, pero solo para `/health/live`, `/health/ready` y `/metrics`. Lo programamos en la Entrega 2.
+Manda un **mail al cliente cada vez que cambia el estado de su pedido**. Puerto **8086**, pero solo para `/health`, `/ready` y `/metrics`. Se implementa en la ronda 4.
 
 ## Qué hace
 
@@ -60,7 +58,7 @@ Puede pasar que llegue un mail repetido si el servicio se cae justo después de 
 
 ## Configuración prevista
 
-`NOTIFICACIONES_DB_PASSWORD`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER` y `SMTP_PASSWORD`, junto con las credenciales comunes de MongoDB/RabbitMQ, están anticipadas en [`.env.example`](../../.env.example). El remitente, las conexiones, el puerto técnico y los límites de reintento se definirán al implementar.
+`NOTIFICACIONES_DB_PASSWORD`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER` y `SMTP_PASSWORD`, junto con las credenciales comunes de MongoDB/RabbitMQ, están en las [variables del `.env`](../../README.md#variables-del-env). El remitente, las conexiones, el puerto técnico y los límites de reintento se definirán al implementar.
 
 ## Pruebas previstas
 
