@@ -14,25 +14,29 @@ import (
 
 // Config del servicio.
 type Config struct {
-	Puerto        string        // PORT (8082)
-	MongoURI      string        // MONGO_URI (mongodb://mongo:27017; en docker-compose, con usuario y contraseña)
-	MongoBase     string        // MONGO_DB (catalogo_db)
-	MongoTimeout  time.Duration // MONGO_TIMEOUT_MS (2000): tiempo máximo de cada operación
-	SeedAlIniciar bool          // SEED_AL_INICIAR (true)
-	InventarioURL string        // INVENTARIO_URL (http://inventario:8084): para saber si un plato tiene receta
-	RabbitMQURL   string        // RABBITMQ_URL (sin valor por defecto): donde se publican los eventos del outbox
+	Puerto          string        // PORT (8082)
+	MongoURI        string        // MONGO_URI (mongodb://mongo:27017; en docker-compose, con usuario y contraseña)
+	MongoBase       string        // MONGO_DB (catalogo_db)
+	MongoTimeout    time.Duration // MONGO_TIMEOUT_MS (2000): tiempo máximo de cada operación
+	SeedAlIniciar   bool          // SEED_AL_INICIAR (true)
+	InventarioURL   string        // INVENTARIO_URL (http://inventario:8084): para saber si un plato tiene receta
+	RabbitMQURL     string        // RABBITMQ_URL (sin valor por defecto): donde se publican los eventos del outbox
+	CacheHabilitada bool          // CACHE_HABILITADA (true): para medir con y sin caché (ADR-007)
+	MemcachedAddr   string        // MEMCACHED_ADDR (memcached:11211)
 }
 
 // Cargar lee las variables de entorno con sus valores por defecto.
 func Cargar() Config {
 	return Config{
-		Puerto:        valor("PORT", "8082"),
-		MongoURI:      valor("MONGO_URI", "mongodb://mongo:27017"),
-		MongoBase:     valor("MONGO_DB", "catalogo_db"),
-		MongoTimeout:  time.Duration(entero("MONGO_TIMEOUT_MS", 2000)) * time.Millisecond,
-		SeedAlIniciar: valor("SEED_AL_INICIAR", "true") == "true",
-		InventarioURL: valor("INVENTARIO_URL", "http://inventario:8084"),
-		RabbitMQURL:   valor("RABBITMQ_URL", ""),
+		Puerto:          valor("PORT", "8082"),
+		MongoURI:        valor("MONGO_URI", "mongodb://mongo:27017"),
+		MongoBase:       valor("MONGO_DB", "catalogo_db"),
+		MongoTimeout:    time.Duration(entero("MONGO_TIMEOUT_MS", 2000)) * time.Millisecond,
+		SeedAlIniciar:   valor("SEED_AL_INICIAR", "true") == "true",
+		InventarioURL:   valor("INVENTARIO_URL", "http://inventario:8084"),
+		RabbitMQURL:     valor("RABBITMQ_URL", ""),
+		CacheHabilitada: valor("CACHE_HABILITADA", "true") == "true",
+		MemcachedAddr:   valor("MEMCACHED_ADDR", "memcached:11211"),
 	}
 }
 

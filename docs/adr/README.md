@@ -14,7 +14,7 @@ Un ADR es un archivo donde anotamos **una decisión**: qué elegimos, qué otras
 | [ADR-004](ADR-004-consistencia-y-concurrencia.md) | D4 — Consistencia y concurrencia | Propuesta; implementación y validación pendientes | Valentina | 2026-11-06 |
 | [ADR-005](ADR-005-comunicacion-entre-servicios.md) | D5 — Cómo se comunican los servicios | Aceptada; validada la parte síncrona | Lucía | 2026-10-09; validada 2026-10-16 |
 | [ADR-006](ADR-006-busqueda.md) | D6 — Búsqueda | Aceptada | Guillermina | 2026-10-16 |
-| [ADR-007](ADR-007-cache.md) | D7 — Caché | Propuesta | Guillermina | 2026-10-16 |
+| [ADR-007](ADR-007-cache.md) | D7 — Caché | Aceptada | Guillermina | 2026-10-16 |
 | [ADR-008](ADR-008-contrato-propio.md) | D8 — Lo que publicamos para otro grupo | Aceptada; implementada, contrato 1.1.0 sin cambios | Lucía | 2026-10-09; actualizada 2026-10-16 |
 | [ADR-009](ADR-009-consumo-del-proveedor.md) | D9 — Lo que consumimos de otro grupo | Propuesta (falta que la cátedra asigne el proveedor) | Lucía | 2026-10-16 |
 | [ADR-010](ADR-010-resiliencia.md) | D10 — Qué pasa cuando algo falla | Aceptada | Lucía | 2026-10-16 |
