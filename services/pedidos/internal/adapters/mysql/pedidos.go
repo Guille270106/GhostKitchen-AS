@@ -53,9 +53,12 @@ func insertarPedido(ctx context.Context, tx *sql.Tx, p domain.Pedido) error {
 		}
 	}
 
-	// 3. La primera entrada del historial (RECIBIDO).
+	// 3. La primera entrada del historial (RECIBIDO) y su mensaje en el outbox (L13).
 	for _, c := range p.Historial {
 		if err := insertarHistorial(ctx, tx, p.ID, c); err != nil {
+			return err
+		}
+		if err := anotarEstadoCambiado(ctx, tx, p, c); err != nil {
 			return err
 		}
 	}
@@ -191,8 +194,11 @@ func (repo PedidosMySQL) GuardarCambio(ctx context.Context, p domain.Pedido, c d
 		return domain.ErrConflictoVersion
 	}
 
-	// 2. Anotamos el cambio en el historial, en la misma transacción.
+	// 2. Anotamos el cambio en el historial y su mensaje en el outbox, en la misma transacción.
 	if err := insertarHistorial(ctx, tx, p.ID, c); err != nil {
+		return err
+	}
+	if err := anotarEstadoCambiado(ctx, tx, p, c); err != nil {
 		return err
 	}
 
@@ -212,7 +218,7 @@ func (repo PedidosMySQL) Ready(ctx context.Context) error {
 	return repo.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pedido p
  JOIN pedido_item i ON i.pedido_id=p.id JOIN pedido_historial h ON h.pedido_id=p.id
  JOIN carrito c ON c.cliente_id=p.cliente_id JOIN carrito_item ci ON ci.cliente_id=c.cliente_id
- JOIN confirmacion cf ON cf.pedido_id=p.id JOIN devolucion d ON d.pedido_id=p.id WHERE 1=0`).Scan(&n)
+ JOIN confirmacion cf ON cf.pedido_id=p.id JOIN devolucion d ON d.pedido_id=p.id JOIN outbox o ON o.id=p.id WHERE 1=0`).Scan(&n)
 }
 
 func insertarHistorial(ctx context.Context, tx *sql.Tx, pedidoID string, c domain.CambioEstado) error {

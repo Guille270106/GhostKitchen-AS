@@ -117,6 +117,9 @@ services:
       # POST /reservas/{id}/consumir y POST /consumos/{pedidoId}/devolver. Con "simulado" no llama
       # a Inventario (sirve para probar Pedidos solo).
       CONSUMO_INVENTARIO: real
+      # Mensajes pedido.estado_cambiado (L13): se guardan en el outbox y se publican en RabbitMQ.
+      # Si RabbitMQ está caído, Pedidos sigue atendiendo y los mensajes esperan en MySQL.
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}:${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}@rabbitmq:5672/
     expose:
       - "8085"
     depends_on:
