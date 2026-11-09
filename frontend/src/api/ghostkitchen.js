@@ -9,7 +9,7 @@
 
 import { dishPhotos } from "../data/dishPhotos";
 import { FOTOS_COCINA, photos, zonas } from "../data/visual";
-import { clearAuthToken, getAuthToken, setAuthToken, setSessionProfile } from "../utils/auth";
+import { clearAuthToken, getAuthToken, getCurrentUser, setAuthToken, setSessionProfile } from "../utils/auth";
 
 // El frontend siempre habla con el gateway por la misma dirección: en desarrollo, Vite
 // reenvía /api al gateway (vite.config.js), así no hay problemas de CORS.
@@ -335,4 +335,146 @@ export async function buscarZonas(q, limit = 6) {
         .sort((a, b) => a.distanciaKm - b.distanciaKm);
       return { ...zona, cocina: cercana ? { id: cercana.id, nombre: cercana.nombre, localidadId: cercana.localidadId, distanciaKm: cercana.distanciaKm } : null };
     });
+}
+
+// ---------------------------------------------------------------------------
+// Carrito (Pedidos, L17)
+// ---------------------------------------------------------------------------
+
+// Colores de las marcas, en el orden en que la cocina las tiene (los mismos de los estilos).
+const COLORES_MARCA = ["", "dark", "green", "amber"];
+
+// Para mostrar el carrito hace falta la cocina (nombre, envío y sus marcas) y las fotos de los
+// platos. Se piden una vez por cocina a Catálogo y se guardan mientras dura la página.
+const cocinasVistas = new Map();
+function datosDeCocina(cocinaId) {
+  if (!cocinasVistas.has(cocinaId)) {
+    const datos = Promise.all([pedir("GET", `/cocinas/${cocinaId}`), pedir("GET", `/cocinas/${cocinaId}/platos`)])
+      .then(([cocina, menu]) => ({
+        cocina: cocinaParaPantallas(cocina),
+        fotos: new Map((menu?.items || []).map((p) => [p.id, fotoDe(p.id, p.fotoUrl)])),
+      }))
+      .catch((error) => {
+        cocinasVistas.delete(cocinaId); // si falló, se vuelve a pedir la próxima vez
+        throw error;
+      });
+    cocinasVistas.set(cocinaId, datos);
+  }
+  return cocinasVistas.get(cocinaId);
+}
+
+// Agrupa platos por restaurante (el carrito y el pedido muestran una "bolsa" por marca).
+function porRestaurante(items, marcas, restauranteDe) {
+  const ids = [...new Set(items.map(restauranteDe))];
+  return ids.map((id) => {
+    const posicion = marcas.findIndex((m) => m.id === id);
+    return {
+      restaurante: { id, nombre: marcas[posicion]?.nombre || id, color: COLORES_MARCA[Math.max(posicion, 0) % COLORES_MARCA.length] },
+      items: items.filter((i) => restauranteDe(i) === id),
+    };
+  });
+}
+
+// Convierte el carrito de Pedidos a la forma que usan las pantallas:
+//   - "ACTIVO" mientras la reserva sigue vigente (venceEn en milisegundos, para la cuenta regresiva);
+//   - "VENCIDO" si pasaron los 10 minutos (Pedidos responde vencido: true) o si Inventario avisó
+//     que venció y Pedidos lo vació (vencioEn, L14): ahí ya no tiene platos ni cocina.
+async function carritoParaPantallas(c) {
+  if (!c?.items?.length) {
+    if (!c?.vencioEn) return null;
+    return { estado: "VENCIDO", cocina: null, grupos: [], cantidad: 0, subtotal: 0, envio: 0, total: 0 };
+  }
+  const { cocina, fotos } = await datosDeCocina(c.cocinaId);
+  const items = c.items.map((it) => ({
+    platoId: it.platoId,
+    cantidad: it.cantidad,
+    subtotal: it.subtotal,
+    plato: { id: it.platoId, nombre: it.nombre, precio: it.precioUnitario, foto: fotos.get(it.platoId), restauranteId: it.restauranteId },
+  }));
+  const envio = cocina.envio || 0;
+  return {
+    estado: c.vencido ? "VENCIDO" : "ACTIVO",
+    venceEn: Date.parse(c.venceEn),
+    cocina,
+    grupos: porRestaurante(items, cocina.marcas, (i) => i.plato.restauranteId),
+    cantidad: items.reduce((acc, i) => acc + i.cantidad, 0),
+    subtotal: c.total,
+    envio,
+    total: c.total + envio,
+  };
+}
+
+// Solo los clientes tienen carrito.
+export async function getCart() {
+  if (getCurrentUser()?.rol !== "CLIENTE") return null;
+  return carritoParaPantallas(await pedir("GET", "/carrito"));
+}
+
+// Suma una unidad del plato. El primer plato reserva los ingredientes por 10 minutos.
+export async function addToCart(platoId) {
+  const carrito = await pedir("POST", "/carrito/items", { cuerpo: { platoId, cantidad: 1 } });
+  avisarCambio();
+  return carritoParaPantallas(carrito);
+}
+
+// Suma o resta unidades de un plato que ya está en el carrito (si llega a 0, lo saca).
+export async function updateCartItem(platoId, delta) {
+  const actual = await pedir("GET", "/carrito");
+  const item = actual?.items?.find((i) => i.platoId === platoId);
+  if (!item) throw new ApiError("Ese plato no está en tu carrito.", "NO_ESTA_EN_EL_CARRITO", 404);
+  const cantidad = item.cantidad + delta;
+  const carrito =
+    cantidad <= 0
+      ? await pedir("DELETE", `/carrito/items/${platoId}`)
+      : await pedir("PATCH", `/carrito/items/${platoId}`, { cuerpo: { cantidad } });
+  avisarCambio();
+  return carritoParaPantallas(carrito);
+}
+
+export async function removeFromCart(platoId) {
+  const carrito = await pedir("DELETE", `/carrito/items/${platoId}`);
+  avisarCambio();
+  return carritoParaPantallas(carrito);
+}
+
+// Vacía el carrito y libera los ingredientes reservados.
+export async function clearCart() {
+  await pedir("DELETE", "/carrito");
+  avisarCambio();
+  return null;
+}
+
+const esperar = (ms) => new Promise((resolver) => window.setTimeout(resolver, ms));
+
+// Confirma el carrito. La Idempotency-Key se arma una vez por intento de confirmar: si el
+// navegador reintenta o el cliente aprieta dos veces, Pedidos devuelve el mismo pedido.
+//   - 201: el pedido quedó creado.
+//   - 202: "Estamos confirmando tu pedido" (Inventario no contestó a tiempo). Se consulta cómo
+//     va, hasta 20 s; si todavía no terminó, se avisa y el pedido aparece en "Mis pedidos".
+export async function confirmCart() {
+  const clave = crypto.randomUUID();
+  const respuesta = await pedir("POST", "/pedidos", { headers: { "Idempotency-Key": clave } });
+  if (respuesta?.confirmacionId) {
+    for (let i = 0; i < 10; i++) {
+      await esperar(2000);
+      const conf = await pedir("GET", `/confirmaciones/${respuesta.confirmacionId}`);
+      if (conf.estado === "COMPLETADA") {
+        avisarCambio();
+        return { id: conf.pedidoId, confirmando: false };
+      }
+      if (conf.estado === "FALLIDA") {
+        avisarCambio();
+        throw new ApiError("Tu reserva venció mientras confirmábamos y liberamos los ingredientes. Volvé a armar el carrito.", "CARRITO_VENCIDO", 409);
+      }
+    }
+    avisarCambio();
+    return { id: null, confirmando: true };
+  }
+  avisarCambio();
+  return { id: respuesta.id, confirmando: false };
+}
+
+// El id del pedido es largo (UUID): para mostrarlo se usan sus primeros 8 caracteres.
+export function codigoPedido(id) {
+  return String(id || "").slice(0, 8).toUpperCase();
 }

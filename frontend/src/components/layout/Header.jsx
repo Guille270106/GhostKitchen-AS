@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 
 import { getCocinas } from "../../api/ghostkitchen";
+import { useCart } from "../../context/CartContext";
 import { useSession } from "../../context/SessionContext";
 import useLiveQuery from "../../hooks/useLiveQuery";
 import { homeForRole } from "../../utils/auth";
@@ -12,6 +13,7 @@ const ROLE_LABELS = { CLIENTE: "Cliente", COCINA: "Cocina", ADMIN: "Admin de coc
 
 function Header() {
   const { user, logout, localidadId, tieneSede, abrirSelectorSede } = useSession();
+  const { count } = useCart();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { data: cocinas } = useLiveQuery(() => (localidadId ? getCocinas({ localidadId }) : Promise.resolve([])), [localidadId]);
@@ -66,7 +68,13 @@ function Header() {
             </Link>
           )}
 
-          {/* El botón del carrito con su contador se suma con el carrito (L17). */}
+          {!isWorkspace && (
+            <Link className="cart-button" to="/carrito" aria-label={`Carrito con ${count} productos`}>
+              <Icon name="bag" size={18} />
+              <em className="cart-label">Mi pedido</em>
+              {count > 0 && <span>{count}</span>}
+            </Link>
+          )}
 
           <button className="mobile-menu" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Abrir menú">
             <Icon name={mobileOpen ? "close" : "menu"} />
