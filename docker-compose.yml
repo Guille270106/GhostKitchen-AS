@@ -9,9 +9,11 @@
 #   - solr:          índice de Búsqueda (cores "cocinas" y "platos").
 #   - jaeger:        recibe las trazas (OpenTelemetry) del gateway, Búsqueda y Catálogo. UI en el puerto 16686.
 #   - contract-mock: mock de la capacidad publicada, servido desde el contrato OpenAPI (puerto 4010).
-# MySQL y las plantillas de migración se agregan en la ronda 1; los servicios de negocio
+#   - rabbitmq:      mensajería entre servicios. Exchange ghostkitchen.events, una cola por consumidor y su DLQ.
+#                    Panel en el puerto 15672 (usuario y contraseña de RABBITMQ_USER / RABBITMQ_PASSWORD).
+# MySQL, RabbitMQ y las plantillas de migración se agregan en la ronda 1; los servicios de negocio
 # Usuarios, Inventario y Pedidos se implementan en la ronda 2.
-# Los secretos se leen del archivo .env, que no se versiona (copiar .env.example como .env).
+# Los secretos se leen del archivo .env, que no se versiona (las variables están en el README, sección "Variables del .env").
 services:
   mysql:
     image: mysql:8.4
@@ -37,33 +39,63 @@ services:
 
   # Plantillas ejecutables: cada trabajo usa únicamente las credenciales de su base.
   # En ronda 2, mysql-startup será el ENTRYPOINT de cada servicio, antes de su binario.
-  usuarios-migrations:
-    build: ./tools/mysql-startup
+  # G5: igual que Inventario, aplica sus migraciones antes de arrancar HTTP. Reemplaza al
+  # trabajo usuarios-migrations. No se publica al host: entra por el gateway (G9).
+  usuarios:
+    build:
+      context: .
+      dockerfile: services/usuarios/Dockerfile
     environment:
       DB_HOST: mysql
       DB_USER: usuarios
       DB_PASSWORD: ${USUARIOS_DB_PASSWORD:?Completá USUARIOS_DB_PASSWORD en .env}
       DB_NAME: usuarios_db
-    volumes:
-      - ./services/usuarios/migrations:/migrations:ro
+      # G7: clave para firmar los tokens (al menos 32 bytes) y cuánto duran.
+      JWT_SECRET: ${JWT_SECRET:?Completá JWT_SECRET en .env (al menos 32 caracteres)}
+      JWT_TTL_MINUTES: ${JWT_TTL_MINUTES:-120}
+      # G8: Catálogo confirma la cocina y su localidad al crear una cuenta Cocina.
+      CATALOGO_URL: http://catalogo:8082
+      # G8: contraseña inicial de los 4 admins (uno por localidad). Sin ella no se crean.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      PORT: "8081"
+      GIN_MODE: release
+    expose:
+      - "8081"
     depends_on:
       mysql:
         condition: service_healthy
-    restart: "no"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
-  inventario-migrations:
-    build: ./tools/mysql-startup
+  # V5: aplica sus migraciones antes de arrancar HTTP, también tras cada reinicio.
+  inventario:
+    build:
+      context: .
+      dockerfile: services/inventario/Dockerfile
     environment:
       DB_HOST: mysql
       DB_USER: inventario
       DB_PASSWORD: ${INVENTARIO_DB_PASSWORD:?Completá INVENTARIO_DB_PASSWORD en .env}
       DB_NAME: inventario_db
-    volumes:
-      - ./services/inventario/migrations:/migrations:ro
+      PORT: "8084"
+      GIN_MODE: release
+    expose:
+      - "8084"
     depends_on:
       mysql:
         condition: service_healthy
-    restart: "no"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8084/ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
   pedidos-migrations:
     build: ./tools/mysql-startup
@@ -79,11 +111,58 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # Mensajería (ADR-005). El usuario sale de .env; las colas las crea rabbitmq-topologia.
+  rabbitmq:
+    image: rabbitmq:3.13.7-management-alpine
+    container_name: ghostkitchen-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    expose:
+      - "5672"            # AMQP: solo dentro de la red de Docker
+    ports:
+      - "15672:15672"     # panel de administración (solo para desarrollo)
+    healthcheck:
+      # Se corre como el usuario rabbitmq: si lo hace root, la cookie de Erlang queda sin permisos.
+      test: ["CMD", "su-exec", "rabbitmq", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  # Trabajo de una sola vez: carga exchanges, colas, DLQ y bindings por la API de administración.
+  # Se puede repetir sin problema: importar las mismas definiciones no duplica nada.
+  # No se cargan al arrancar RabbitMQ porque así no crearía el usuario de .env.
+  rabbitmq-topologia:
+    image: curlimages/curl:8.10.1
+    environment:
+      RABBITMQ_USER: ${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}
+    volumes:
+      - ./infra/rabbitmq/definiciones.json:/definiciones.json:ro
+    command:
+      - sh
+      - -c
+      - >-
+        curl -sS -f -u "$$RABBITMQ_USER:$$RABBITMQ_PASSWORD"
+        -H "Content-Type: application/json" -X POST --data-binary @/definiciones.json
+        http://rabbitmq:15672/api/definitions
+        && echo "topologia de RabbitMQ cargada"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: "no"
+
   gateway:
     image: nginx:1.27-alpine-otel     # NGINX con el módulo de OpenTelemetry
     container_name: ghostkitchen-gateway
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./gateway/proxy-comun.conf:/etc/nginx/proxy-comun.conf:ro
+      - ./gateway/identidad.conf:/etc/nginx/identidad.conf:ro
     ports:
       - "8080:8080"
     depends_on:
@@ -190,5 +269,6 @@ services:
 
 volumes:
   mysql-data:
+  rabbitmq-data:
   mongo-data:
   solr-data:

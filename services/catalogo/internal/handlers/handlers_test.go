@@ -98,6 +98,30 @@ func TestRestauranteDesactivadoOcultaSusPlatos(t *testing.T) {
 	}
 }
 
+func TestDetalleDePlatoRespetaRestauranteYCocinaActivos(t *testing.T) {
+	h, repo := entorno(t)
+	if w, _ := get(t, h, "/platos/p1"); w.Code != 200 {
+		t.Fatalf("p1 activo: %d", w.Code)
+	}
+
+	c, _, _ := repo.ObtenerCocina(context.Background(), "nueva-cordoba")
+	c.Restaurantes[0].Activo = false // Mostaza, el restaurante de p1
+	repo.Guardar(&c, nil)
+	if w, _ := get(t, h, "/platos/p1"); w.Code != 404 {
+		t.Fatalf("p1 con su restaurante desactivado: %d", w.Code)
+	}
+	if w, _ := get(t, h, "/platos/p5"); w.Code != 200 {
+		t.Fatalf("p5 es de otro restaurante de la misma cocina: %d", w.Code)
+	}
+
+	c.Restaurantes[0].Activo = true
+	c.Activa = false
+	repo.Guardar(&c, nil)
+	if w, _ := get(t, h, "/platos/p5"); w.Code != 404 {
+		t.Fatalf("p5 con su cocina desactivada: %d", w.Code)
+	}
+}
+
 func TestMongoCaidoDevuelve503(t *testing.T) {
 	h, repo := entorno(t)
 	repo.Falla = domain.ErrNoDisponible
