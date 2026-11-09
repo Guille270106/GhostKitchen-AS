@@ -318,6 +318,8 @@ services:
       SOLR_URL: http://solr:8983/solr
       SOLR_TIMEOUT_MS: "2000"
       CATALOGO_URL: http://catalogo:8082
+      INVENTARIO_URL: http://inventario:8084    # disponibilidad para reconstruir el índice (G15)
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/   # cola busqueda.indexador (G15)
       PUBLIC_API_KEYS: ${PUBLIC_API_KEYS:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     expose:

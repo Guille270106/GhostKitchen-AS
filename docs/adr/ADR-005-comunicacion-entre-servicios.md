@@ -183,6 +183,13 @@ Lo que planeábamos validar ("agregar al carrito" de punta a punta y un mensaje 
 
 **Conclusión:** la parte síncrona funciona como se decidió. No cambia nada del ADR.
 
+### Avance: Búsqueda consume mensajes (G15)
+
+- Lee `busqueda.indexador` de a un mensaje. Hace ack después de guardar en Solr; un mensaje que no cumple el contrato va directo a la DLQ, y uno que falla por Solr caído se reintenta con espera hasta que RabbitMQ lo manda a la DLQ al quinto intento.
+- Idempotencia sin tabla de mensajes, como decía el ADR: cada documento guarda una versión de Catálogo y otra de Inventario, y cada fuente cambia solo sus campos. Para no perder un cambio cuando escriben a la vez el lector y la reconstrucción, cada escritura usa el `_version_` de Solr (concurrencia optimista).
+- Un **ajuste**: un plato que llega antes que su cocina no se reintenta, se guarda inactivo y se completa con el mensaje de la cocina. Devolverlo a la cola podía dejarlo delante del mensaje de la cocina y trabar los dos.
+- Probado con RabbitMQ real (plato antes que la cocina, mensaje roto a la DLQ) y con Solr simulado (409 y reintento). Falta medir el atraso de punta a punta (`demora_ms` en el log) con todo el sistema levantado.
+
 ## Cómo lo vamos a validar
 
 - **Entrega 2 (hecho con el flujo de búsqueda, ver arriba):** seguir un "agregar al carrito" de punta a punta con el mismo `correlation_id` en el gateway, Pedidos, Catálogo e Inventario. Y un test que mande dos veces el mismo mensaje de cambio de estado y verifique que llega un solo mail.

@@ -1,8 +1,10 @@
 // Package indexer mantiene el índice de Búsqueda a partir de los datos de otros servicios.
 //
-// Entrega 2: reconstrucción completa desde la API de Catálogo (al arrancar y con
-// POST /internal/reindexar). Cuando exista RabbitMQ, acá se suma el lector de los
-// mensajes cocina.*, plato.* y disponibilidad.cambiada.
+// Tiene dos caminos que usan las mismas reglas (aplicar.go):
+//   - la reconstrucción completa desde Catálogo e Inventario (al arrancar y con
+//     POST /internal/reindexar), en reconstruir.go;
+//   - los mensajes cocina.*, plato.* y disponibilidad.cambiada (G15), en eventos.go. El que
+//     los recibe de RabbitMQ es el paquete mensajeria.
 //
 // Es la segunda entrada del servicio, al lado de los handlers HTTP (ADR-002): no atiende a
 // usuarios, sino que copia en Solr datos que son de otros servicios. El índice es una copia
@@ -17,7 +19,6 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"ghostkitchen/busqueda/internal/clients"
-	"ghostkitchen/busqueda/internal/domain"
 	"ghostkitchen/busqueda/internal/repositories"
 	"ghostkitchen/busqueda/internal/trazas"
 )
@@ -34,42 +35,54 @@ type FuenteCatalogo interface {
 	Platos(ctx context.Context, page, pageSize int) (clients.PaginaPlatos, error)
 }
 
-// Disponibilidad dice si un plato se puede pedir. Es dato de Inventario: mientras ese
-// servicio no exista, se usa una tabla provisional. Un plato desconocido (por ejemplo,
-// uno recién creado, todavía sin receta) figura como no disponible.
-type Disponibilidad func(platoID string) bool
-
-// Reconstructor arma el índice desde cero con los datos de Catálogo.
-type Reconstructor struct {
-	fuente FuenteCatalogo
-	indice repositories.Indexador
-	dispo  Disponibilidad
+// FuenteDisponibilidad es lo que se necesita de Inventario (lo implementa clients.Inventario).
+type FuenteDisponibilidad interface {
+	Disponibilidad(ctx context.Context) ([]clients.DisponibilidadInventario, error)
 }
 
-// NuevoReconstructor crea el reconstructor.
-func NuevoReconstructor(f FuenteCatalogo, i repositories.Indexador, d Disponibilidad) *Reconstructor {
-	return &Reconstructor{fuente: f, indice: i, dispo: d}
+// Reconstructor arma el índice con los datos de Catálogo y de Inventario.
+//
+// Desde G15 no reemplaza los documentos a ciegas: aplica cada cocina, plato y disponibilidad
+// con las mismas reglas que los mensajes (Aplicador). Así puede correr a la vez que el lector
+// de mensajes sin volver atrás un cambio más nuevo, y no borra la disponibilidad que mandó
+// Inventario cuando guarda los datos de Catálogo.
+type Reconstructor struct {
+	fuente      FuenteCatalogo
+	inventario  FuenteDisponibilidad // nil: sin Inventario, se usa provisional
+	provisional func(platoID string) bool
+	aplicar     *Aplicador
+}
+
+// NuevoReconstructor crea el reconstructor. Si inv es nil (no hay INVENTARIO_URL), los platos
+// nuevos toman la disponibilidad de provisional, la tabla de los datos de ejemplo.
+func NuevoReconstructor(f FuenteCatalogo, inv FuenteDisponibilidad, idx repositories.Actualizador, provisional func(string) bool) *Reconstructor {
+	return &Reconstructor{fuente: f, inventario: inv, provisional: provisional, aplicar: NuevoAplicador(idx)}
 }
 
 // Resultado cuenta lo que se indexó.
 type Resultado struct {
 	Sedes  int `json:"sedes"`
 	Platos int `json:"platos"`
+	// Disponibilidad es cuántos platos se actualizaron con la lista de Inventario. Si
+	// Inventario no contestó, la reconstrucción sigue sin ella (SinInventario): los platos
+	// conservan lo que tenían y los mensajes la ponen al día.
+	Disponibilidad int  `json:"disponibilidad"`
+	SinInventario  bool `json:"sinInventario,omitempty"`
 }
 
-// Reconstruir lee todas las cocinas y platos de Catálogo y los guarda en el índice.
-// Guarda por páginas: si Catálogo falla a mitad de camino, el índice conserva lo anterior
-// para los platos que faltaron, y la próxima reconstrucción lo completa.
+// Reconstruir lee todas las cocinas y platos de Catálogo y los aplica en el índice; después,
+// la disponibilidad de Inventario. Si Catálogo falla a mitad de camino, el índice conserva lo
+// anterior para los platos que faltaron, y la próxima reconstrucción lo completa.
 //
-// Los datos se piden a la API interna de Catálogo, nunca a su base: cada servicio es el
-// único que entra a la suya (una base por servicio, ADR-001; ARCHITECTURE 6.9). Así Catálogo
-// puede cambiar cómo guarda sus datos sin romper a Búsqueda.
+// Los datos se piden a las API internas, nunca a las bases de otros: cada servicio es el
+// único que entra a la suya (una base por servicio, ADR-001; ARCHITECTURE 6.9).
 func (r *Reconstructor) Reconstruir(ctx context.Context) (res Resultado, err error) {
-	// Un span que agrupa toda la reconstrucción: adentro quedan las llamadas a Catálogo
-	// (y, por la propagación, lo que Catálogo hace en MongoDB) y las escrituras en Solr.
+	// Un span que agrupa toda la reconstrucción: adentro quedan las llamadas a Catálogo e
+	// Inventario (y, por la propagación, lo que hacen en sus bases) y las escrituras en Solr.
 	ctx, span := trazas.Tracer().Start(ctx, "reconstruir índice")
 	defer func() {
-		span.SetAttributes(attribute.Int("indice.sedes", res.Sedes), attribute.Int("indice.platos", res.Platos))
+		span.SetAttributes(attribute.Int("indice.sedes", res.Sedes), attribute.Int("indice.platos", res.Platos),
+			attribute.Int("indice.disponibilidad", res.Disponibilidad))
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "reconstrucción incompleta")
@@ -81,79 +94,58 @@ func (r *Reconstructor) Reconstruir(ctx context.Context) (res Resultado, err err
 	if err != nil {
 		return Resultado{}, err
 	}
-
-	// Cada plato se guarda con el nombre de su restaurante y de su cocina copiados adentro
-	// (desnormalizado): Solr no hace joins, y así una búsqueda no necesita consultar a
-	// Catálogo (ADR-003). Este mapa permite armar esa copia sin pedir nada más.
-	type datosRest struct {
-		ref    domain.Referencia
-		sede   domain.Referencia
-		activo bool // el restaurante y su cocina están activos
-	}
-	restaurantes := map[string]datosRest{}
-	sedes := make([]domain.Sede, 0, len(cocinas))
 	for _, c := range cocinas {
-		s := domain.Sede{
-			ID: c.ID, Nombre: c.Nombre, Localidad: c.Localidad, Direccion: c.Direccion,
-			Ubicacion: c.Ubicacion, TiempoEntregaMin: c.TiempoEntregaMin, TiempoEntregaMax: c.TiempoEntregaMax,
-			CostoEnvio: c.CostoEnvio, Restaurantes: []domain.Referencia{}, Activa: c.Activa,
+		if err := r.aplicar.Cocina(ctx, c); err != nil {
+			return res, fmt.Errorf("guardar cocina %s: %w", c.ID, err)
 		}
-		// Se recorren también los restaurantes inactivos: no se publican en la sede, pero
-		// sus platos se tienen que indexar como inactivos para pisar la copia vieja.
-		for _, rest := range c.Restaurantes {
-			ref := domain.Referencia{ID: rest.ID, Nombre: rest.Nombre}
-			if rest.Activo {
-				s.Restaurantes = append(s.Restaurantes, ref)
-			}
-			restaurantes[rest.ID] = datosRest{ref: ref, sede: s.Ref(), activo: rest.Activo && c.Activa}
-		}
-		sedes = append(sedes, s)
-	}
-	if err := r.indice.GuardarSedes(ctx, sedes); err != nil {
-		return Resultado{}, fmt.Errorf("guardar sedes: %w", err)
+		res.Sedes++
 	}
 
-	res = Resultado{Sedes: len(sedes)}
-	// Cada página se guarda antes de pedir la siguiente: la memoria no crece con la cantidad
-	// de platos, y si algo falla se devuelve res con lo que ya quedó guardado.
+	// Sin Inventario, los platos nuevos usan la tabla provisional; con Inventario, entran no
+	// disponibles y los corrige la lista de abajo.
+	var inicial func(string) bool
+	if r.inventario == nil {
+		inicial = r.provisional
+	}
+	cocinaDe := map[string]bool{}
+	for _, c := range cocinas {
+		cocinaDe[c.ID] = true
+	}
 	for page := 1; ; page++ {
 		pag, err := r.fuente.Platos(ctx, page, TamPagina)
 		if err != nil {
 			return res, err
 		}
-		platos := make([]domain.Plato, 0, len(pag.Items))
 		for _, p := range pag.Items {
-			rest, ok := restaurantes[p.RestauranteID]
-			if !ok {
-				continue // restaurante desconocido: no se indexa un plato sin dueño
+			if !cocinaDe[p.CocinaID] {
+				continue // cocina desconocida: no se indexa un plato sin dueño
 			}
-			etq := p.Etiquetas
-			if etq == nil {
-				etq = []string{}
+			if err := r.aplicar.PlatoConDisponibilidad(ctx, p, inicial); err != nil {
+				return res, fmt.Errorf("guardar plato %s: %w", p.ID, err)
 			}
-			moneda := p.Moneda
-			if moneda == "" { // el contrato siempre publica una moneda; hoy todo es en pesos
-				moneda = "ARS"
-			}
-			platos = append(platos, domain.Plato{
-				ID: p.ID, Nombre: p.Nombre, Descripcion: p.Descripcion, Categoria: p.Categoria,
-				Etiquetas: etq, Precio: p.Precio, Moneda: moneda, FotoURL: p.FotoURL,
-				Disponible: r.dispo(p.ID),
-				// Un plato solo se muestra si él, su restaurante y su cocina están activos (RN19).
-				Activo:        p.Activo && rest.activo,
-				Restaurante:   rest.ref,
-				Sede:          rest.sede,
-				ActualizadoEn: p.ActualizadoEn,
-			})
+			res.Platos++
 		}
-		if len(platos) > 0 {
-			if err := r.indice.GuardarPlatos(ctx, platos); err != nil {
-				return res, fmt.Errorf("guardar platos: %w", err)
-			}
-		}
-		res.Platos += len(platos)
 		if page >= pag.TotalPages {
-			return res, nil
+			break
 		}
 	}
+
+	if r.inventario == nil {
+		return res, nil
+	}
+	lista, err := r.inventario.Disponibilidad(ctx)
+	if err != nil {
+		// No se corta la reconstrucción: sin Inventario, Búsqueda igual puede mostrar el menú.
+		// Los platos conservan la disponibilidad que tenían.
+		res.SinInventario = true
+		span.RecordError(err)
+		return res, nil
+	}
+	for _, d := range lista {
+		if err := r.aplicar.Disponibilidad(ctx, d); err != nil {
+			return res, fmt.Errorf("guardar disponibilidad de %s: %w", d.PlatoID, err)
+		}
+		res.Disponibilidad++
+	}
+	return res, nil
 }

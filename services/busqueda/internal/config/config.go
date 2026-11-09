@@ -17,6 +17,8 @@ type Config struct {
 	APIKeys       []string      // PUBLIC_API_KEYS, separadas por coma. Vacío = nadie entra (falla cerrada).
 	SeedAlIniciar bool          // SEED_AL_INICIAR (true): solo si no hay CATALOGO_URL
 	CatalogoURL   string        // CATALOGO_URL (http://catalogo:8082). Si está, el índice se arma desde Catálogo
+	InventarioURL string        // INVENTARIO_URL (http://inventario:8084). Si está, la disponibilidad sale de Inventario
+	RabbitMQURL   string        // RABBITMQ_URL. Si está, el índice se mantiene al día con mensajes (G15)
 }
 
 // Cargar lee las variables de entorno con sus valores por defecto.
@@ -28,6 +30,8 @@ func Cargar() Config {
 		APIKeys:       lista(os.Getenv("PUBLIC_API_KEYS")),
 		SeedAlIniciar: valor("SEED_AL_INICIAR", "true") == "true",
 		CatalogoURL:   strings.TrimSpace(os.Getenv("CATALOGO_URL")),
+		InventarioURL: strings.TrimSpace(os.Getenv("INVENTARIO_URL")),
+		RabbitMQURL:   strings.TrimSpace(os.Getenv("RABBITMQ_URL")),
 	}
 }
 

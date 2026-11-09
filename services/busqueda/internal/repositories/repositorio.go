@@ -33,8 +33,8 @@ type Lector interface {
 	Ping(ctx context.Context) error
 }
 
-// Indexador carga datos en el índice. Lo usan la reconstrucción desde Catálogo (indexer) y
-// la carga inicial (seed); más adelante, también el lector de mensajes.
+// Indexador carga datos en el índice sin mirar lo que había. Lo usa la carga inicial (seed),
+// cuando Búsqueda anda sola, sin Catálogo.
 type Indexador interface {
 	// PrepararEsquema crea los campos que falten. Es idempotente.
 	PrepararEsquema(ctx context.Context) error
@@ -42,4 +42,18 @@ type Indexador interface {
 	GuardarSedes(ctx context.Context, sedes []domain.Sede) error
 	// GuardarPlatos agrega o reemplaza platos por id.
 	GuardarPlatos(ctx context.Context, platos []domain.Plato) error
+}
+
+// Actualizador cambia un documento a partir del que ya está guardado (G15). Lo usan el
+// lector de mensajes y la reconstrucción desde Catálogo, que pueden correr a la vez.
+//
+// cambiar recibe lo guardado (existe=false si no hay nada) y devuelve el documento nuevo y si
+// hay que guardarlo. Si otro escribió el mismo documento entre la lectura y la escritura, se
+// vuelve a leer y se llama a cambiar otra vez (concurrencia optimista): así no se pierde
+// ninguno de los dos cambios. Si cambiar devuelve un error, no se guarda nada y se devuelve.
+type Actualizador interface {
+	CambiarSede(ctx context.Context, id string, cambiar func(actual domain.Sede, existe bool) (domain.Sede, bool, error)) error
+	CambiarPlato(ctx context.Context, id string, cambiar func(actual domain.Plato, existe bool) (domain.Plato, bool, error)) error
+	// IDsPlatosDeSede devuelve los ids de todos los platos de una sede, activos o no.
+	IDsPlatosDeSede(ctx context.Context, sedeID string) ([]string, error)
 }

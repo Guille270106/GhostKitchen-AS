@@ -3,6 +3,7 @@ package indexer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -47,7 +48,11 @@ func catalogoFalso(t *testing.T, platos []clients.PlatoCatalogo, fallarPagina in
 }
 
 func plato(id, rest string, activo bool) clients.PlatoCatalogo {
-	return clients.PlatoCatalogo{ID: id, RestauranteID: rest, Nombre: "Plato " + id, Precio: 1000, Activo: activo, ActualizadoEn: time.Now()}
+	cocina := "nueva-cordoba"
+	if rest == "r9" {
+		cocina = "cerrada"
+	}
+	return clients.PlatoCatalogo{ID: id, CocinaID: cocina, RestauranteID: rest, Nombre: "Plato " + id, Precio: 1000, Activo: activo, Version: 1, ActualizadoEn: time.Now()}
 }
 
 func TestReconstruirDesdeCatalogo(t *testing.T) {
@@ -56,19 +61,19 @@ func TestReconstruirDesdeCatalogo(t *testing.T) {
 		plato("p2", "r1", false), // plato desactivado
 		plato("p3", "r2", true),  // restaurante desactivado
 		plato("p4", "r9", true),  // cocina desactivada
-		plato("p5", "rX", true),  // restaurante desconocido: no se indexa
+		plato("p5", "rX", true),  // restaurante desconocido: queda inactivo
 	}
 	srv := catalogoFalso(t, platos, 0)
 	defer srv.Close()
 	repo := memoria.Nuevo()
 	dispo := func(id string) bool { return id == "p1" }
-	rec := NuevoReconstructor(clients.NuevoCatalogo(srv.URL), repo, dispo)
+	rec := NuevoReconstructor(clients.NuevoCatalogo(srv.URL), nil, repo, dispo)
 
 	res, err := rec.Reconstruir(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Sedes != 2 || res.Platos != 4 {
+	if res.Sedes != 2 || res.Platos != 5 {
 		t.Fatalf("%+v", res)
 	}
 	ctx := context.Background()
@@ -95,7 +100,7 @@ func TestReconstruirRecorreTodasLasPaginas(t *testing.T) {
 	}
 	srv := catalogoFalso(t, platos, 0)
 	defer srv.Close()
-	res, err := NuevoReconstructor(clients.NuevoCatalogo(srv.URL), memoria.Nuevo(), func(string) bool { return true }).Reconstruir(context.Background())
+	res, err := NuevoReconstructor(clients.NuevoCatalogo(srv.URL), nil, memoria.Nuevo(), func(string) bool { return true }).Reconstruir(context.Background())
 	if err != nil || res.Platos != 250 {
 		t.Fatalf("%+v %v", res, err)
 	}
@@ -110,8 +115,80 @@ func TestReconstruirConCatalogoCaido(t *testing.T) {
 	defer srv.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	res, err := NuevoReconstructor(clients.NuevoCatalogo(srv.URL), memoria.Nuevo(), func(string) bool { return true }).Reconstruir(ctx)
+	res, err := NuevoReconstructor(clients.NuevoCatalogo(srv.URL), nil, memoria.Nuevo(), func(string) bool { return true }).Reconstruir(ctx)
 	if err == nil || res.Platos != 100 {
 		t.Fatalf("tenía que fallar después de guardar la primera página: %+v %v", res, err)
+	}
+}
+
+// inventarioFalso devuelve la lista de disponibilidad, o falla.
+type inventarioFalso struct {
+	lista []clients.DisponibilidadInventario
+	err   error
+}
+
+func (f inventarioFalso) Disponibilidad(context.Context) ([]clients.DisponibilidadInventario, error) {
+	return f.lista, f.err
+}
+
+func TestReconstruirConInventario(t *testing.T) {
+	srv := catalogoFalso(t, []clients.PlatoCatalogo{plato("p1", "r1", true), plato("p2", "r1", true)}, 0)
+	defer srv.Close()
+	repo := memoria.Nuevo()
+	inv := inventarioFalso{lista: []clients.DisponibilidadInventario{
+		{PlatoID: "p1", CocinaID: "nueva-cordoba", Disponible: true, TieneReceta: true},
+		{PlatoID: "p2", CocinaID: "nueva-cordoba", Disponible: false, TieneReceta: false},
+	}}
+	// La tabla provisional no se usa si hay Inventario.
+	res, err := NuevoReconstructor(clients.NuevoCatalogo(srv.URL), inv, repo, func(string) bool { return true }).Reconstruir(context.Background())
+	if err != nil || res.Disponibilidad != 2 || res.SinInventario {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if p, _ := repo.Plato("p1"); !p.Disponible || !p.TieneReceta {
+		t.Fatalf("p1: %+v", p)
+	}
+	if p, _ := repo.Plato("p2"); p.Disponible {
+		t.Fatalf("p2 no tiene receta: %+v", p)
+	}
+}
+
+func TestReconstruirConInventarioCaidoSigue(t *testing.T) {
+	srv := catalogoFalso(t, []clients.PlatoCatalogo{plato("p1", "r1", true)}, 0)
+	defer srv.Close()
+	repo := memoria.Nuevo()
+	res, err := NuevoReconstructor(clients.NuevoCatalogo(srv.URL), inventarioFalso{err: errors.New("caído")}, repo, nil).Reconstruir(context.Background())
+	if err != nil || !res.SinInventario || res.Platos != 1 {
+		t.Fatalf("sin Inventario tiene que seguir: %+v %v", res, err)
+	}
+	if _, ok, _ := repo.ObtenerPlato(context.Background(), "p1"); !ok {
+		t.Fatal("el menú se ve igual, aunque sin disponibilidad")
+	}
+}
+
+func TestReconstruirNoVuelveAtrasUnMensajeMasNuevo(t *testing.T) {
+	srv := catalogoFalso(t, []clients.PlatoCatalogo{plato("p1", "r1", true)}, 0) // versión 1
+	defer srv.Close()
+	repo := memoria.Nuevo()
+	ctx := context.Background()
+	a := NuevoAplicador(repo)
+	// Mientras se reconstruía, llegaron por mensajes una versión 2 del plato y su stock.
+	if err := a.Cocina(ctx, cocinaNC(1, true)); err != nil {
+		t.Fatal(err)
+	}
+	nuevo := plato("p1", "r1", true)
+	nuevo.Version, nuevo.Precio = 2, 1500
+	if err := a.Plato(ctx, nuevo); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Disponibilidad(ctx, clients.DisponibilidadInventario{PlatoID: "p1", CocinaID: "nueva-cordoba", Disponible: true, TieneReceta: true, Secuencia: 4}); err != nil {
+		t.Fatal(err)
+	}
+	inv := inventarioFalso{lista: []clients.DisponibilidadInventario{{PlatoID: "p1", CocinaID: "nueva-cordoba", Disponible: false, TieneReceta: true}}}
+	if _, err := NuevoReconstructor(clients.NuevoCatalogo(srv.URL), inv, repo, nil).Reconstruir(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := repo.Plato("p1")
+	if p.Precio != 1500 || p.VersionCatalogo != 2 || !p.Disponible || p.VersionInventario != 4 {
+		t.Fatalf("la reconstrucción pisó datos más nuevos: %+v", p)
 	}
 }
