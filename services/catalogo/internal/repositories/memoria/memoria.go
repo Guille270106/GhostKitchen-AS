@@ -5,6 +5,7 @@ import (
 	"context"
 	"sort"
 	"sync"
+	"time"
 
 	"ghostkitchen/catalogo/internal/domain"
 )
@@ -17,6 +18,14 @@ type Repositorio struct {
 	Falla   error
 	// AntesDeReemplazar simula una escritura concurrente (ver ReemplazarCocina).
 	AntesDeReemplazar func()
+	outbox            []registro
+}
+
+// registro es un evento del outbox en memoria.
+type registro struct {
+	ev        domain.Evento
+	sobre     []byte
+	publicado bool
 }
 
 // Nuevo crea un repositorio vacío.
@@ -143,7 +152,7 @@ func (r *Repositorio) Guardar(c *domain.Cocina, p *domain.Plato) {
 }
 
 // CrearCocina guarda una cocina nueva, igual que la versión de MongoDB.
-func (r *Repositorio) CrearCocina(_ context.Context, c domain.Cocina) error {
+func (r *Repositorio) CrearCocina(_ context.Context, c domain.Cocina, ev domain.Evento) error {
 	if r.Falla != nil {
 		return r.Falla
 	}
@@ -153,13 +162,14 @@ func (r *Repositorio) CrearCocina(_ context.Context, c domain.Cocina) error {
 		return domain.ErrYaExiste
 	}
 	r.cocinas[c.ID] = copiaCocina(c)
+	r.anotar(ev)
 	return nil
 }
 
 // ReemplazarCocina guarda la cocina solo si su versión es versionAnterior. AntesDeReemplazar,
 // si no es nil, se llama justo antes de comparar: un test lo usa para simular que otra
 // solicitud cambió la cocina en el medio.
-func (r *Repositorio) ReemplazarCocina(_ context.Context, c domain.Cocina, versionAnterior int64) error {
+func (r *Repositorio) ReemplazarCocina(_ context.Context, c domain.Cocina, versionAnterior int64, ev domain.Evento) error {
 	if r.Falla != nil {
 		return r.Falla
 	}
@@ -177,6 +187,7 @@ func (r *Repositorio) ReemplazarCocina(_ context.Context, c domain.Cocina, versi
 		return domain.ErrConflicto
 	}
 	r.cocinas[c.ID] = copiaCocina(c)
+	r.anotar(ev)
 	return nil
 }
 
@@ -208,7 +219,7 @@ func (r *Repositorio) ListarPlatosDeCocinaTodos(_ context.Context, cocinaID stri
 }
 
 // CrearPlato guarda un plato nuevo, igual que la versión de MongoDB.
-func (r *Repositorio) CrearPlato(_ context.Context, p domain.Plato) error {
+func (r *Repositorio) CrearPlato(_ context.Context, p domain.Plato, ev domain.Evento) error {
 	if r.Falla != nil {
 		return r.Falla
 	}
@@ -218,11 +229,12 @@ func (r *Repositorio) CrearPlato(_ context.Context, p domain.Plato) error {
 		return domain.ErrYaExiste
 	}
 	r.platos[p.ID] = copiaPlato(p)
+	r.anotar(ev)
 	return nil
 }
 
 // ReemplazarPlato guarda el plato solo si su versión es versionAnterior.
-func (r *Repositorio) ReemplazarPlato(_ context.Context, p domain.Plato, versionAnterior int64) error {
+func (r *Repositorio) ReemplazarPlato(_ context.Context, p domain.Plato, versionAnterior int64, ev domain.Evento) error {
 	if r.Falla != nil {
 		return r.Falla
 	}
@@ -233,6 +245,7 @@ func (r *Repositorio) ReemplazarPlato(_ context.Context, p domain.Plato, version
 		return domain.ErrConflicto
 	}
 	r.platos[p.ID] = copiaPlato(p)
+	r.anotar(ev)
 	return nil
 }
 
@@ -241,4 +254,53 @@ func copiaPlato(p domain.Plato) domain.Plato {
 		p.Etiquetas = append([]string(nil), p.Etiquetas...)
 	}
 	return p
+}
+
+// anotar guarda el evento en el outbox, con el cambio ya bajo el mismo candado: igual que la
+// transacción de MongoDB, o quedan los dos o ninguno.
+func (r *Repositorio) anotar(ev domain.Evento) {
+	sobre, _ := ev.Sobre()
+	r.outbox = append(r.outbox, registro{ev: ev, sobre: sobre})
+}
+
+// Eventos devuelve todos los eventos guardados, publicados o no (para los tests).
+func (r *Repositorio) Eventos() []domain.Evento {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]domain.Evento, len(r.outbox))
+	for i, reg := range r.outbox {
+		out[i] = reg.ev
+	}
+	return out
+}
+
+// Pendientes devuelve los eventos sin publicar, en el orden en que se guardaron.
+func (r *Repositorio) Pendientes(_ context.Context, limite int) ([]domain.Pendiente, error) {
+	if r.Falla != nil {
+		return nil, r.Falla
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := []domain.Pendiente{}
+	for _, reg := range r.outbox {
+		if !reg.publicado && len(out) < limite {
+			out = append(out, domain.Pendiente{EventoID: reg.ev.EventoID, Tipo: reg.ev.Tipo, Sobre: reg.sobre})
+		}
+	}
+	return out, nil
+}
+
+// MarcarPublicado anota el evento como publicado.
+func (r *Repositorio) MarcarPublicado(_ context.Context, eventoID string, _ time.Time) error {
+	if r.Falla != nil {
+		return r.Falla
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.outbox {
+		if r.outbox[i].ev.EventoID == eventoID {
+			r.outbox[i].publicado = true
+		}
+	}
+	return nil
 }

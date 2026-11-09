@@ -20,6 +20,7 @@ type Config struct {
 	MongoTimeout  time.Duration // MONGO_TIMEOUT_MS (2000): tiempo máximo de cada operación
 	SeedAlIniciar bool          // SEED_AL_INICIAR (true)
 	InventarioURL string        // INVENTARIO_URL (http://inventario:8084): para saber si un plato tiene receta
+	RabbitMQURL   string        // RABBITMQ_URL (sin valor por defecto): donde se publican los eventos del outbox
 }
 
 // Cargar lee las variables de entorno con sus valores por defecto.
@@ -31,6 +32,7 @@ func Cargar() Config {
 		MongoTimeout:  time.Duration(entero("MONGO_TIMEOUT_MS", 2000)) * time.Millisecond,
 		SeedAlIniciar: valor("SEED_AL_INICIAR", "true") == "true",
 		InventarioURL: valor("INVENTARIO_URL", "http://inventario:8084"),
+		RabbitMQURL:   valor("RABBITMQ_URL", ""),
 	}
 }
 

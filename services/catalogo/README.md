@@ -56,7 +56,7 @@ Sin identidad, `401`; con otro rol, `403 SIN_PERMISO`. Un campo de más en el cu
 
 **Dos admins al mismo tiempo: concurrencia optimista.** Cada cocina tiene un número de `version`. Para cambiarla, el servicio la lee, aplica las reglas del dominio y la guarda solo si la versión sigue siendo la que leyó (`ReplaceOne` con `_id` y `version` en el filtro, que en MongoDB es una sola operación atómica sobre el documento). Si otra solicitud la cambió en el medio, no se guarda nada y el servicio vuelve a empezar con la versión nueva (hasta 3 veces; después, `409 CONFLICTO`). Así las reglas siempre se controlan sobre lo último guardado: con 10 solicitudes a la vez sobre una cocina con 2 restaurantes, entran exactamente 2 (`TestNoSePasaDeCuatroConSolicitudesALaVez`). La misma `version` es la que usará Búsqueda para no guardar un dato viejo encima de uno nuevo.
 
-**Hasta G15**, Búsqueda se entera de estos cambios recién cuando reconstruye su índice (al arrancar). Con G13 y G15 se va a enterar por mensajes.
+Desde G13, cada cambio sale como mensaje (ver "Mensajes"). Búsqueda los empieza a aplicar en G15; hasta entonces se entera al reconstruir su índice.
 
 ## Platos de la cocina (G12 · HU17)
 
@@ -72,7 +72,34 @@ La cuenta Cocina maneja los platos de **su** cocina (la de `X-Cocina-Id`, que po
 
 Las etiquetas válidas son Vegano, Vegetariano, Sin TACC y Picante (las mismas que usa Búsqueda). El precio de un plato que ya está en un carrito no cambia: Pedidos guarda el precio al agregarlo (RN15). Mismo control de concurrencia que las cocinas: cada plato tiene su `version`.
 
-**Mientras no estén los mensajes (G13 y V12)**, Inventario no se entera de los platos nuevos, así que todavía no les puede cargar receta y quedan desactivados. Con los mensajes, Inventario recibe `plato.creado` y el circuito se completa.
+Desde G13, Catálogo publica `plato.creado`. Cuando Inventario lo escuche (V12), va a poder cargarle la receta a un plato nuevo, y recién ahí la cocina lo puede activar.
+
+## Mensajes: outbox y publicador (G13)
+
+Cada escritura (cocina, restaurante o plato) guarda su evento en la colección **`outbox`** en la **misma transacción** que el cambio. Por eso MongoDB corre como replica set (G10): o se guardan los dos, o ninguno. Si el cambio se guardó, su mensaje también, aunque RabbitMQ esté caído; y si la escritura choca con otra (versión vieja), no queda ni el cambio ni el evento.
+
+| Cambio | Evento | `agregado_id` · `secuencia` |
+| --- | --- | --- |
+| Alta de cocina | `cocina.creada` | id · `version` de la cocina |
+| Cambio de datos o de restaurantes, o reactivarla | `cocina.actualizada` | |
+| Desactivarla | `cocina.desactivada` | |
+| Alta de plato | `plato.creado` | id · `version` del plato |
+| Cambio, o activarlo | `plato.actualizado` | |
+| Desactivarlo | `plato.desactivado` | |
+
+`datos` lleva la cocina o el plato completo, como `/internal/cocinas` y `/internal/platos`. El sobre sigue [`docs/contracts/eventos`](../../docs/contracts/eventos/README.md), con el `correlation_id` de la solicitud que hizo el cambio.
+
+**El publicador** corre adentro de Catálogo (`internal/mensajeria`). Cada 500 ms lee los pendientes del más viejo al más nuevo y los manda al exchange `ghostkitchen.events` con el tipo como clave de ruteo (los reciben `busqueda.indexador` e `inventario.referencias`). Usa **publisher confirms**: marca un evento como publicado recién cuando RabbitMQ confirma que lo recibió. Si RabbitMQ no confirma o está caído, el evento sigue pendiente, el publicador cierra la conexión y reintenta esperando cada vez más (1 s, 2 s, 4 s… hasta 30 s), sin saltearse ninguno. Si se publica dos veces (por ejemplo, se cayó justo antes de marcarlo), el consumidor lo descarta por su `evento_id`: es entrega "al menos una vez".
+
+Los eventos publicados se borran solos a los 7 días (índice TTL sobre `publicadoEn`).
+
+Para mirar el outbox:
+
+```bash
+docker compose exec mongo sh -c 'mongosh --quiet -u root -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin catalogo_db --eval "db.outbox.find({}, {tipo:1, agregadoId:1, publicadoEn:1}).sort({creadoEn:-1}).limit(5)"'
+```
+
+Y los mensajes que llegaron, en el panel de RabbitMQ (`http://localhost:15672`, colas `busqueda.indexador` e `inventario.referencias`).
 
 ## Qué datos guarda (MongoDB)
 
@@ -145,6 +172,7 @@ MongoDB debe correr como **replica set**: el cambio comercial y el evento del ou
 | `MONGO_DB` | `catalogo_db` | Base del servicio |
 | `MONGO_TIMEOUT_MS` | `2000` | Tiempo máximo de cada operación contra MongoDB |
 | `INVENTARIO_URL` | `http://inventario:8084` | Para saber si un plato tiene receta antes de activarlo (G12) |
+| `RABBITMQ_URL` | (vacía) | Donde se publican los eventos (G13). Sin ella, los eventos quedan en el outbox |
 | `SEED_AL_INICIAR` | `true` | Insertar los datos iniciales que falten (no pisa los existentes) |
 
 El usuario `catalogo` lo crea [`infra/mongo/01-catalogo.js`](../../infra/mongo/01-catalogo.js) la primera vez que arranca MongoDB, con permiso `readWrite` solo sobre `catalogo_db`. Si se cambia la contraseña en `.env`, hay que borrar el volumen (`docker compose down -v`). Más adelante se suman Memcached (TTL de 60 s), RabbitMQ y el identificador de cada instancia.

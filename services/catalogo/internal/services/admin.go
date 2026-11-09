@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"ghostkitchen/catalogo/internal/domain"
+	"ghostkitchen/catalogo/internal/middleware"
 	"ghostkitchen/catalogo/internal/repositories"
 )
 
@@ -82,7 +83,8 @@ func (s *AdminCatalogo) CrearCocina(ctx context.Context, admin Admin, datos doma
 		return domain.Cocina{}, errors.Join(domain.ErrDatosInvalidos, errors.New("el nombre tiene que tener letras o números"))
 	}
 	c.ActualizadaEn = s.ahora().UTC()
-	if err := s.esc.CrearCocina(ctx, c); err != nil {
+	ev := domain.EventoCocina(domain.CocinaCreada, c, middleware.IDDesdeContexto(ctx), c.ActualizadaEn)
+	if err := s.esc.CrearCocina(ctx, c, ev); err != nil {
 		return domain.Cocina{}, err
 	}
 	return c, nil
@@ -133,13 +135,15 @@ func (s *AdminCatalogo) cambiar(ctx context.Context, admin Admin, id string, cam
 		if !mismaLocalidad(c.Localidad, admin.Localidad) {
 			return domain.Cocina{}, domain.ErrOtraLocalidad
 		}
-		anterior := c.Version
+		anterior, estabaActiva := c.Version, c.Activa
 		if err := cambio(&c); err != nil {
 			return domain.Cocina{}, err
 		}
 		c.Version = anterior + 1
 		c.ActualizadaEn = s.ahora().UTC()
-		err = s.esc.ReemplazarCocina(ctx, c, anterior)
+		tipo := domain.TipoCambio(estabaActiva, c.Activa, domain.CocinaActualizada, domain.CocinaDesactivada)
+		ev := domain.EventoCocina(tipo, c, middleware.IDDesdeContexto(ctx), c.ActualizadaEn)
+		err = s.esc.ReemplazarCocina(ctx, c, anterior, ev)
 		if errors.Is(err, domain.ErrConflicto) {
 			continue
 		}
