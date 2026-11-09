@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"time"
 
 	"ghostkitchen/pedidos/internal/domain"
 	"ghostkitchen/pedidos/internal/ports"
@@ -19,7 +20,9 @@ type CarritoService struct {
 	Inventario ports.Inventario
 }
 
-// Ver devuelve el carrito del cliente (vacío si todavía no tiene).
+// Ver devuelve el carrito del cliente (vacío si todavía no tiene) con el tiempo que le queda
+// a la reserva. Si ya venció lo avisa con "vencido": true; no lo cambia, porque mirar el
+// carrito no tiene que modificar nada. El próximo cambio lo vacía (Inventario responde que venció).
 func (s CarritoService) Ver(ctx context.Context, actor domain.Actor) (domain.Carrito, error) {
 	if err := validarCliente(actor); err != nil {
 		return domain.Carrito{}, err
@@ -31,6 +34,7 @@ func (s CarritoService) Ver(ctx context.Context, actor domain.Actor) (domain.Car
 	if carrito.Items == nil {
 		carrito.Items = []domain.ItemCarrito{}
 	}
+	carrito.ActualizarTiempo(time.Now())
 	return carrito, nil
 }
 
@@ -108,6 +112,7 @@ func (s CarritoService) Vaciar(ctx context.Context, actor domain.Actor) (domain.
 		return domain.Carrito{}, err
 	}
 	if carrito.Vacio() {
+		carrito.ActualizarTiempo(time.Now())
 		return carrito, nil
 	}
 	return s.vaciarYGuardar(ctx, carrito, carrito.Version)
@@ -147,6 +152,7 @@ func (s CarritoService) reservarYGuardar(ctx context.Context, carrito domain.Car
 	if err := s.Repo.Guardar(ctx, carrito, versionAnterior); err != nil {
 		return domain.Carrito{}, err
 	}
+	carrito.ActualizarTiempo(time.Now())
 	return carrito, nil
 }
 
@@ -165,6 +171,7 @@ func (s CarritoService) vaciarYGuardar(ctx context.Context, carrito domain.Carri
 	if err := s.Repo.Guardar(ctx, carrito, versionAnterior); err != nil {
 		return domain.Carrito{}, err
 	}
+	carrito.ActualizarTiempo(time.Now())
 	return carrito, nil
 }
 

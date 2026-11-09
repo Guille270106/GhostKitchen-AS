@@ -5,6 +5,8 @@
 > **L5:** servicio base hexagonal con MySQL y el **agregado Pedido** con sus estados. Aplica sus migraciones al arrancar (`mysql-startup`) y atiende en el puerto interno 8085, sin publicarse fuera de Docker. Ya funcionan las transiciones con sus permisos, el historial, el control de versión (si dos cambios llegan a la vez, gana el primero) y `GET /pedidos/{id}`.
 >
 > **L6:** el **carrito**. El cliente agrega, cambia y saca platos de una sola cocina; el precio sale de Catálogo y se guarda al agregar, y cada cambio deja la reserva de Inventario igual al carrito. Entra por el gateway en `/api/v1/carrito` (con login). La confirmación llega en L8.
+>
+> **L7:** el carrito muestra **cuánto le queda a la reserva** (`segundosRestantes`) y si ya venció (`vencido`).
 
 Maneja **el pedido de principio a fin**. Puerto interno **8085**. Es uno de los dos servicios donde no se puede equivocar nada.
 
@@ -46,6 +48,19 @@ La `Idempotency-Key` es carrito + número de cambio + una huella de los platos: 
 | `400 CANTIDAD_INVALIDA` | La cantidad no está entre 1 y 50 |
 | `403 SIN_PERMISO` | No es un cliente (por ejemplo, una cuenta Cocina) |
 | `503 SERVICIO_NO_DISPONIBLE` | Catálogo o Inventario no responden: el carrito no cambia, nunca se inventa un resultado |
+
+## Cuánto le queda a la reserva (L7)
+
+Todas las respuestas del carrito traen:
+
+```json
+{ "venceEn": "2026-11-09T01:29:14.803Z", "segundosRestantes": 595, "vencido": false }
+```
+
+- El plazo es de **10 minutos desde el primer plato** y agregar más no lo renueva. Lo fija Inventario con su reloj y Pedidos guarda `venceEn`; `segundosRestantes` se calcula en cada respuesta, redondeando hacia arriba.
+- Sin platos no hay reserva: `segundosRestantes` es 0 y `vencido` es `false`.
+- Cuando se cumple el plazo, `GET /carrito` responde `vencido: true` y `segundosRestantes: 0`, pero **no cambia nada**: mirar el carrito no modifica datos. Inventario libera los ingredientes en su barrido de cada 15 s; el próximo cambio del cliente recibe `409 CARRITO_VENCIDO` y el carrito queda vacío.
+- El frontend puede mostrar la cuenta regresiva a partir de `venceEn`, sin pedir el carrito cada segundo.
 
 ## Probar
 

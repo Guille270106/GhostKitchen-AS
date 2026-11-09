@@ -53,10 +53,40 @@ type Carrito struct {
 	Items     []ItemCarrito `json:"items"`
 	Total     int64         `json:"total"`
 	Version   int64         `json:"-"`
+
+	// Se calculan al responder (L7): cuánto le queda a la reserva y si ya venció.
+	SegundosRestantes int64 `json:"segundosRestantes"`
+	Vencido           bool  `json:"vencido"`
 }
 
 // Vacio indica si el carrito no tiene platos.
 func (c *Carrito) Vacio() bool { return len(c.Items) == 0 }
+
+// CalcularSegundosRestantes dice cuántos segundos le quedan a la reserva. El plazo es de 10 minutos
+// desde el primer plato y agregar más no lo renueva (lo fija Inventario). Sin reserva, o si
+// ya venció, devuelve 0.
+func (c *Carrito) CalcularSegundosRestantes(ahora time.Time) int64 {
+	if c.VenceEn == nil {
+		return 0
+	}
+	restante := c.VenceEn.Sub(ahora)
+	if restante <= 0 {
+		return 0
+	}
+	// Redondeamos hacia arriba: con 0,4 s todavía se puede confirmar, así que mostramos 1.
+	return int64((restante + time.Second - 1) / time.Second)
+}
+
+// EstaVencido indica si el carrito tiene platos y su reserva ya venció.
+func (c *Carrito) EstaVencido(ahora time.Time) bool {
+	return !c.Vacio() && c.VenceEn != nil && !ahora.Before(*c.VenceEn)
+}
+
+// ActualizarTiempo completa los dos campos que se muestran al cliente.
+func (c *Carrito) ActualizarTiempo(ahora time.Time) {
+	c.SegundosRestantes = c.CalcularSegundosRestantes(ahora)
+	c.Vencido = c.EstaVencido(ahora)
+}
 
 // Agregar suma un plato o aumenta su cantidad.
 func (c *Carrito) Agregar(plato PlatoCatalogo, cantidad int64) error {
