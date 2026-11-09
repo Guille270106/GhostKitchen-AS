@@ -109,7 +109,7 @@ func TestParametrosBusqueda(t *testing.T) {
 		RestauranteID: "r1", PrecioMax: 15000, SoloDisponibles: true, Orden: domain.OrdenPrecioDesc,
 		Pagina: 3, TamPagina: 10,
 	})
-	if p.Get("defType") != "edismax" || p.Get("q") != `burger \(doble\)` || p.Get("mm") != "100%" {
+	if p.Get("defType") != "edismax" || p.Get("q") != `+burger +(doble OR doble*)` || p.Get("mm") != "1" {
 		t.Fatalf("texto mal armado: %v", p)
 	}
 	fq := strings.Join(p["fq"], " | ")
@@ -126,11 +126,13 @@ func TestParametrosBusqueda(t *testing.T) {
 
 func TestLaUltimaPalabraTambienEsPrefijo(t *testing.T) {
 	casos := map[string]string{
-		"hambur":       "(hambur OR hambur*)",
-		"Doble hambúr": "Doble (hambúr OR hambúr*)",
-		"ha":           "ha",     // muy corta: sería casi todo
-		"pan *":        `pan \*`, // solo un signo: no se agrega comodín
-		"a-b":          `a\-b`,   // dos palabras pegadas: igual que antes
+		"hambur":       "+(hambur OR hambur*)",
+		"Doble hambúr": "+doble +(hambúr OR hambúr*)",
+		"ha":           "+ha",            // muy corta: sería casi todo
+		"pan *":        "+(pan OR pan*)", // los signos no cuentan
+		"a-b":          "+a +b",          // dos palabras
+		"pollo OR (":   "+pollo +or",     // "OR" es una palabra, no un operador
+		"**":           "*:*",            // solo signos: como sin texto
 	}
 	for entrada, quiero := range casos {
 		if got := ParametrosBusqueda(domain.FiltroPlatos{SedeID: "x", Texto: entrada, Pagina: 1, TamPagina: 1}).Get("q"); got != quiero {
