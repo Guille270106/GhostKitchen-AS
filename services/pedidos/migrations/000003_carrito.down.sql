@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS carrito_item;
+DROP TABLE IF EXISTS carrito;

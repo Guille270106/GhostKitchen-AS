@@ -1,26 +1,27 @@
-// Package main arranca Pedidos: conecta MySQL y arma las capas del hexágono
-// (adaptador HTTP → application → domain, con el adaptador MySQL detrás del puerto).
-// Las migraciones las aplica mysql-startup antes de ejecutar este binario (ver Dockerfile).
+// Pedidos: carrito y pedidos de GhostKitchen. Arquitectura hexagonal: los controllers (adaptador
+// de entrada) llaman a los servicios (casos de uso), que usan los puertos; MySQL, Catálogo e
+// Inventario son adaptadores de salida. Las migraciones las aplica mysql-startup antes de
+// arrancar este programa (ver Dockerfile).
 package main
 
 import (
-	"context"
 	"database/sql"
-	"errors"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
+	"ghostkitchen/pedidos/internal/adapters/catalogo"
 	httpadapter "ghostkitchen/pedidos/internal/adapters/http"
+	"ghostkitchen/pedidos/internal/adapters/inventario"
 	mysqladapter "ghostkitchen/pedidos/internal/adapters/mysql"
 	"ghostkitchen/pedidos/internal/application"
 	"github.com/go-sql-driver/mysql"
 )
 
+// valor lee una variable de entorno o usa el valor por defecto.
 func valor(nombre, defecto string) string {
 	if v := os.Getenv(nombre); v != "" {
 		return v
@@ -28,57 +29,63 @@ func valor(nombre, defecto string) string {
 	return defecto
 }
 
-func run(log *slog.Logger) error {
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	// 1. Infraestructura: la conexión a MySQL (pedidos_db, con su propio usuario).
 	cfg := mysql.NewConfig()
 	cfg.Net = "tcp"
 	cfg.Addr = net.JoinHostPort(valor("DB_HOST", "mysql"), valor("DB_PORT", "3306"))
 	cfg.User = valor("DB_USER", "pedidos")
 	cfg.Passwd = os.Getenv("DB_PASSWORD")
 	cfg.DBName = valor("DB_NAME", "pedidos_db")
-	if cfg.Passwd == "" {
-		return errors.New("falta DB_PASSWORD")
-	}
 	cfg.ParseTime = true
 	cfg.Timeout = time.Second
 	cfg.ReadTimeout = 2 * time.Second
 	cfg.WriteTimeout = 2 * time.Second
-	connector, err := mysql.NewConnector(cfg)
-	if err != nil {
-		return err
+	if cfg.Passwd == "" {
+		log.Fatal("falta DB_PASSWORD")
 	}
-	db := sql.OpenDB(connector)
+	conector, err := mysql.NewConnector(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	db := sql.OpenDB(conector)
 	defer db.Close()
 	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
 
-	repo := mysqladapter.Nuevo(db)
-	router := httpadapter.Nuevo(application.Nuevo(repo), repo.Ready, log)
+	// 2. Adaptadores de salida (implementan los puertos).
+	pedidosRepo := mysqladapter.PedidosMySQL{DB: db}
+	carritosRepo := mysqladapter.CarritosMySQL{DB: db}
+	catalogoCliente := catalogo.Nuevo(valor("CATALOGO_URL", "http://catalogo:8082"))
+	inventarioCliente := inventario.Nuevo(valor("INVENTARIO_URL", "http://inventario:8084"))
 
-	ctx, parar := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer parar()
-	srv := &http.Server{Addr: ":" + valor("PORT", "8085"), Handler: router, ReadHeaderTimeout: 3 * time.Second,
-		ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
-	fallos := make(chan error, 1)
-	go func() { fallos <- srv.ListenAndServe() }()
-	log.Info("escuchando", "servicio", "pedidos", "puerto", valor("PORT", "8085"))
-	select {
-	case err := <-fallos:
-		if !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-		return nil
-	case <-ctx.Done():
-		fin, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		return srv.Shutdown(fin)
+	// 3. Casos de uso: reciben las interfaces, no MySQL ni HTTP.
+	pedidosService := application.PedidosService{Repo: pedidosRepo}
+	carritoService := application.CarritoService{
+		Repo:       carritosRepo,
+		Catalogo:   catalogoCliente,
+		Inventario: inventarioCliente,
 	}
-}
 
-func main() {
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	if err := run(log); err != nil {
-		log.Error("Pedidos no pudo continuar; revisar configuración y MySQL", "servicio", "pedidos")
-		os.Exit(1)
+	// 4. Controllers (adaptador de entrada) y rutas.
+	router := httpadapter.Rutas(logger,
+		httpadapter.SaludController{Repo: pedidosRepo},
+		httpadapter.PedidosController{Service: pedidosService},
+		httpadapter.CarritoController{Service: carritoService},
+	)
+
+	// 5. Servidor, con tiempos máximos para no quedar colgado con clientes lentos.
+	puerto := valor("PORT", "8085")
+	servidor := &http.Server{
+		Addr:              ":" + puerto,
+		Handler:           router,
+		ReadHeaderTimeout: 3 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      5 * time.Second,
+	}
+	logger.Info("escuchando", "servicio", "pedidos", "puerto", puerto)
+	if err := servidor.ListenAndServe(); err != nil {
+		log.Fatal(err)
 	}
 }

@@ -10,20 +10,20 @@ import (
 	"ghostkitchen/pedidos/internal/domain"
 )
 
-// repoMemoria imita al de MySQL: GuardarCambio solo guarda si la versión no cambió.
-type repoMemoria struct {
+// PedidosMock simula ser MySQL, pero vive en la RAM (como el ItemsMock de clase): GuardarCambio solo guarda si la versión no cambió.
+type PedidosMock struct {
 	mu      sync.Mutex
 	pedidos map[string]domain.Pedido
 }
 
-func (r *repoMemoria) Crear(_ context.Context, p domain.Pedido) error {
+func (r *PedidosMock) Crear(_ context.Context, p domain.Pedido) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.pedidos[p.ID] = p
 	return nil
 }
 
-func (r *repoMemoria) Obtener(_ context.Context, id string) (domain.Pedido, error) {
+func (r *PedidosMock) Obtener(_ context.Context, id string) (domain.Pedido, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	p, ok := r.pedidos[id]
@@ -34,7 +34,7 @@ func (r *repoMemoria) Obtener(_ context.Context, id string) (domain.Pedido, erro
 	return p, nil
 }
 
-func (r *repoMemoria) GuardarCambio(_ context.Context, p domain.Pedido, c domain.CambioEstado) error {
+func (r *PedidosMock) GuardarCambio(_ context.Context, p domain.Pedido, c domain.CambioEstado) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.pedidos[p.ID].Version != c.Version-1 {
@@ -44,23 +44,23 @@ func (r *repoMemoria) GuardarCambio(_ context.Context, p domain.Pedido, c domain
 	return nil
 }
 
-func (r *repoMemoria) Ready(context.Context) error { return nil }
+func (r *PedidosMock) Ready(context.Context) error { return nil }
 
 var (
 	cliente = domain.Actor{UsuarioID: "u-cliente", Rol: domain.RolCliente}
 	cocina  = domain.Actor{UsuarioID: "u-cocina", Rol: domain.RolCocina, CocinaID: "cerro"}
 )
 
-func entorno(t *testing.T) (*Pedidos, *repoMemoria) {
+func entorno(t *testing.T) (PedidosService, *PedidosMock) {
 	t.Helper()
-	repo := &repoMemoria{pedidos: map[string]domain.Pedido{}}
+	repo := &PedidosMock{pedidos: map[string]domain.Pedido{}}
 	p, err := domain.NuevoPedido("ped-1", cliente, "c@ejemplo.com", "cerro",
 		[]domain.Item{{PlatoID: "p17", Nombre: "Burger", RestauranteID: "r5", PrecioUnitario: 12000, Cantidad: 1}}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = repo.Crear(context.Background(), p)
-	return Nuevo(repo), repo
+	return PedidosService{Repo: repo}, repo
 }
 
 func TestCambiarEstadoGuardaElCambio(t *testing.T) {

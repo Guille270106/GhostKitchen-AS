@@ -28,10 +28,18 @@ const (
 )
 
 // siguienteDeCocina es el recorrido que hace la cocina con "avanzar".
-var siguienteDeCocina = map[Estado]Estado{
-	EstadoAceptado:      EstadoEnPreparacion,
-	EstadoEnPreparacion: EstadoListo,
-	EstadoListo:         EstadoEnCamino,
+// Devuelve false si desde ese estado la cocina no puede avanzar.
+func siguienteDeCocina(actual Estado) (Estado, bool) {
+	switch actual {
+	case EstadoAceptado:
+		return EstadoEnPreparacion, true
+	case EstadoEnPreparacion:
+		return EstadoListo, true
+	case EstadoListo:
+		return EstadoEnCamino, true
+	default:
+		return "", false
+	}
 }
 
 // Final indica si el pedido ya no puede cambiar.
@@ -193,7 +201,7 @@ func (p *Pedido) Avanzar(a Actor, ahora time.Time) (CambioEstado, error) {
 	if err := p.autorizarCocina(a); err != nil {
 		return CambioEstado{}, err
 	}
-	siguiente, ok := siguienteDeCocina[p.Estado]
+	siguiente, ok := siguienteDeCocina(p.Estado)
 	if !ok {
 		return CambioEstado{}, ErrTransicionInvalida
 	}
