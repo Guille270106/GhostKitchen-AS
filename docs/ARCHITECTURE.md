@@ -399,7 +399,7 @@ Reglas del contrato:
 | Guía para el otro grupo | [docs/contracts/README.md](contracts/README.md) |
 | Mock que ya funciona | `docker compose up` (servicio `contract-mock`) → `http://localhost:4010/v1/sedes` |
 | Versión real (local) | `http://localhost:8080/public/v1/...`, a través del gateway, desde la Entrega 2 |
-| Versión real (nube) | La atiende Búsqueda y la subimos en la Entrega 2 |
+| Versión real (nube) | La atiende Búsqueda en Azure: `https://57-156-56-219.sslip.io/public` ([infra/nube](../infra/nube/README.md)) |
 | Por qué la elegimos | [ADR-008](adr/ADR-008-contrato-propio.md) |
 
 Lo pusimos en Búsqueda porque ya tiene la ubicación de las sedes y los platos con su disponibilidad, y así las consultas de otro grupo no compiten con las reservas y los pedidos (Clase 5). Los datos de cada sede (tiempo de entrega, costo de envío) y la foto de cada plato vienen de Catálogo, por los mismos mensajes que actualizan la búsqueda.
@@ -454,7 +454,7 @@ En local, Docker Compose levantará frontend, gateway, servicios y sus dependenc
 
 Solo el gateway y las herramientas de monitoreo quedan accesibles desde fuera de Docker: ningún microservicio se puede llamar sin pasar por el gateway.
 
-**En la nube**, para la API publicada alcanza con el gateway, Búsqueda, Solr, Catálogo y MongoDB. Para la presentación final, la primera estimación es una máquina virtual de 2 vCPU y 4 GB corriendo Docker Compose (unos USD 24 por mes); el detalle está en el [ADR-013](adr/ADR-013-capacidad-y-costos.md).
+**En la nube** corre solo la API publicada: Caddy (HTTPS con Let's Encrypt), el gateway, Búsqueda, Solr, las 2 copias de Catálogo, MongoDB y Memcached, en una máquina virtual de Azure for Students (Chile Central, 2 vCPU y 4 GB, unos USD 38 por mes prendida) con Docker Compose: es la misma configuración que en local más `docker-compose.nube.yml`. URL pública: `https://57-156-56-219.sslip.io/public`. Los pasos y las decisiones están en [infra/nube](../infra/nube/README.md); los costos, en el [ADR-013](adr/ADR-013-capacidad-y-costos.md).
 
 ## 12. Lo que viene en las próximas entregas
 

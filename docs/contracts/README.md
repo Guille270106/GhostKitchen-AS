@@ -15,7 +15,7 @@ Es **solo de lectura**: desde afuera no se puede reservar, tocar el stock ni cre
 | **Versión vigente** | `1.1.0` (ruta `/v1`) |
 | **Contrato** | [`v1/openapi.yaml`](v1/openapi.yaml) (OpenAPI 3.0.3) |
 | **Mock** | `http://localhost:4010` (ver [Probar sin esperar al backend](#probar-sin-esperar-al-backend-mock)) |
-| **URL pública** | Se publica en la Entrega 2 (23/10/2026) y se agrega acá y en `servers` del contrato |
+| **URL pública** | `https://57-156-56-219.sslip.io/public` (con HTTPS). La API key se pide por privado |
 | **Historial** | [CHANGELOG.md](CHANGELOG.md) |
 | **Decisión de diseño** | [ADR-008](../adr/ADR-008-contrato-propio.md) |
 | **Responsable** | Lucía Rucci (ver [Contacto](#contacto)) |
@@ -26,6 +26,7 @@ Es **solo de lectura**: desde afuera no se puede reservar, tocar el stock ni cre
 | --- | --- | --- |
 | Mock local | `http://localhost:4010` | Ya disponible |
 | Nuestro sistema en local, detrás del gateway | `http://localhost:8080/public` | Entrega 2 |
+| **Producción en la nube** | `https://57-156-56-219.sslip.io/public` | Ya disponible |
 | Nube | *se agrega acá* | Entrega 2 |
 
 Todas las rutas empiezan con la versión: `{URL base}/v1/...`

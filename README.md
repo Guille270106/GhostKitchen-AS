@@ -114,6 +114,7 @@ Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedor
 | Servicio | URL |
 | --- | --- |
 | Capacidad publicada (real, Entrega 2) | http://localhost:8080/public/v1/sedes (header `X-API-Key` con una clave de `PUBLIC_API_KEYS`) |
+| Capacidad publicada en la nube | https://57-156-56-219.sslip.io/public/v1/sedes (con la API key del grupo; ver [infra/nube](infra/nube/README.md)) |
 | Mock de la capacidad publicada | http://localhost:4010/v1/sedes (header `X-API-Key` con cualquier valor) |
 | Lecturas de Catálogo para el frontend | http://localhost:8080/api/v1/cocinas |
 | Panel de Solr (desarrollo) | http://localhost:8983 |
