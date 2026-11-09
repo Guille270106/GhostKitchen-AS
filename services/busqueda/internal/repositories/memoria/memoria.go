@@ -166,3 +166,67 @@ func contiene(lista []string, v string) bool {
 	}
 	return false
 }
+
+// CambiarSede lee la sede, llama a cambiar y guarda el resultado (repositories.Actualizador).
+// En memoria alcanza con el candado: nadie más escribe mientras tanto.
+func (r *Repositorio) CambiarSede(_ context.Context, id string, cambiar func(domain.Sede, bool) (domain.Sede, bool, error)) error {
+	if r.Falla != nil {
+		return r.Falla
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	actual, existe := r.sedes[id]
+	nueva, guardar, err := cambiar(actual, existe)
+	if err == nil && guardar {
+		r.sedes[id] = nueva
+	}
+	return err
+}
+
+// CambiarPlato es lo mismo que CambiarSede, para un plato.
+func (r *Repositorio) CambiarPlato(_ context.Context, id string, cambiar func(domain.Plato, bool) (domain.Plato, bool, error)) error {
+	if r.Falla != nil {
+		return r.Falla
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	actual, existe := r.platos[id]
+	nuevo, guardar, err := cambiar(actual, existe)
+	if err == nil && guardar {
+		r.platos[id] = nuevo
+	}
+	return err
+}
+
+// IDsPlatosDeSede devuelve los ids de los platos de la sede, activos o no, ordenados.
+func (r *Repositorio) IDsPlatosDeSede(_ context.Context, sedeID string) ([]string, error) {
+	if r.Falla != nil {
+		return nil, r.Falla
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var ids []string
+	for id, p := range r.platos {
+		if p.Sede.ID == sedeID {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids, nil
+}
+
+// Plato devuelve el plato guardado aunque esté inactivo (para los tests).
+func (r *Repositorio) Plato(id string) (domain.Plato, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, ok := r.platos[id]
+	return p, ok
+}
+
+// Sede devuelve la sede guardada aunque esté inactiva (para los tests).
+func (r *Repositorio) Sede(id string) (domain.Sede, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	s, ok := r.sedes[id]
+	return s, ok
+}

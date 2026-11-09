@@ -97,7 +97,7 @@ func Leer(ahora time.Time) ([]domain.Sede, []domain.Plato, error) {
 		platos = append(platos, domain.Plato{
 			ID: p.ID, Nombre: p.Nombre, Descripcion: p.Descripcion, Categoria: p.Categoria,
 			Etiquetas: etq, Precio: p.Precio, Moneda: "ARS", Disponible: p.Disponible,
-			Activo: p.Activo, Restaurante: u.rest, Sede: u.sede, ActualizadoEn: ahora.UTC(),
+			Activo: p.Activo, PlatoActivo: p.Activo, Restaurante: u.rest, Sede: u.sede, ActualizadoEn: ahora.UTC(),
 		})
 	}
 	return sedes, platos, nil

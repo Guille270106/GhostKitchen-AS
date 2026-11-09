@@ -23,6 +23,7 @@ import (
 	"ghostkitchen/busqueda/internal/config"
 	"ghostkitchen/busqueda/internal/handlers"
 	"ghostkitchen/busqueda/internal/indexer"
+	"ghostkitchen/busqueda/internal/mensajeria"
 	"ghostkitchen/busqueda/internal/middleware"
 	"ghostkitchen/busqueda/internal/repositories/solr"
 	"ghostkitchen/busqueda/internal/router"
@@ -56,17 +57,24 @@ func main() {
 	repo := solr.NuevoRepositorio(solr.NuevoCliente(cfg.SolrURL, cfg.SolrTimeout))
 	svc := services.Nueva(repo)
 
-	// De dónde salen los datos del índice: de Catálogo si está configurado (lo normal),
-	// o de los datos iniciales embebidos (para probar Búsqueda sola).
-	// Los datos se piden a la API de Catálogo; Búsqueda nunca lee catalogo_db (ADR-001).
+	// De dónde salen los datos del índice: de Catálogo (y la disponibilidad de Inventario) si
+	// están configurados (lo normal), o de los datos iniciales embebidos (para probar Búsqueda
+	// sola). Los datos se piden a sus API; Búsqueda nunca lee otras bases (ADR-001).
 	var reconstruir func(context.Context) (indexer.Resultado, error)
 	if cfg.CatalogoURL != "" {
+		// Sin INVENTARIO_URL, los platos nuevos usan la tabla provisional de los datos de ejemplo.
+		var inventario indexer.FuenteDisponibilidad
+		if cfg.InventarioURL != "" {
+			inventario = clients.NuevoInventario(cfg.InventarioURL)
+		} else {
+			log.Warn("sin INVENTARIO_URL: la disponibilidad de los platos nuevos sale de la tabla provisional")
+		}
 		dispo, err := seed.DisponibilidadInicial()
 		if err != nil {
 			log.Error("no se pudo leer la disponibilidad inicial", "error", err.Error())
 			os.Exit(1)
 		}
-		rec := indexer.NuevoReconstructor(clients.NuevoCatalogo(cfg.CatalogoURL), repo, dispo)
+		rec := indexer.NuevoReconstructor(clients.NuevoCatalogo(cfg.CatalogoURL), inventario, repo, dispo)
 		reconstruir = func(ctx context.Context) (indexer.Resultado, error) {
 			// El esquema se revisa en cada reconstrucción: si alguien borró y recreó el core,
 			// el índice se vuelve a armar solo (es una copia reconstruible, ADR-003).
@@ -79,8 +87,9 @@ func main() {
 				// X-Correlation-Id y se busca en los logs de todos los servicios, ADR-005) y
 				// trace_id (el de OpenTelemetry, para abrir la traza en Jaeger, ADR-011).
 				traceID, _ := trazas.IDs(ctx)
-				log.Info("índice reconstruido desde Catálogo", "correlation_id", middleware.IDDesdeContexto(ctx),
-					"trace_id", traceID, "sedes", res.Sedes, "platos", res.Platos)
+				log.Info("índice reconstruido", "correlation_id", middleware.IDDesdeContexto(ctx),
+					"trace_id", traceID, "sedes", res.Sedes, "platos", res.Platos,
+					"disponibilidad", res.Disponibilidad, "sin_inventario", res.SinInventario)
 			}
 			return res, err
 		}
@@ -93,7 +102,20 @@ func main() {
 	var listo atomic.Bool
 	ctx, parar := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer parar()
-	go inicializarIndice(ctx, log, repo, cfg.SeedAlIniciar, reconstruir, &listo)
+	go func() {
+		inicializarIndice(ctx, log, repo, cfg.SeedAlIniciar, reconstruir, &listo)
+		// Lector de mensajes (G15). Arranca cuando el índice está listo, para que el esquema ya
+		// tenga los campos de versión. Lo que pasó mientras tanto espera en la cola. Si lee un
+		// mensaje que la reconstrucción ya trajo, la versión hace que no cambie nada.
+		if ctx.Err() != nil {
+			return
+		}
+		if cfg.RabbitMQURL == "" {
+			log.Warn("sin RABBITMQ_URL: el índice solo se actualiza al reconstruirlo")
+			return
+		}
+		mensajeria.NuevoConsumidor(cfg.RabbitMQURL, indexer.NuevoAplicador(repo), log).Correr(ctx)
+	}()
 
 	r := router.Nuevo(log,
 		handlers.NuevoInterno(cfg.APIKeys, repo.Ping, &listo),

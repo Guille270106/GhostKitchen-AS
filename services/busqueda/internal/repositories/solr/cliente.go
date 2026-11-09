@@ -104,6 +104,20 @@ func (c *Cliente) Actualizar(ctx context.Context, core string, docs any) error {
 	return c.hacer(ctx, c.fondo, http.MethodPost, "/"+core+"/update?commit=true", docs, nil)
 }
 
+// ErrConflicto es la respuesta 409 de Solr cuando el documento cambió entre la lectura y la
+// escritura (el _version_ que se mandó ya no es el guardado).
+var ErrConflicto = errors.New("solr: el documento cambió mientras se escribía")
+
+// Escribir agrega o reemplaza documentos sin esperar el commit: Solr los deja visibles en
+// /select en menos de 1 s (commitWithin), y el real-time get ya los ve. Es la escritura del
+// lector de mensajes: un commit por mensaje tardaría casi 1 s cada uno (G15).
+//
+// Si un documento trae _version_, Solr solo lo guarda si coincide con el guardado (o si es -1
+// y no existe); si no, responde 409 y se devuelve ErrConflicto.
+func (c *Cliente) Escribir(ctx context.Context, core string, docs any) error {
+	return c.hacer(ctx, c.fondo, http.MethodPost, "/"+core+"/update?commitWithin=1000", docs, nil)
+}
+
 // Esquema envía comandos a la Schema API.
 func (c *Cliente) Esquema(ctx context.Context, core string, comandos any) error {
 	return c.hacer(ctx, c.fondo, http.MethodPost, "/"+core+"/schema", comandos, nil)
@@ -197,6 +211,9 @@ func (c *Cliente) hacer(ctx context.Context, cli *http.Client, metodo, ruta stri
 	datos, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // tope de 10 MiB para no agotar la memoria
 	if err != nil {
 		return fmt.Errorf("%w: leer respuesta: %v", domain.ErrNoDisponible, err)
+	}
+	if resp.StatusCode == http.StatusConflict {
+		return ErrConflicto
 	}
 	if resp.StatusCode >= 300 {
 		var e errorSolr
