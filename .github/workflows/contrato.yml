@@ -1,0 +1,49 @@
+# Test de contrato de nuestra API publicada (L21, ADR-008), en cada pull request.
+#
+# Levanta la misma configuración que corre en la nube (docker-compose.yml + docker-compose.nube.yml)
+# y le pide cada operación del contrato a través de Prism, que compara las respuestas con
+# docs/contracts/v1/openapi.yaml. Si un cambio rompe el contrato que usa el Grupo 5, el pull
+# request queda en rojo antes de llegar a develop.
+name: Contrato de la API publicada
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop]
+
+jobs:
+  contrato:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Un .env descartable con claves al azar (el mismo script que en la nube). La API key
+      # que crea es la que usa el test; no se imprime.
+      - name: Crear el .env de prueba
+        run: sh infra/nube/crear-env.sh localhost > /dev/null
+
+      - name: Levantar la API publicada y el proxy de Prism
+        run: >
+          docker compose -f docker-compose.yml -f docker-compose.nube.yml -f docker-compose.contrato.yml
+          up -d --build --wait contrato-proxy memcached
+
+      - name: Probar el contrato
+        run: node scripts/contrato/probar-contrato.mjs
+
+      - name: Logs si falló
+        if: failure()
+        run: >
+          docker compose -f docker-compose.yml -f docker-compose.nube.yml -f docker-compose.contrato.yml
+          logs --tail 80 contrato-proxy gateway busqueda catalogo-1
+
+      - name: Bajar todo
+        if: always()
+        run: >
+          docker compose -f docker-compose.yml -f docker-compose.nube.yml -f docker-compose.contrato.yml
+          down -v

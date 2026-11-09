@@ -1,0 +1,28 @@
+# Test de contrato de nuestra API publicada (L21). Se usa junto con docker-compose.yml y
+# docker-compose.nube.yml, así se prueba exactamente lo que se despliega en la nube:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.nube.yml -f docker-compose.contrato.yml \
+#     up -d --build --wait contrato-proxy memcached
+#   node scripts/contrato/probar-contrato.mjs
+#
+# contrato-proxy es Prism en modo proxy: reenvía cada solicitud al gateway y compara la respuesta
+# con docs/contracts/v1/openapi.yaml. Si no cumple el contrato (falta un campo, un tipo distinto,
+# un código no documentado), responde 500 con la lista de diferencias y el test falla.
+services:
+  contrato-proxy:
+    image: stoplight/prism:5
+    container_name: ghostkitchen-contrato-proxy
+    command: proxy -h 0.0.0.0 -p 4010 -m false --errors /contrato/v1/openapi.yaml http://gateway:8080/public
+    volumes:
+      - ./docs/contracts:/contrato:ro
+    ports:
+      - "4020:4010"
+    depends_on:
+      gateway:
+        condition: service_started
+
+  # El test también llama directo al gateway, para los errores que Prism no deja pasar (por
+  # ejemplo, sin API key Prism responde 401 sin preguntarle a nuestra API).
+  gateway:
+    ports:
+      - "8080:8080"

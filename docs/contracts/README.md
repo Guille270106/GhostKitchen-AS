@@ -302,6 +302,17 @@ Son comprobaciones de ejemplos y validación de solicitudes; no sustituyen los f
 3. Hagan que el test falle si la versión pasa a `2.x`, porque eso significa que algo cambió de forma incompatible.
 4. En proximidad prueben cuerpos válidos, coordenadas/radio/campos/booleano inválidos y 413. En la implementación real, verifiquen distancia cliente-sede, límite inclusivo, resultados independientes, false sin Solr, cocina cerca del cliente y falla de Solr.
 
+## Cómo cuidamos que no cambie
+
+En **cada pull request** de nuestro repositorio corre un test de contrato (`.github/workflows/contrato.yml`). Levanta la misma configuración que está en la nube y le pide cada operación a la API real a través de Prism, que compara cada respuesta con `v1/openapi.yaml`. Si un cambio nuestro rompiera algo de lo que ustedes usan (un campo que falta, un tipo distinto, un código no documentado), el pull request queda en rojo y no llega a la URL pública.
+
+Para correrlo en local (desde la raíz del repositorio, con un `.env` que tenga `DOMINIO_PUBLICO` y `PUBLIC_API_KEYS`):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.nube.yml -f docker-compose.contrato.yml up -d --build --wait contrato-proxy memcached
+node scripts/contrato/probar-contrato.mjs
+```
+
 ## Versiones
 
 - La versión grande va en la ruta (`/v1`) y el número completo en `info.version` (`1.0.0`, `1.1.0`…).
