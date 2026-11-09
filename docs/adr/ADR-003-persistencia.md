@@ -130,7 +130,7 @@ Así cumplimos con una base **relacional (MySQL)** y una **no relacional (MongoD
 
 **Lo que cambió o se posterga:**
 
-- **Replica set de MongoDB:** todavía no hace falta. El límite de 4 restaurantes se controla en una sola operación sobre el documento, y Catálogo no usa transacciones. Lo activamos cuando sumemos el *outbox*, que sí necesita guardar el cambio y el mensaje juntos.
+- **Replica set de MongoDB:** activado en G10, de un solo miembro (`rs0`), para el *outbox* de Catálogo (G13), que guarda el cambio y el mensaje en una misma transacción. El límite de 4 restaurantes sigue sin necesitar transacciones: se controla en una sola operación sobre el documento. Un solo miembro no da alta disponibilidad (si MongoDB cae, Catálogo no escribe); lo aceptamos para el alcance del TP.
 - **Memcached:** se suma con la caché ([ADR-007](ADR-007-cache.md)).
 - **Zonas en Solr:** todavía no; la cocina más cercana usa la ubicación de las cocinas.
 - **MySQL (Inventario, Pedidos, Usuarios) y MongoDB de Notificaciones:** no están implementados. La prueba de reservas al mismo tiempo, que era la validación principal de MySQL, pasa a cuando exista Inventario y se define junto con la consistencia ([ADR-004](README.md)).
