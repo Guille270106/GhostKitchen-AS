@@ -109,19 +109,21 @@ func (c *Cliente) Get(ctx context.Context, core, id string) (json.RawMessage, er
 	return r.Doc, nil
 }
 
-// Actualizar agrega o reemplaza documentos (por id) y hace commit, para que lo guardado ya
-// aparezca en /select. Como se reemplaza por id, guardar dos veces lo mismo no duplica nada.
-func (c *Cliente) Actualizar(ctx context.Context, core string, docs any) error {
-	return c.hacer(ctx, c.fondo, http.MethodPost, "/"+core+"/update?commit=true", docs, nil)
+// Confirmar hace commit en un core: lo escrito con Escribir aparece en /select ya, sin
+// esperar el segundo de commitWithin. Se usa al terminar de armar el índice (para que /ready
+// diga "listo" con todo visible) y antes de listar los platos de una cocina (G22).
+func (c *Cliente) Confirmar(ctx context.Context, core string) error {
+	return c.hacer(ctx, c.fondo, http.MethodPost, "/"+core+"/update?commit=true", []any{}, nil)
 }
 
 // ErrConflicto es la respuesta 409 de Solr cuando el documento cambió entre la lectura y la
 // escritura (el _version_ que se mandó ya no es el guardado).
 var ErrConflicto = errors.New("solr: el documento cambió mientras se escribía")
 
-// Escribir agrega o reemplaza documentos sin esperar el commit: Solr los deja visibles en
-// /select en menos de 1 s (commitWithin), y el real-time get ya los ve. Es la escritura del
-// lector de mensajes: un commit por mensaje tardaría casi 1 s cada uno (G15).
+// Escribir agrega o reemplaza documentos (por id) sin esperar el commit: Solr los deja
+// visibles en /select en menos de 1 s (commitWithin), y el real-time get ya los ve. Un commit
+// por escritura tardaba casi 1 s cada uno (G15, G22). Como se reemplaza por id, guardar dos
+// veces lo mismo no duplica nada.
 //
 // Si un documento trae _version_, Solr solo lo guarda si coincide con el guardado (o si es -1
 // y no existe); si no, responde 409 y se devuelve ErrConflicto.

@@ -102,3 +102,34 @@ func TestIDsPlatosDeSedeHaceCommitYFiltra(t *testing.T) {
 		t.Fatalf("%s %s", sf.pedidos[0].URL, sf.pedidos[1].URL)
 	}
 }
+
+// /ready revisa los dos cores: si falta uno, Búsqueda no está lista (G22).
+func TestPingRevisaLosDosCores(t *testing.T) {
+	repo, sf := nuevoSolrFalso(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/solr/platos/") {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"error":{"msg":"Core not found"}}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"response":{"numFound":4,"docs":[]}}`)
+	})
+	if err := repo.Ping(context.Background()); err == nil {
+		t.Fatal("sin el core platos, Ping tenía que fallar")
+	}
+	if len(sf.pedidos) != 2 || sf.pedidos[1].URL.Path != "/solr/platos/select" {
+		t.Fatalf("tenía que consultar los dos cores: %d pedidos", len(sf.pedidos))
+	}
+}
+
+func TestConfirmarHaceCommitEnLosDosCores(t *testing.T) {
+	repo, sf := nuevoSolrFalso(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{}`)
+	})
+	if err := repo.Confirmar(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(sf.pedidos) != 2 || sf.pedidos[0].URL.Path != "/solr/cocinas/update" || sf.pedidos[1].URL.Path != "/solr/platos/update" ||
+		sf.pedidos[1].URL.Query().Get("commit") != "true" {
+		t.Fatalf("%v", sf.pedidos)
+	}
+}

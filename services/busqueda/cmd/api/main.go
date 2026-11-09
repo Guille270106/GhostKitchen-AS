@@ -83,6 +83,10 @@ func main() {
 			}
 			res, err := rec.Reconstruir(ctx)
 			if err == nil {
+				// Lo escrito queda visible ya, sin esperar el segundo de commitWithin (G22).
+				err = repo.Confirmar(ctx)
+			}
+			if err == nil {
 				// Se registran los dos ids: correlation_id (el nuestro, viaja en
 				// X-Correlation-Id y se busca en los logs de todos los servicios, ADR-005) y
 				// trace_id (el de OpenTelemetry, para abrir la traza en Jaeger, ADR-011).
@@ -102,8 +106,14 @@ func main() {
 	var listo atomic.Bool
 	ctx, parar := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer parar()
+	// Una sola reconstrucción a la vez, venga del arranque o de POST /internal/reindexar (G22).
+	var excl *indexer.Exclusiva
+	if reconstruir != nil {
+		excl = indexer.NuevaExclusiva(reconstruir)
+	}
+
 	go func() {
-		inicializarIndice(ctx, log, repo, cfg.SeedAlIniciar, reconstruir, &listo)
+		inicializarIndice(ctx, log, repo, cfg.SeedAlIniciar, excl, &listo)
 		// Lector de mensajes (G15). Arranca cuando el índice está listo, para que el esquema ya
 		// tenga los campos de versión. Lo que pasó mientras tanto espera en la cola. Si lee un
 		// mensaje que la reconstrucción ya trajo, la versión hace que no cambie nada.
@@ -119,7 +129,7 @@ func main() {
 
 	r := router.Nuevo(log,
 		handlers.NuevoInterno(cfg.APIKeys, repo.Ping, &listo),
-		handlers.NuevoReindexar(reconstruir),
+		handlers.NuevoReindexar(excl),
 		handlers.NuevoPublico(svc),
 	)
 	srv := &http.Server{
@@ -154,10 +164,10 @@ func main() {
 // Búsqueda en arrancar, y sin índice el servicio no puede atender. La espera se duplica
 // en cada intento para no insistir sobre una dependencia que todavía está levantando (ADR-010).
 func inicializarIndice(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, conSeed bool,
-	reconstruir func(context.Context) (indexer.Resultado, error), listo *atomic.Bool) {
+	excl *indexer.Exclusiva, listo *atomic.Bool) {
 	espera := time.Second
 	for intento := 1; ; intento++ {
-		err := preparar(ctx, log, repo, conSeed, reconstruir)
+		err := preparar(ctx, log, repo, conSeed, excl)
 		if err == nil {
 			listo.Store(true)
 			log.Info("índice listo", "intentos", intento)
@@ -181,7 +191,7 @@ func siguienteEspera(actual time.Duration) time.Duration {
 // preparar hace un intento de armar el índice: desde Catálogo si hay CATALOGO_URL; si no,
 // con los datos iniciales (conSeed) o dejando solo el esquema.
 func preparar(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, conSeed bool,
-	reconstruir func(context.Context) (indexer.Resultado, error)) error {
+	excl *indexer.Exclusiva) error {
 	// Cada intento tiene su propio correlation_id ("inicio-..."), para encontrar en los logs
 	// de Búsqueda y de Catálogo todo lo que hizo ese arranque. El plazo de 60 s es mucho más
 	// largo que los 3 s de una pantalla porque es trabajo de fondo: nadie lo está esperando,
@@ -192,8 +202,9 @@ func preparar(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, con
 	c, span := trazas.Tracer().Start(c, "preparar índice al iniciar")
 	defer span.End()
 	trazas.MarcarCorrelacion(c, middleware.IDDesdeContexto(c))
-	if reconstruir != nil {
-		_, err := reconstruir(c)
+	if excl != nil {
+		// Si justo corre una reconstrucción manual, espera a que termine y arma la suya.
+		_, err := excl.Esperar(c)
 		return err
 	}
 	if !conSeed {
@@ -204,5 +215,7 @@ func preparar(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, con
 		return err
 	}
 	log.Info("datos iniciales cargados", "sedes", sedes, "platos", platos)
-	return nil
+	// Las escrituras no esperan el commit (G22): se confirma al final, así /ready dice
+	// "listo" con todo visible en las búsquedas.
+	return repo.Confirmar(c)
 }

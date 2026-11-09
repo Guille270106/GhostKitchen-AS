@@ -205,7 +205,7 @@ func TestGuardarPlatosArmaLosDocumentos(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sf.pedidos[0].URL.Path != "/solr/platos/update" || sf.pedidos[0].URL.Query().Get("commit") != "true" {
+	if q := sf.pedidos[0].URL.Query(); sf.pedidos[0].URL.Path != "/solr/platos/update" || q.Get("commitWithin") != "1000" || q.Get("commit") != "" {
 		t.Fatalf("%s", sf.pedidos[0].URL)
 	}
 	if !strings.Contains(sf.cuerpos[0], `"cocina_id":"nueva-cordoba"`) || !strings.Contains(sf.cuerpos[0], `"actualizado_en":"2026-10-16T15:00:00Z"`) {
