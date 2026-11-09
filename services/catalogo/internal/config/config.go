@@ -23,6 +23,8 @@ type Config struct {
 	RabbitMQURL     string        // RABBITMQ_URL (sin valor por defecto): donde se publican los eventos del outbox
 	CacheHabilitada bool          // CACHE_HABILITADA (true): para medir con y sin caché (ADR-007)
 	MemcachedAddr   string        // MEMCACHED_ADDR (memcached:11211)
+	Instancia       string        // INSTANCIA (el nombre del host): qué copia es (catalogo-1, catalogo-2)
+	PublicarOutbox  bool          // PUBLICAR_OUTBOX (true): solo una copia publica el outbox (G17)
 }
 
 // Cargar lee las variables de entorno con sus valores por defecto.
@@ -37,6 +39,8 @@ func Cargar() Config {
 		RabbitMQURL:     valor("RABBITMQ_URL", ""),
 		CacheHabilitada: valor("CACHE_HABILITADA", "true") == "true",
 		MemcachedAddr:   valor("MEMCACHED_ADDR", "memcached:11211"),
+		Instancia:       valor("INSTANCIA", nombreHost()),
+		PublicarOutbox:  valor("PUBLICAR_OUTBOX", "true") == "true",
 	}
 }
 
@@ -52,4 +56,9 @@ func entero(clave string, porDefecto int) int {
 		return n
 	}
 	return porDefecto
+}
+
+func nombreHost() string {
+	h, _ := os.Hostname()
+	return h
 }

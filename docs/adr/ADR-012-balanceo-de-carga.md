@@ -1,6 +1,6 @@
 # ADR-012 — Balanceo de carga
 
-- **Estado:** Propuesta. En la Entrega 2 Catálogo corre con una copia; las 2 copias se suman junto con la caché
+- **Estado:** Aceptada. Implementada en G17: `catalogo-1` y `catalogo-2`, con la caché compartida de G16
 - **Fecha:** 2026-10-16
 - **Responsable:** Guillermina Sánchez
 - **Decisión del enunciado:** D12 (qué servicio se balancea, cómo se reparte el tráfico, cómo se verifica que una instancia está disponible y qué pasa si se cae una)
@@ -57,6 +57,14 @@ proxy_next_upstream_timeout 3s;
 
 - El log del gateway ya registra `upstream` (la copia que atendió). Cada copia de Catálogo también va a registrar su nombre (`INSTANCIA`).
 - En el tablero: solicitudes por copia y estado de cada una. En la demo, apagamos `catalogo-1` con `docker compose stop catalogo-1` durante una prueba de carga y mostramos que no hay errores visibles.
+
+### Cómo quedó implementado (G17)
+
+- **Compose:** `catalogo-1` y `catalogo-2` (la segunda con `extends` de la primera). Cada una tiene `INSTANCIA` con su nombre, que va en cada línea de log y en el header `X-Instancia` de cada respuesta; el log del gateway lo anota como `instancia`.
+- **Las dos responden al nombre `catalogo`** dentro de Docker (alias de red). Búsqueda, Usuarios y Pedidos siguen usando `http://catalogo:8082`: Docker les da las dos direcciones y, si una no contesta, Go prueba con la otra. Así no hizo falta una entrada interna en el gateway.
+- **Gateway:** `upstream catalogo` con las dos copias, `max_fails=3 fail_timeout=10s`, y `proxy_next_upstream error timeout http_502 http_503 http_504` con 2 intentos dentro de 3 s (en `proxy-comun.conf`). NGINX no reenvía POST ni PATCH a la otra copia.
+- **El outbox lo publica una sola copia** (`PUBLICAR_OUTBOX=true` solo en `catalogo-1`): si publicaran las dos, el mismo evento saldría dos veces y en otro orden. Las dos escriben en el mismo outbox. Si `catalogo-1` se cae, los eventos esperan hasta que vuelva; no se pierden.
+- **Probado** con NGINX y dos copias de prueba: por turnos (1, 2, 1, 2…); con `catalogo-1` apagada, 8 de 8 solicitudes con 200 desde `catalogo-2`, **sin ningún error**; al volver, NGINX la suma de nuevo a los 10 s.
 
 ## Alternativas que pensamos
 

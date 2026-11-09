@@ -19,7 +19,7 @@ Un ADR es un archivo donde anotamos **una decisión**: qué elegimos, qué otras
 | [ADR-009](ADR-009-consumo-del-proveedor.md) | D9 — Lo que consumimos de otro grupo | Propuesta (falta que la cátedra asigne el proveedor) | Lucía | 2026-10-16 |
 | [ADR-010](ADR-010-resiliencia.md) | D10 — Qué pasa cuando algo falla | Aceptada | Lucía | 2026-10-16 |
 | [ADR-011](ADR-011-observabilidad.md) | D11 — Monitoreo | Primera versión | Guillermina | 2026-10-16 |
-| [ADR-012](ADR-012-balanceo-de-carga.md) | D12 — Balanceo de carga | Propuesta | Guillermina | 2026-10-16 |
+| [ADR-012](ADR-012-balanceo-de-carga.md) | D12 — Balanceo de carga | Aceptada | Guillermina | 2026-10-16 |
 | [ADR-013](ADR-013-capacidad-y-costos.md) | D13 — Capacidad y costos | Primera versión | Valentina | 2026-10-16 |
 
 **Estados:** Propuesta → Aceptada → Reemplazada u Obsoleta. "Primera versión" quiere decir que el enunciado pide un borrador en esta entrega y la versión validada en la siguiente.
