@@ -1,5 +1,5 @@
 # Solo pruebas: no utiliza .env ni los volúmenes del proyecto.
-#   docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml up -d --build --wait pedidos
+#   docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml up -d --build --wait pedidos comprobantes-mock
 #   docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml run --rm --build pruebas
 #   docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml down -v
 services:
@@ -34,6 +34,13 @@ services:
       interval: 2s
       timeout: 2s
       retries: 30
+  # Mock del grupo proveedor (Grupo 4), desde la copia de su contrato: el test de contrato (L16)
+  # le manda lo que arma nuestro adaptador, y Prism lo valida contra su OpenAPI.
+  comprobantes-mock:
+    image: stoplight/prism:5
+    command: mock -h 0.0.0.0 -p 4010 -m false /contrato/comprobantes-v1.yaml
+    volumes:
+      - ../../../docs/contracts/proveedor:/contrato:ro
   pruebas:
     build:
       context: ../../..
@@ -41,10 +48,13 @@ services:
       target: build
     environment:
       TEST_MYSQL: "1"
+      TEST_PROVEEDOR_URL: http://comprobantes-mock:4010
       CGO_ENABLED: "0"
     command: ["go", "test", "-count=1", "-v", "./..."]
     depends_on:
       pedidos:
         condition: service_healthy
+      comprobantes-mock:
+        condition: service_started
 volumes:
   test-data:
