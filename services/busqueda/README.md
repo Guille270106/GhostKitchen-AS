@@ -52,6 +52,8 @@ Estas mejoras quedan definidas como diseño para implementar y probar desde la E
 
 Las búsquedas normales incluyen los sinónimos configurados. La alternativa aproximada conserva los mismos filtros: cocina, restaurante, categoría, etiqueta, precio y disponibilidad. Con orden por relevancia, las coincidencias directas deben tener prioridad sobre las equivalencias. Con orden por precio, se respeta el orden elegido.
 
+**Palabras a medias (G18):** la última palabra, si tiene al menos 3 letras, también vale como comienzo de palabra: "hambur" encuentra "Hamburguesa" mientras se escribe. Se busca `hambur OR hambur*`, porque el comodín no pasa por la raíz en español ("hamburguesas*" no encontraría nada) y la palabra entera sí. Las anteriores tienen que estar completas.
+
 El autocompletado es una consulta separada: no completa automáticamente el carrito ni reserva stock. Seleccionar una sugerencia ejecuta la búsqueda. Se implementará con campos de prefijos o un mecanismo equivalente de Solr, limitando las solicitudes del frontend mientras la persona escribe. Las sugerencias también conservan el alcance de la cocina y la disponibilidad solicitada, que sigue siendo orientativa.
 
 No se promete reconocer singular y plural, búsquedas por significado ni información nutricional. Esos comportamientos requieren decisiones y datos adicionales.

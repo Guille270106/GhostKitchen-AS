@@ -76,3 +76,31 @@ func Contiene(texto, consulta string) bool {
 	}
 	return true
 }
+
+// MinPrefijo es el largo mínimo de la última palabra para buscarla también como comienzo de
+// palabra. Con menos letras, "ha" encontraría casi todo.
+const MinPrefijo = 3
+
+// ContieneConPrefijo es Contiene, pero la última palabra de la consulta también vale si es el
+// comienzo de una palabra del texto: "hambur" encuentra "Hamburguesa". Es lo que hace Solr con
+// la consulta que arma ParametrosBusqueda ("hambur OR hambur*"): el comodín se compara con
+// las palabras ya reducidas a su raíz, sin quitarle nada a lo escrito.
+func ContieneConPrefijo(texto, consulta string) bool {
+	palabras := strings.FieldsFunc(consulta, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	if len(palabras) == 0 {
+		return true
+	}
+	ultima := sinAcentos(strings.ToLower(palabras[len(palabras)-1]))
+	if !Contiene(texto, strings.Join(palabras[:len(palabras)-1], " ")) {
+		return false
+	}
+	raiz := Raiz(ultima)
+	for _, t := range Terminos(texto) {
+		if t == raiz || (len([]rune(ultima)) >= MinPrefijo && strings.HasPrefix(t, ultima)) {
+			return true
+		}
+	}
+	return false
+}
