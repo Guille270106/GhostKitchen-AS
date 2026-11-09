@@ -189,3 +189,26 @@ func envolver(err error) error {
 	}
 	return fmt.Errorf("%w: %v", domain.ErrNoDisponible, err)
 }
+
+// CrearCocina inserta una cocina nueva. El _id es único: si ya existe, ErrYaExiste.
+func (r *Repositorio) CrearCocina(ctx context.Context, c domain.Cocina) error {
+	_, err := r.cocinas.InsertOne(ctx, c)
+	if mongo.IsDuplicateKeyError(err) {
+		return domain.ErrYaExiste
+	}
+	return envolver(err)
+}
+
+// ReemplazarCocina guarda la cocina entera solo si su versión sigue siendo versionAnterior.
+// El filtro por versión y el reemplazo son una sola operación atómica sobre el documento:
+// si otra solicitud ya la cambió, no coincide ningún documento y no se pisa nada.
+func (r *Repositorio) ReemplazarCocina(ctx context.Context, c domain.Cocina, versionAnterior int64) error {
+	res, err := r.cocinas.ReplaceOne(ctx, bson.D{{Key: "_id", Value: c.ID}, {Key: "version", Value: versionAnterior}}, c)
+	if err != nil {
+		return envolver(err)
+	}
+	if res.MatchedCount == 0 {
+		return domain.ErrConflicto
+	}
+	return nil
+}

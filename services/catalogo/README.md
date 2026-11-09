@@ -2,7 +2,7 @@
 
 **Responsable:** Guillermina Sánchez.
 
-> **Entrega 2:** funcionando como **fuente de verdad** de cocinas, restaurantes y platos sobre **MongoDB** (`catalogo_db`, con usuario propio). Al arrancar carga los datos iniciales que falten (4 cocinas, 16 restaurantes, 64 platos) sin pisar cambios. Expone las lecturas para el frontend y la lectura interna paginada con la que **Búsqueda arma su índice**, así que lo que devuelve la API publicada sale de esta base. Las altas y modificaciones (admin y cocina), la caché con Memcached, las 2 copias y los mensajes por outbox llegan cuando existan Usuarios y RabbitMQ.
+> **Entrega 2:** funcionando como **fuente de verdad** de cocinas, restaurantes y platos sobre **MongoDB** (`catalogo_db`, con usuario propio). Al arrancar carga los datos iniciales que falten (4 cocinas, 16 restaurantes, 64 platos) sin pisar cambios. Expone las lecturas para el frontend y la lectura interna paginada con la que **Búsqueda arma su índice**, así que lo que devuelve la API publicada sale de esta base. Desde G11, el admin crea y modifica cocinas y restaurantes de su localidad (ver abajo). Las altas de platos de la cocina, la caché con Memcached, las 2 copias y los mensajes por outbox vienen después.
 
 ## Flujo de los datos (Entrega 2)
 
@@ -37,6 +37,26 @@ Dice **qué se vende y a qué precio**. Puerto **8082**, con **2 copias** para r
 - Cada vez que cambia algo, manda un mensaje para que Búsqueda e Inventario se enteren.
 
 **No** guarda recetas ni stock: eso lo maneja [Inventario](../inventario/README.md).
+
+## Escrituras del admin (G11 · HU14, HU16)
+
+El gateway las publica en `/api/v1/admin/cocinas` y verifica el token antes (G9). Catálogo lee quién es de `X-Usuario-Id`, `X-Rol` y `X-Localidad` (que llega codificada para URL) y solo deja pasar a un **admin**, y solo sobre cocinas **de su localidad**.
+
+| Ruta | Para qué | Respuestas |
+| --- | --- | --- |
+| `GET /admin/cocinas` | Las cocinas de su localidad, activas o no, con todos sus restaurantes | `200` |
+| `POST /admin/cocinas` | Crear una cocina. La localidad no se manda: es la del admin. El id sale del nombre ("Cocina Güemes" → `guemes`) | `201` · `400` · `409 COCINA_REPETIDA` |
+| `PATCH /admin/cocinas/{id}` | Cambiar nombre, dirección, ubicación, tiempos, costo de envío o `activa` (desactivar en lugar de borrar, RN19) | `200` · `400` · `403 OTRA_LOCALIDAD` · `404` |
+| `POST /admin/cocinas/{id}/restaurantes` | Sumar un restaurante (`{"nombre": "..."}`) | `201` · `409 RESTAURANTE_REPETIDO` · `409 COCINA_LLENA` |
+| `PATCH /admin/cocinas/{id}/restaurantes/{rid}` | Renombrar, desactivar o reactivar un restaurante | `200` · `404` · `409 RESTAURANTE_REPETIDO` |
+
+Sin identidad, `401`; con otro rol, `403 SIN_PERMISO`. Un campo de más en el cuerpo (por ejemplo `localidad`) da `400`.
+
+**Máximo 4 restaurantes, sin repetir (RN20).** El nombre se compara sin mayúsculas ni acentos ("Café Martínez" = "cafe martinez"). Un restaurante desactivado no se borra, así que sigue ocupando su lugar y su nombre.
+
+**Dos admins al mismo tiempo: concurrencia optimista.** Cada cocina tiene un número de `version`. Para cambiarla, el servicio la lee, aplica las reglas del dominio y la guarda solo si la versión sigue siendo la que leyó (`ReplaceOne` con `_id` y `version` en el filtro, que en MongoDB es una sola operación atómica sobre el documento). Si otra solicitud la cambió en el medio, no se guarda nada y el servicio vuelve a empezar con la versión nueva (hasta 3 veces; después, `409 CONFLICTO`). Así las reglas siempre se controlan sobre lo último guardado: con 10 solicitudes a la vez sobre una cocina con 2 restaurantes, entran exactamente 2 (`TestNoSePasaDeCuatroConSolicitudesALaVez`). La misma `version` es la que usará Búsqueda para no guardar un dato viejo encima de uno nuevo.
+
+**Hasta G15**, Búsqueda se entera de estos cambios recién cuando reconstruye su índice (al arrancar). Con G13 y G15 se va a enterar por mensajes.
 
 ## Qué datos guarda (MongoDB)
 

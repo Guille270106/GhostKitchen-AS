@@ -67,7 +67,9 @@ func main() {
 	repo := repomongo.Nuevo(cliente, cfg.MongoBase)
 	go prepararBase(ctx, log, repo, cfg.SeedAlIniciar)
 
-	r := router.Nuevo(log, handlers.Nuevo(services.Nuevo(repo), repo.Ping))
+	r := router.Nuevo(log,
+		handlers.Nuevo(services.Nuevo(repo), repo.Ping),
+		handlers.NuevoAdmin(services.NuevoAdmin(repo, repo)))
 	srv := &http.Server{
 		Addr:              ":" + cfg.Puerto,
 		Handler:           r,

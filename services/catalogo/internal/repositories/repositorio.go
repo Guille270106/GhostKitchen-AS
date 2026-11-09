@@ -34,3 +34,18 @@ type Repositorio interface {
 	// Ping verifica que la base responde.
 	Ping(ctx context.Context) error
 }
+
+// Escritor son las escrituras del admin y de la cocina sobre Catálogo (G11, G12).
+//
+// Las cocinas se cambian con concurrencia optimista: el servicio lee la cocina, aplica las
+// reglas del dominio (4 restaurantes, sin repetir) y guarda la cocina entera solo si su
+// versión sigue siendo la que leyó. Si otra solicitud la cambió en el medio, la base no
+// guarda nada (domain.ErrConflicto) y el servicio vuelve a empezar con la versión nueva.
+// Así dos admins que agregan el quinto restaurante a la vez no pueden pasar los dos.
+type Escritor interface {
+	// CrearCocina guarda una cocina nueva. Si el id ya existe, domain.ErrYaExiste.
+	CrearCocina(ctx context.Context, c domain.Cocina) error
+	// ReemplazarCocina guarda c solo si la versión guardada es versionAnterior.
+	// Si no coincide (o la cocina no existe), domain.ErrConflicto.
+	ReemplazarCocina(ctx context.Context, c domain.Cocina, versionAnterior int64) error
+}

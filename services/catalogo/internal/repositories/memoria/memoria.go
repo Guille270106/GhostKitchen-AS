@@ -15,6 +15,8 @@ type Repositorio struct {
 	cocinas map[string]domain.Cocina
 	platos  map[string]domain.Plato
 	Falla   error
+	// AntesDeReemplazar simula una escritura concurrente (ver ReemplazarCocina).
+	AntesDeReemplazar func()
 }
 
 // Nuevo crea un repositorio vacío.
@@ -47,7 +49,7 @@ func (r *Repositorio) ObtenerCocina(_ context.Context, id string) (domain.Cocina
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	c, ok := r.cocinas[id]
-	return c, ok, nil
+	return copiaCocina(c), ok, nil
 }
 
 // ListarPlatosDeCocina devuelve los platos activos de una cocina, ordenados por id.
@@ -138,4 +140,52 @@ func (r *Repositorio) Guardar(c *domain.Cocina, p *domain.Plato) {
 	if p != nil {
 		r.platos[p.ID] = *p
 	}
+}
+
+// CrearCocina guarda una cocina nueva, igual que la versión de MongoDB.
+func (r *Repositorio) CrearCocina(_ context.Context, c domain.Cocina) error {
+	if r.Falla != nil {
+		return r.Falla
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ya := r.cocinas[c.ID]; ya {
+		return domain.ErrYaExiste
+	}
+	r.cocinas[c.ID] = copiaCocina(c)
+	return nil
+}
+
+// ReemplazarCocina guarda la cocina solo si su versión es versionAnterior. AntesDeReemplazar,
+// si no es nil, se llama justo antes de comparar: un test lo usa para simular que otra
+// solicitud cambió la cocina en el medio.
+func (r *Repositorio) ReemplazarCocina(_ context.Context, c domain.Cocina, versionAnterior int64) error {
+	if r.Falla != nil {
+		return r.Falla
+	}
+	r.mu.Lock()
+	f := r.AntesDeReemplazar
+	r.AntesDeReemplazar = nil
+	r.mu.Unlock()
+	if f != nil {
+		f()
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	actual, ok := r.cocinas[c.ID]
+	if !ok || actual.Version != versionAnterior {
+		return domain.ErrConflicto
+	}
+	r.cocinas[c.ID] = copiaCocina(c)
+	return nil
+}
+
+// copiaCocina copia también la lista de restaurantes. Sin esto, dos solicitudes que leen la
+// misma cocina compartirían la lista y una podría cambiar la de la otra; con MongoDB no pasa,
+// porque cada lectura arma su propia copia.
+func copiaCocina(c domain.Cocina) domain.Cocina {
+	if c.Restaurantes != nil {
+		c.Restaurantes = append([]domain.Restaurante(nil), c.Restaurantes...)
+	}
+	return c
 }

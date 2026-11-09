@@ -14,6 +14,7 @@
 > | --- | --- | --- |
 > | `POST /api/v1/auth/registro` y `POST /api/v1/auth/login` | Usuarios | No. Límite de 10 por minuto por IP (ráfaga de 5), contra quien prueba contraseñas: después, `429` con `Retry-After: 6` |
 > | `POST /api/v1/admin/cuentas-cocina` | Usuarios | Sí (Usuarios además controla que sea admin) |
+> | `/api/v1/admin/cocinas[/{id}[/restaurantes[/{rid}]]]` (G11) | Catálogo | Sí (Catálogo controla que sea admin y que la cocina sea de su localidad) |
 > | `/api/v1/cocina/ingredientes[/{id}]`, `/api/v1/cocina/recetas` y `/api/v1/cocina/platos/{id}/receta` | Inventario | Sí (Inventario controla que sea una cuenta Cocina y su cocina) |
 >
 > Probado con NGINX y Usuarios reales y un servicio de eco en lugar de Inventario: sin token y con token basura da 401; con `X-Rol: admin` inventado llega `X-Rol: cliente`; la cuenta Cocina llega con su `X-Cocina-Id`; con Usuarios apagado o tardando 2 s, 503 a los 300 ms; el login da 429 al pasar el límite. Ningún token aparece en los logs del gateway.
