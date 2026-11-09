@@ -136,11 +136,22 @@ func main() {
 				}
 			}
 		}()
+
+		// 8. Y escucha la cola pedidos.reservas: cuando Inventario avisa que una reserva venció
+		//    (reserva.vencida), el carrito se vacía y queda marcado como vencido (L14).
+		consumidor := &rabbitmq.Consumidor{
+			URL:         url,
+			Cola:        "pedidos.reservas",
+			Manejar:     rabbitmq.ReservaVencida(carritoService),
+			Log:         logger,
+			EsperaError: 5 * time.Second,
+		}
+		go consumidor.Escuchar(context.Background())
 	} else {
-		logger.Warn("falta RABBITMQ_URL: los mensajes quedan en el outbox sin publicar")
+		logger.Warn("falta RABBITMQ_URL: los mensajes quedan en el outbox sin publicar y no se escuchan vencimientos")
 	}
 
-	// 8. Servidor, con tiempos máximos para no quedar colgado con clientes lentos.
+	// 9. Servidor, con tiempos máximos para no quedar colgado con clientes lentos.
 	puerto := valor("PORT", "8085")
 	servidor := &http.Server{
 		Addr:              ":" + puerto,

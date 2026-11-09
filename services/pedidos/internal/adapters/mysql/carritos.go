@@ -8,6 +8,7 @@ import (
 
 	"ghostkitchen/pedidos/internal/domain"
 	driver "github.com/go-sql-driver/mysql"
+	"github.com/google/uuid"
 )
 
 // CarritosMySQL guarda el carrito activo de cada cliente (una fila por cliente).
@@ -20,9 +21,9 @@ func (repo CarritosMySQL) Obtener(ctx context.Context, clienteID string) (domain
 	// 1. La cabecera del carrito.
 	c := domain.Carrito{ClienteID: clienteID, Items: []domain.ItemCarrito{}}
 	var cocina, reserva sql.NullString
-	var vence sql.NullTime
-	err := repo.DB.QueryRowContext(ctx, `SELECT id,cocina_id,reserva_id,vence_en,version FROM carrito WHERE cliente_id=?`,
-		clienteID).Scan(&c.ID, &cocina, &reserva, &vence, &c.Version)
+	var vence, vencio sql.NullTime
+	err := repo.DB.QueryRowContext(ctx, `SELECT id,cocina_id,reserva_id,vence_en,vencio_en,version FROM carrito WHERE cliente_id=?`,
+		clienteID).Scan(&c.ID, &cocina, &reserva, &vence, &vencio, &c.Version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, nil
 	}
@@ -33,6 +34,10 @@ func (repo CarritosMySQL) Obtener(ctx context.Context, clienteID string) (domain
 	if vence.Valid {
 		v := vence.Time
 		c.VenceEn = &v
+	}
+	if vencio.Valid {
+		v := vencio.Time
+		c.VencioEn = &v
 	}
 
 	// 2. Sus platos.
@@ -76,7 +81,7 @@ func (repo CarritosMySQL) Guardar(ctx context.Context, c domain.Carrito, version
 			return err
 		}
 	} else {
-		resultado, err := tx.ExecContext(ctx, `UPDATE carrito SET id=?, cocina_id=?, reserva_id=?, vence_en=?, version=?, actualizado_en=?
+		resultado, err := tx.ExecContext(ctx, `UPDATE carrito SET id=?, cocina_id=?, reserva_id=?, vence_en=?, vencio_en=NULL, version=?, actualizado_en=?
  WHERE cliente_id=? AND version=?`, c.ID, nulo(c.CocinaID), nulo(c.ReservaID), c.VenceEn, c.Version, ahora, c.ClienteID, versionAnterior)
 		if err != nil {
 			return err
@@ -110,4 +115,37 @@ func nulo(s string) any {
 		return nil
 	}
 	return s
+}
+
+// MarcarVencido vacía el carrito que todavía tiene esa reserva, le da otro id y anota cuándo
+// venció. La condición `reserva_id = ?` va en el mismo UPDATE: si el carrito ya no tiene esa
+// reserva (el cliente lo vació, lo confirmó o ya se procesó este aviso), no cambia nada.
+func (repo CarritosMySQL) MarcarVencido(ctx context.Context, carritoID, reservaID string) (bool, error) {
+	tx, err := repo.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	// 1. Buscamos de quién es el carrito (los platos se guardan por cliente).
+	var clienteID string
+	err = tx.QueryRowContext(ctx, `SELECT cliente_id FROM carrito WHERE id=? AND reserva_id=? FOR UPDATE`,
+		carritoID, reservaID).Scan(&clienteID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	// 2. Lo vaciamos con otro id (la próxima reserva es otra) y anotamos que venció.
+	ahora := time.Now().UTC()
+	if _, err := tx.ExecContext(ctx, `UPDATE carrito SET id=?, cocina_id=NULL, reserva_id=NULL, vence_en=NULL,
+ vencio_en=?, version=version+1, actualizado_en=? WHERE cliente_id=?`, uuid.NewString(), ahora, ahora, clienteID); err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM carrito_item WHERE cliente_id=?`, clienteID); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }

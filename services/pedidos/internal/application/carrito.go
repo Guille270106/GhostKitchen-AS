@@ -148,6 +148,7 @@ func (s CarritoService) reservarYGuardar(ctx context.Context, carrito domain.Car
 		return domain.Carrito{}, err
 	}
 
+	carrito.VencioEn = nil // el cliente lo cambió: ya no hace falta avisar que el anterior venció
 	carrito.Version = versionAnterior + 1
 	if err := s.Repo.Guardar(ctx, carrito, versionAnterior); err != nil {
 		return domain.Carrito{}, err
@@ -206,4 +207,16 @@ func validarCliente(actor domain.Actor) error {
 		return domain.ErrSinPermiso
 	}
 	return nil
+}
+
+// ReservaVencida atiende el aviso reserva.vencida de Inventario (L14): la reserva del carrito
+// venció y sus ingredientes ya se liberaron, así que el carrito se vacía y queda marcado como
+// vencido ("Tu carrito venció"). Si el carrito ya no tiene esa reserva, no hace nada: el mismo
+// aviso dos veces, o uno viejo que llega tarde, no cambia nada.
+func (s CarritoService) ReservaVencida(ctx context.Context, reservaID, carritoID string) error {
+	if !domain.IdentificadorValido(reservaID) || !domain.IdentificadorValido(carritoID) {
+		return domain.ErrDatosInvalidos
+	}
+	_, err := s.Repo.MarcarVencido(ctx, carritoID, reservaID)
+	return err
 }
