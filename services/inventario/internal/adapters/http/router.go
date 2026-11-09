@@ -36,7 +36,7 @@ func Nuevo(svc *application.Ingredientes, ready func(context.Context) error, log
 		c.Set("cid", cid)
 		c.Header("X-Correlation-Id", cid)
 		inicio := time.Now()
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(domain.ConCorrelacion(c.Request.Context(), cid), 3*time.Second)
 		defer cancel()
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()

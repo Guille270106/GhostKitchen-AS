@@ -82,6 +82,8 @@ services:
       DB_USER: inventario
       DB_PASSWORD: ${INVENTARIO_DB_PASSWORD:?Completá INVENTARIO_DB_PASSWORD en .env}
       DB_NAME: inventario_db
+      RABBITMQ_USER: ${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}
       PORT: "8084"
       GIN_MODE: release
     expose:
