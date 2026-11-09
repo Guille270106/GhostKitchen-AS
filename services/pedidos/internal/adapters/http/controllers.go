@@ -94,6 +94,12 @@ func (c PedidosController) Avanzar(ctx *gin.Context) {
 	c.cambiarEstado(ctx, application.Avanzar)
 }
 
+// Cancelar: el cliente se arrepiente antes de que la cocina lo acepte (RECIBIDO → CANCELADO).
+// Los ingredientes se devuelven a Inventario en segundo plano (DevolucionService).
+func (c PedidosController) Cancelar(ctx *gin.Context) {
+	c.cambiarEstado(ctx, application.Cancelar)
+}
+
 // ConfirmarEntrega: el cliente avisa que recibió el pedido (EN_CAMINO → ENTREGADO).
 func (c PedidosController) ConfirmarEntrega(ctx *gin.Context) {
 	c.cambiarEstado(ctx, application.ConfirmarEntrega)

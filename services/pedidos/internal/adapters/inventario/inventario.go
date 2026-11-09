@@ -156,7 +156,23 @@ func (i InventarioHTTP) intentar(ctx context.Context, metodo, ruta, clave string
 		// Otro cambio del mismo carrito llegó a la vez.
 		return domain.ErrCarritoModificado
 	default:
-		// 503, OPERACION_EN_PROCESO u otra falla de Inventario.
+		// Un 404 con otro código: no existe (por ejemplo, el consumo de un pedido). Lo demás
+		// (503, OPERACION_EN_PROCESO u otra falla) es que Inventario no está disponible.
+		if resp.StatusCode == http.StatusNotFound {
+			return domain.ErrNoEncontrado
+		}
 		return domain.ErrInventarioCaido
 	}
+}
+
+// Devolver devuelve los ingredientes que se descontaron para un pedido que después se canceló
+// (V10 de Inventario: POST /consumos/{pedidoId}/devolver). Lo llama el proceso de devoluciones,
+// que reintenta en la próxima vuelta; por eso acá se intenta una sola vez.
+// Si Inventario no tiene un descuento de ese pedido (404), no hay nada que devolver.
+func (i InventarioHTTP) Devolver(ctx context.Context, clave, pedidoID string) error {
+	err := i.intentar(ctx, http.MethodPost, "/consumos/"+pedidoID+"/devolver", clave, map[string]any{}, nil)
+	if errors.Is(err, domain.ErrPlatoNoDisponible) {
+		return domain.ErrNoEncontrado // NO_ENCONTRADO: no hay consumo de ese pedido
+	}
+	return err
 }

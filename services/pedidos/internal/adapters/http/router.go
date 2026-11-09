@@ -38,6 +38,7 @@ func Rutas(log *slog.Logger, salud SaludController, pedidos PedidosController, c
 	// Pedidos.
 	router.GET("/pedidos", pedidos.Listar)
 	router.GET("/pedidos/:id", pedidos.Obtener)
+	router.POST("/pedidos/:id/cancelar", pedidos.Cancelar)
 	router.POST("/pedidos/:id/entregado", pedidos.ConfirmarEntrega)
 
 	// Pantalla de pedidos de la cocina.

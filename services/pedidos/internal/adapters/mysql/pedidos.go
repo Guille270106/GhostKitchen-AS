@@ -195,6 +195,14 @@ func (repo PedidosMySQL) GuardarCambio(ctx context.Context, p domain.Pedido, c d
 	if err := insertarHistorial(ctx, tx, p.ID, c); err != nil {
 		return err
 	}
+
+	// 3. Si se canceló (el cliente lo canceló o la cocina lo rechazó), anotamos que hay que
+	//    devolver los ingredientes. Va en la misma transacción: o queda todo o nada (L10).
+	if c.EstadoNuevo == domain.EstadoCancelado {
+		if err := anotarDevolucion(ctx, tx, p.ID, c.OcurridoEn); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 
@@ -204,7 +212,7 @@ func (repo PedidosMySQL) Ready(ctx context.Context) error {
 	return repo.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pedido p
  JOIN pedido_item i ON i.pedido_id=p.id JOIN pedido_historial h ON h.pedido_id=p.id
  JOIN carrito c ON c.cliente_id=p.cliente_id JOIN carrito_item ci ON ci.cliente_id=c.cliente_id
- JOIN confirmacion cf ON cf.pedido_id=p.id WHERE 1=0`).Scan(&n)
+ JOIN confirmacion cf ON cf.pedido_id=p.id JOIN devolucion d ON d.pedido_id=p.id WHERE 1=0`).Scan(&n)
 }
 
 func insertarHistorial(ctx context.Context, tx *sql.Tx, pedidoID string, c domain.CambioEstado) error {

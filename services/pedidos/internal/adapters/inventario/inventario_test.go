@@ -134,3 +134,43 @@ func TestReservaVencidaNoAbreElCircuito(t *testing.T) {
 		}
 	}
 }
+
+func TestDevolverMandaLaClaveALaRutaDelPedido(t *testing.T) {
+	falso := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var cuerpo map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&cuerpo)
+		if r.Method != "POST" || r.URL.Path != "/consumos/ped-1/devolver" || r.Header.Get("Idempotency-Key") != "ped-1-devolver" {
+			t.Errorf("solicitud inesperada: %s %s %v", r.Method, r.URL.Path, cuerpo)
+		}
+		w.Write([]byte(`{}`))
+	}))
+	defer falso.Close()
+	if err := Nuevo(falso.URL).Devolver(context.Background(), "ped-1-devolver", "ped-1"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDevolverConInventarioCaido(t *testing.T) {
+	falso := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer falso.Close()
+	if err := Nuevo(falso.URL).Devolver(context.Background(), "k", "ped-1"); !errors.Is(err, domain.ErrInventarioCaido) {
+		t.Fatal(err)
+	}
+}
+
+// Si Inventario no tiene un descuento de ese pedido (404), no hay nada que devolver.
+func TestDevolverSinConsumoEsNoEncontrado(t *testing.T) {
+	for _, cuerpo := range []string{`{"code":"NO_ENCONTRADO"}`, `{"code":"CONSUMO_NO_ENCONTRADO"}`, ``} {
+		falso := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(cuerpo))
+		}))
+		err := Nuevo(falso.URL).Devolver(context.Background(), "k", "ped-1")
+		falso.Close()
+		if !errors.Is(err, domain.ErrNoEncontrado) {
+			t.Errorf("%q: esperaba ErrNoEncontrado, obtuvo %v", cuerpo, err)
+		}
+	}
+}

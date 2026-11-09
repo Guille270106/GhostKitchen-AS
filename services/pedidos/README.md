@@ -87,7 +87,7 @@ Confirmar toca Pedidos e Inventario, así que no entra en una sola transacción:
 | `409 CARRITO_VACIO` | No hay platos para confirmar |
 | `400 IDEMPOTENCY_KEY_INVALIDA` | Falta el header o no es válido |
 
-**Mientras no exista la V10**, el descuento es simulado: siempre sale bien, pero **no descuenta stock de verdad** (la reserva queda activa y se libera sola cuando venza). Cuando Vale la termine se cambia `CONSUMO_INVENTARIO: real` en `docker-compose.yml`; el adaptador real ya está hecho y probado con un Inventario falso.
+**Descuento real (V10 de Inventario):** `docker-compose.yml` usa `CONSUMO_INVENTARIO: real`, así que confirmar descuenta el stock de verdad (`POST /reservas/{id}/consumir`). Con `simulado` Pedidos no llama a Inventario: siempre sale bien y no descuenta nada (sirve para probar Pedidos solo; los tests de `testdata/` lo usan así).
 
 ## Mis pedidos y confirmar que lo recibí (L11)
 
@@ -122,6 +122,28 @@ Confirmar toca Pedidos e Inventario, así que no entra en una sola transacción:
 - Solo cuentas Cocina (un cliente recibe `403`), y solo los pedidos de **su** cocina: el pedido de otra cocina responde `404`, como si no existiera.
 - Cada acción la decide el pedido (dominio) y se guarda con control de versión: si el cliente cancela mientras la cocina acepta, gana el primero y el otro recibe `409 PEDIDO_MODIFICADO`.
 - Desde `EN_CAMINO` la cocina ya no avanza: lo cierra el cliente al confirmar que lo recibió.
+
+## Cancelar y devolver los ingredientes (L10)
+
+| Ruta (por el gateway) | Qué hace |
+| --- | --- |
+| `POST /api/v1/pedidos/{id}/cancelar` | El cliente cancela su pedido: solo desde `RECIBIDO`, antes de que la cocina lo acepte |
+
+Cuando un pedido pasa a `CANCELADO` (lo cancela el cliente o lo **rechaza la cocina**), hay que devolverle a Inventario lo que se descontó al confirmar:
+
+1. En la **misma transacción** que el cambio de estado se anota una fila en `devolucion` (`PENDIENTE`), si el pedido vino de una confirmación (ahí se descontó el stock). O queda todo o nada: no puede quedar un pedido cancelado sin su devolución anotada.
+2. Un proceso en segundo plano (cada 5 s) la manda a Inventario: `POST /consumos/{pedidoId}/devolver` con `Idempotency-Key: {pedidoId}-devolver`, **siempre la misma clave**, así reintentar no devuelve dos veces (Inventario devuelve exactamente lo que descontó, aunque después cambie la receta).
+3. Si Inventario no contesta, queda `PENDIENTE`, suma un intento y se vuelve a probar en la vuelta siguiente. Si Inventario no tiene un descuento de ese pedido (`404`), no hay nada que devolver y se marca `HECHA`.
+
+| Respuesta | Cuándo |
+| --- | --- |
+| `200` + el pedido en `CANCELADO` | Se canceló. Los ingredientes se devuelven en segundo plano |
+| `409 TRANSICION_INVALIDA` | La cocina ya lo aceptó (o ya estaba cancelado) |
+| `409 PEDIDO_MODIFICADO` | La cocina lo aceptó al mismo tiempo y ganó |
+| `403 SIN_PERMISO` | No es un cliente (la cocina no cancela: rechaza) |
+| `404 PEDIDO_NO_ENCONTRADO` | El pedido no existe o es de otro cliente |
+
+Con `CONSUMO_INVENTARIO: real` (lo que usa `docker-compose.yml`) se llama a la V10 de Inventario. Con `simulado` la devolución también es simulada: como el descuento no fue real, no hay nada que devolver.
 
 ## Probar
 
@@ -167,8 +189,8 @@ La cocina lo avanza hasta EN_CAMINO y el cliente confirma que lo recibió (ENTRE
 | `pedido` | Cliente, copia de su mail, cocina, estado, total y un número de **versión** |
 | `pedido_item` | Cada plato con su nombre, precio, restaurante y cantidad |
 | `pedido_historial` | Cada cambio de estado, cuándo y quién lo hizo |
-| `saga_paso` | En qué paso va cada confirmación o devolución |
-| `idempotencia` · `outbox` · `mensaje_procesado` | Para no repetir operaciones, no perder mensajes y no procesar dos veces el mismo mensaje |
+| `confirmacion` | En qué paso va cada confirmación (la saga), con una copia del carrito |
+| `devolucion` | Los ingredientes a devolver de cada pedido cancelado, y si ya se devolvieron |
 
 ## Cómo se organiza por dentro: hexagonal + DDD
 

@@ -113,9 +113,10 @@ services:
       PORT: "8085"
       CATALOGO_URL: http://catalogo:8082        # precio y cocina del plato
       INVENTARIO_URL: http://inventario:8084    # reservas internas (no pasan por el gateway)
-      # Descuento de stock al confirmar: "simulado" hasta que exista la V10 de Inventario
-      # (POST /reservas/{id}/consumir); después, "real".
-      CONSUMO_INVENTARIO: simulado
+      # Descontar (al confirmar) y devolver (al cancelar) stock con la V10 de Inventario:
+      # POST /reservas/{id}/consumir y POST /consumos/{pedidoId}/devolver. Con "simulado" no llama
+      # a Inventario (sirve para probar Pedidos solo).
+      CONSUMO_INVENTARIO: real
     expose:
       - "8085"
     depends_on:
