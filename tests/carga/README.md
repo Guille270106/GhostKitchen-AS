@@ -26,3 +26,29 @@ Base de trabajo b25025f. k6 0.54.0, Docker con 12 CPU lógicas y 7,54 GiB de RAM
 | Proximidad | 25.673 | 2,16 | 6,79 | 12,89 | 0 |
 
 La corrida alcanzó 100 usuarios virtuales y promedió 310,28 solicitudes por segundo. Cumplió los umbrales de latencia y errores. La prueba corta también pasó con 24 de 24 comprobaciones.
+
+## V19 · 200 clientes por el mismo plato
+
+Usá una instalación local **descartable**, con Gateway, Usuarios, Catálogo, Pedidos e Inventario listos y el seed de Cerro cargado. La preparación crea cuentas de prueba, un ingrediente con 20 unidades y reemplaza la receta de un plato del seed de Cerro. La limpieza se hace descartando los datos del entorno de prueba.
+
+```powershell
+$montaje = "${PWD}/tests/carga:/scripts:ro"
+$env:ADMIN_PASSWORD = Read-Host "Contraseña del admin de Cerro del entorno descartable" -MaskInput
+try {
+    docker run --rm --network ghostkitchen-as_default -v $montaje -e ADMIN_PASSWORD -e ENTORNO_DESCARTABLE=1 grafana/k6:0.54.0 run /scripts/ultimo-plato.js
+} finally {
+    Remove-Item Env:ADMIN_PASSWORD
+}
+```
+
+Ajustá la red al nombre de tu proyecto. Los 200 clientes se registran e inician sesión antes de medir. Durante 10 segundos, k6 inicia 20 solicitudes por segundo al endpoint de carrito del gateway. La prueba exige 20 carritos aceptados, 180 rechazos SIN_STOCK, cero respuestas inesperadas y cero iteraciones descartadas. Después consulta Inventario y verifica total 20, reservado 20 y disponible 0. Los percentiles de la operación medida aparecen con la etiqueta fase:carga.
+
+### Corrida local del 9 de noviembre de 2026
+
+Base de trabajo 2f37248. k6 0.54.0 en Docker, con gateway real, Usuarios, Pedidos, Inventario, una copia de Catálogo sin caché, MySQL y MongoDB descartables. La carga midió solo agregar al carrito, con llegadas escalonadas a 20 por segundo.
+
+| Intentos | Aceptados | SIN_STOCK | Respuestas inesperadas | Reservas por encima del stock | p50 | p95 | p99 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 200 | 20 | 180 | 0 | 0 | 19,22 ms | 34,63 ms | 42,83 ms |
+
+Inventario terminó con total 20, reservado 20 y disponible 0. k6 no descartó iteraciones.
