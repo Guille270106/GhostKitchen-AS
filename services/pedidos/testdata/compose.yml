@@ -1,0 +1,50 @@
+# Solo pruebas: no utiliza .env ni los volúmenes del proyecto.
+#   docker compose -p gk-l5-check -f services/pedidos/testdata/compose.yml up -d --build --wait pedidos
+#   docker compose -p gk-l5-check -f services/pedidos/testdata/compose.yml run --rm --build pruebas
+#   docker compose -p gk-l5-check -f services/pedidos/testdata/compose.yml down -v
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: test-root
+      USUARIOS_DB_PASSWORD: test-usuarios
+      INVENTARIO_DB_PASSWORD: test-inventario
+      PEDIDOS_DB_PASSWORD: test-pedidos
+    volumes:
+      - test-data:/var/lib/mysql
+      - ../../../infra/mysql/01-bases.sh:/docker-entrypoint-initdb.d/01-bases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=test-root mysql --protocol=TCP -h 127.0.0.1 -uroot -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+  pedidos:
+    build:
+      context: ../../..
+      dockerfile: services/pedidos/Dockerfile
+    environment:
+      DB_PASSWORD: test-pedidos
+      DB_USER: pedidos
+      DB_NAME: pedidos_db
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8085/ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  pruebas:
+    build:
+      context: ../../..
+      dockerfile: services/pedidos/Dockerfile
+      target: build
+    environment:
+      TEST_MYSQL: "1"
+      CGO_ENABLED: "0"
+    command: ["go", "test", "-count=1", "-v", "./..."]
+    depends_on:
+      pedidos:
+        condition: service_healthy
+volumes:
+  test-data:

@@ -12,12 +12,11 @@ Completar en el `.env` las cuatro contraseñas MySQL, además de las de MongoDB 
 
 ```powershell
 docker compose up -d mysql
-docker compose up --build pedidos-migrations
-docker compose up -d --build usuarios inventario
-docker compose logs mysql usuarios inventario pedidos-migrations
+docker compose up -d --build usuarios inventario pedidos
+docker compose logs mysql usuarios inventario pedidos
 ```
 
-Pedidos conserva un trabajo que termina con código 0 tras aplicar sus migraciones. Desde V5 (Inventario) y G5 (Usuarios), cada servicio ejecuta el runner en su propio entrypoint y después queda atendiendo HTTP; reemplazan a los trabajos `inventario-migrations` y `usuarios-migrations`. Repetir el arranque comprueba las versiones sin aplicar nuevamente las ya ejecutadas. El `docker compose up --build` general también los incluye.
+Desde V5 (Inventario), G5 (Usuarios) y L5 (Pedidos), cada servicio ejecuta el runner en su propio entrypoint y después queda atendiendo HTTP; reemplazan a los trabajos `inventario-migrations`, `usuarios-migrations` y `pedidos-migrations`. Repetir el arranque comprueba las versiones sin aplicar nuevamente las ya ejecutadas. El `docker compose up --build` general también los incluye.
 
 ## Inicialización y persistencia
 

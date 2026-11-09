@@ -97,19 +97,30 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  pedidos-migrations:
-    build: ./tools/mysql-startup
+  # Pedidos (L5): aplica sus migraciones al arrancar (mysql-startup) y después atiende HTTP.
+  # Solo expose: no se publica al host, así nadie le manda headers de identidad salteando el gateway.
+  pedidos:
+    build:
+      context: .
+      dockerfile: services/pedidos/Dockerfile
     environment:
       DB_HOST: mysql
       DB_USER: pedidos
       DB_PASSWORD: ${PEDIDOS_DB_PASSWORD:?Completá PEDIDOS_DB_PASSWORD en .env}
       DB_NAME: pedidos_db
-    volumes:
-      - ./services/pedidos/migrations:/migrations:ro
+      PORT: "8085"
+    expose:
+      - "8085"
     depends_on:
       mysql:
         condition: service_healthy
-    restart: "no"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8085/ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
   # Mensajería (ADR-005). El usuario sale de .env; las colas las crea rabbitmq-topologia.
   rabbitmq:

@@ -2,9 +2,28 @@
 
 **Responsable:** Lucía Rucci.
 
-> **Ronda 1:** base `pedidos_db`, usuario propio y plantilla SQL disponibles. El trabajo `pedidos-migrations` aplica las versiones al arrancar Compose. Ver [guía de migraciones](../../infra/mysql/README.md) y [ADR-004](../../docs/adr/ADR-004-consistencia-y-concurrencia.md). El agregado y la saga se implementan desde la ronda 2.
+> **L5:** servicio base hexagonal con MySQL y el **agregado Pedido** con sus estados. Aplica sus migraciones al arrancar (`mysql-startup`) y atiende en el puerto interno 8085, sin publicarse fuera de Docker. Ya funcionan las transiciones con sus permisos, el historial, el control de versión (si dos cambios llegan a la vez, gana el primero) y `GET /pedidos/{id}`. El carrito llega en L6 y la confirmación en L8.
 
-Maneja **el pedido de principio a fin**. Puerto **8085**. Es uno de los dos servicios donde no se puede equivocar nada. Se implementa en la ronda 2.
+Maneja **el pedido de principio a fin**. Puerto interno **8085**. Es uno de los dos servicios donde no se puede equivocar nada.
+
+## Probar L5
+
+Sin Docker, las reglas del pedido y las rutas (con un repositorio en memoria):
+
+```powershell
+cd services/pedidos
+go test ./...
+```
+
+Contra MySQL real, en una base descartable que no usa el `.env` ni los datos de desarrollo:
+
+```powershell
+docker compose -p gk-l5-check -f services/pedidos/testdata/compose.yml up -d --build --wait pedidos
+docker compose -p gk-l5-check -f services/pedidos/testdata/compose.yml run --rm --build pruebas
+docker compose -p gk-l5-check -f services/pedidos/testdata/compose.yml down -v
+```
+
+El test `TestMySQLCambiosSimultaneosGanaUnoSolo` manda 20 veces "cancelar" (cliente) y "aceptar" (cocina) al mismo pedido a la vez: en cada vuelta gana uno solo, la versión queda en 2 y el historial tiene dos entradas.
 
 ## Qué hace
 
