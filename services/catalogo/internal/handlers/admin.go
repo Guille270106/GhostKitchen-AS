@@ -159,7 +159,14 @@ func responderErrorAdmin(c *gin.Context, err error) {
 		}
 		responderProblema(c, http.StatusBadRequest, "DATOS_INVALIDOS", motivo)
 	case errors.Is(err, domain.ErrSinPermiso):
-		responderProblema(c, http.StatusForbidden, "SIN_PERMISO", "Solo un admin puede administrar cocinas y restaurantes.")
+		responderProblema(c, http.StatusForbidden, "SIN_PERMISO", "Tu cuenta no tiene permiso para esta acción.")
+	case errors.Is(err, domain.ErrOtraCocina):
+		responderProblema(c, http.StatusForbidden, "OTRA_COCINA", "El plato no es de tu cocina.")
+	case errors.Is(err, domain.ErrSinReceta):
+		responderProblema(c, http.StatusConflict, "SIN_RECETA", "Cargale la receta en Inventario antes de activarlo: un plato sin receta no se publica.")
+	case errors.Is(err, domain.ErrInventarioNoDisponible):
+		c.Header("Retry-After", "5")
+		responderProblema(c, http.StatusServiceUnavailable, "INVENTARIO_NO_DISPONIBLE", "No se pudo comprobar la receta. Probá de nuevo en unos segundos.")
 	case errors.Is(err, domain.ErrOtraLocalidad):
 		responderProblema(c, http.StatusForbidden, "OTRA_LOCALIDAD", "La cocina no es de tu localidad.")
 	case errors.Is(err, domain.ErrCocinaNoEncontrada):
@@ -168,13 +175,15 @@ func responderErrorAdmin(c *gin.Context, err error) {
 		responderProblema(c, http.StatusNotFound, "RESTAURANTE_NO_ENCONTRADO", "El restaurante no existe en esa cocina.")
 	case errors.Is(err, domain.ErrYaExiste):
 		responderProblema(c, http.StatusConflict, "COCINA_REPETIDA", "Ya existe una cocina con ese nombre.")
+	case errors.Is(err, domain.ErrPlatoNoEncontrado):
+		responderProblema(c, http.StatusNotFound, "PLATO_NO_ENCONTRADO", "El plato no existe.")
 	case errors.Is(err, domain.ErrCocinaLlena):
 		responderProblema(c, http.StatusConflict, "COCINA_LLENA", "La cocina ya tiene 4 restaurantes.")
 	case errors.Is(err, domain.ErrRestauranteRepetido):
 		responderProblema(c, http.StatusConflict, "RESTAURANTE_REPETIDO", "Ya hay un restaurante con ese nombre en la cocina.")
 	case errors.Is(err, domain.ErrConflicto):
 		c.Header("Retry-After", "1")
-		responderProblema(c, http.StatusConflict, "CONFLICTO", "La cocina cambió mientras la modificabas. Probá de nuevo.")
+		responderProblema(c, http.StatusConflict, "CONFLICTO", "Otra persona lo cambió al mismo tiempo. Probá de nuevo.")
 	default:
 		responderError(c, err)
 	}

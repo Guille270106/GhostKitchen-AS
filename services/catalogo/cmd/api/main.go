@@ -19,6 +19,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/mongo/otelmongo"
 
+	"ghostkitchen/catalogo/internal/clients"
 	"ghostkitchen/catalogo/internal/config"
 	"ghostkitchen/catalogo/internal/handlers"
 	repomongo "ghostkitchen/catalogo/internal/repositories/mongo"
@@ -69,7 +70,8 @@ func main() {
 
 	r := router.Nuevo(log,
 		handlers.Nuevo(services.Nuevo(repo), repo.Ping),
-		handlers.NuevoAdmin(services.NuevoAdmin(repo, repo)))
+		handlers.NuevoAdmin(services.NuevoAdmin(repo, repo)),
+		handlers.NuevoPlatos(services.NuevoPlatosCocina(repo, repo, clients.NuevoInventario(cfg.InventarioURL))))
 	srv := &http.Server{
 		Addr:              ":" + cfg.Puerto,
 		Handler:           r,

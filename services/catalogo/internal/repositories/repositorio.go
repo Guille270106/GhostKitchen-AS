@@ -49,3 +49,14 @@ type Escritor interface {
 	// Si no coincide (o la cocina no existe), domain.ErrConflicto.
 	ReemplazarCocina(ctx context.Context, c domain.Cocina, versionAnterior int64) error
 }
+
+// EscritorPlatos son las escrituras de la cuenta Cocina sobre sus platos (G12). Mismo
+// criterio que las cocinas: concurrencia optimista con la versión del plato.
+type EscritorPlatos interface {
+	// ListarPlatosDeCocinaTodos devuelve todos los platos de una cocina, activos o no.
+	ListarPlatosDeCocinaTodos(ctx context.Context, cocinaID string) ([]domain.Plato, error)
+	// CrearPlato guarda un plato nuevo. Si el id ya existe, domain.ErrYaExiste.
+	CrearPlato(ctx context.Context, p domain.Plato) error
+	// ReemplazarPlato guarda p solo si la versión guardada es versionAnterior; si no, domain.ErrConflicto.
+	ReemplazarPlato(ctx context.Context, p domain.Plato, versionAnterior int64) error
+}

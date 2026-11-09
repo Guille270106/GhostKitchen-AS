@@ -19,6 +19,7 @@ type Config struct {
 	MongoBase     string        // MONGO_DB (catalogo_db)
 	MongoTimeout  time.Duration // MONGO_TIMEOUT_MS (2000): tiempo máximo de cada operación
 	SeedAlIniciar bool          // SEED_AL_INICIAR (true)
+	InventarioURL string        // INVENTARIO_URL (http://inventario:8084): para saber si un plato tiene receta
 }
 
 // Cargar lee las variables de entorno con sus valores por defecto.
@@ -29,6 +30,7 @@ func Cargar() Config {
 		MongoBase:     valor("MONGO_DB", "catalogo_db"),
 		MongoTimeout:  time.Duration(entero("MONGO_TIMEOUT_MS", 2000)) * time.Millisecond,
 		SeedAlIniciar: valor("SEED_AL_INICIAR", "true") == "true",
+		InventarioURL: valor("INVENTARIO_URL", "http://inventario:8084"),
 	}
 }
 
