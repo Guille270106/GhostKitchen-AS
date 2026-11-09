@@ -211,6 +211,8 @@ services:
       MONGO_DB: catalogo_db
       MONGO_TIMEOUT_MS: "2000"
       SEED_AL_INICIAR: "true"
+      # G12: para activar un plato, Catálogo le pregunta a Inventario si tiene receta (RN18).
+      INVENTARIO_URL: http://inventario:8084
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     expose:
       - "8082"            # solo dentro de la red de Docker

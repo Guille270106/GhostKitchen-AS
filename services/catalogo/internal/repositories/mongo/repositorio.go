@@ -212,3 +212,39 @@ func (r *Repositorio) ReemplazarCocina(ctx context.Context, c domain.Cocina, ver
 	}
 	return nil
 }
+
+// ListarPlatosDeCocinaTodos devuelve todos los platos de una cocina, activos o no (para el
+// panel de la cocina). Usa el mismo índice (cocinaId, activo, _id) por su primer campo.
+func (r *Repositorio) ListarPlatosDeCocinaTodos(ctx context.Context, cocinaID string) ([]domain.Plato, error) {
+	cur, err := r.platos.Find(ctx, bson.D{{Key: "cocinaId", Value: cocinaID}}, options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}))
+	if err != nil {
+		return nil, envolver(err)
+	}
+	platos := []domain.Plato{}
+	if err := cur.All(ctx, &platos); err != nil {
+		return nil, envolver(err)
+	}
+	return platos, nil
+}
+
+// CrearPlato inserta un plato nuevo.
+func (r *Repositorio) CrearPlato(ctx context.Context, p domain.Plato) error {
+	_, err := r.platos.InsertOne(ctx, p)
+	if mongo.IsDuplicateKeyError(err) {
+		return domain.ErrYaExiste
+	}
+	return envolver(err)
+}
+
+// ReemplazarPlato guarda el plato solo si su versión sigue siendo versionAnterior (una sola
+// operación atómica sobre el documento, como ReemplazarCocina).
+func (r *Repositorio) ReemplazarPlato(ctx context.Context, p domain.Plato, versionAnterior int64) error {
+	res, err := r.platos.ReplaceOne(ctx, bson.D{{Key: "_id", Value: p.ID}, {Key: "version", Value: versionAnterior}}, p)
+	if err != nil {
+		return envolver(err)
+	}
+	if res.MatchedCount == 0 {
+		return domain.ErrConflicto
+	}
+	return nil
+}

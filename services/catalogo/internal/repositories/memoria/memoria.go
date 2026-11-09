@@ -77,7 +77,7 @@ func (r *Repositorio) ObtenerPlato(_ context.Context, id string) (domain.Plato, 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	p, ok := r.platos[id]
-	return p, ok, nil
+	return copiaPlato(p), ok, nil
 }
 
 // PaginaPlatos devuelve todos los platos de a páginas, ordenados por id.
@@ -188,4 +188,57 @@ func copiaCocina(c domain.Cocina) domain.Cocina {
 		c.Restaurantes = append([]domain.Restaurante(nil), c.Restaurantes...)
 	}
 	return c
+}
+
+// ListarPlatosDeCocinaTodos devuelve todos los platos de una cocina, ordenados por id.
+func (r *Repositorio) ListarPlatosDeCocinaTodos(_ context.Context, cocinaID string) ([]domain.Plato, error) {
+	if r.Falla != nil {
+		return nil, r.Falla
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := []domain.Plato{}
+	for _, p := range r.platos {
+		if p.CocinaID == cocinaID {
+			out = append(out, copiaPlato(p))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+// CrearPlato guarda un plato nuevo, igual que la versión de MongoDB.
+func (r *Repositorio) CrearPlato(_ context.Context, p domain.Plato) error {
+	if r.Falla != nil {
+		return r.Falla
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ya := r.platos[p.ID]; ya {
+		return domain.ErrYaExiste
+	}
+	r.platos[p.ID] = copiaPlato(p)
+	return nil
+}
+
+// ReemplazarPlato guarda el plato solo si su versión es versionAnterior.
+func (r *Repositorio) ReemplazarPlato(_ context.Context, p domain.Plato, versionAnterior int64) error {
+	if r.Falla != nil {
+		return r.Falla
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	actual, ok := r.platos[p.ID]
+	if !ok || actual.Version != versionAnterior {
+		return domain.ErrConflicto
+	}
+	r.platos[p.ID] = copiaPlato(p)
+	return nil
+}
+
+func copiaPlato(p domain.Plato) domain.Plato {
+	if p.Etiquetas != nil {
+		p.Etiquetas = append([]string(nil), p.Etiquetas...)
+	}
+	return p
 }

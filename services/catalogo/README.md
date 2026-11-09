@@ -2,7 +2,7 @@
 
 **Responsable:** Guillermina Sánchez.
 
-> **Entrega 2:** funcionando como **fuente de verdad** de cocinas, restaurantes y platos sobre **MongoDB** (`catalogo_db`, con usuario propio). Al arrancar carga los datos iniciales que falten (4 cocinas, 16 restaurantes, 64 platos) sin pisar cambios. Expone las lecturas para el frontend y la lectura interna paginada con la que **Búsqueda arma su índice**, así que lo que devuelve la API publicada sale de esta base. Desde G11, el admin crea y modifica cocinas y restaurantes de su localidad (ver abajo). Las altas de platos de la cocina, la caché con Memcached, las 2 copias y los mensajes por outbox vienen después.
+> **Entrega 2:** funcionando como **fuente de verdad** de cocinas, restaurantes y platos sobre **MongoDB** (`catalogo_db`, con usuario propio). Al arrancar carga los datos iniciales que falten (4 cocinas, 16 restaurantes, 64 platos) sin pisar cambios. Expone las lecturas para el frontend y la lectura interna paginada con la que **Búsqueda arma su índice**, así que lo que devuelve la API publicada sale de esta base. Desde G11, el admin crea y modifica cocinas y restaurantes de su localidad (ver abajo). Desde G12, la cuenta Cocina crea y cambia sus platos. La caché con Memcached, las 2 copias y los mensajes por outbox vienen después.
 
 ## Flujo de los datos (Entrega 2)
 
@@ -57,6 +57,22 @@ Sin identidad, `401`; con otro rol, `403 SIN_PERMISO`. Un campo de más en el cu
 **Dos admins al mismo tiempo: concurrencia optimista.** Cada cocina tiene un número de `version`. Para cambiarla, el servicio la lee, aplica las reglas del dominio y la guarda solo si la versión sigue siendo la que leyó (`ReplaceOne` con `_id` y `version` en el filtro, que en MongoDB es una sola operación atómica sobre el documento). Si otra solicitud la cambió en el medio, no se guarda nada y el servicio vuelve a empezar con la versión nueva (hasta 3 veces; después, `409 CONFLICTO`). Así las reglas siempre se controlan sobre lo último guardado: con 10 solicitudes a la vez sobre una cocina con 2 restaurantes, entran exactamente 2 (`TestNoSePasaDeCuatroConSolicitudesALaVez`). La misma `version` es la que usará Búsqueda para no guardar un dato viejo encima de uno nuevo.
 
 **Hasta G15**, Búsqueda se entera de estos cambios recién cuando reconstruye su índice (al arrancar). Con G13 y G15 se va a enterar por mensajes.
+
+## Platos de la cocina (G12 · HU17)
+
+La cuenta Cocina maneja los platos de **su** cocina (la de `X-Cocina-Id`, que pone el gateway; nunca la del cuerpo). El gateway las publica en `/api/v1/cocina/...`.
+
+| Ruta | Para qué | Respuestas |
+| --- | --- | --- |
+| `GET /cocina/platos` | Todos los platos de su cocina, activos o no | `200` |
+| `POST /cocina/restaurantes/{rid}/platos` | Crear un plato en un restaurante activo de su cocina: nombre, descripción, categoría, precio, etiquetas y foto | `201` · `400` · `404` |
+| `PATCH /cocina/platos/{id}` | Cambiar sus datos, desactivarlo o activarlo | `200` · `400` · `403 OTRA_COCINA` · `404` · `409 SIN_RECETA` · `503` |
+
+**Un plato sin receta no se publica (RN18).** Por eso un plato nuevo arranca **desactivado**, aunque se pida activo. Para activarlo, Catálogo le pregunta a Inventario si tiene receta (`GET /cocina/platos/{id}/receta`, con la identidad de la cocina; 800 ms y un reintento si no hubo respuesta o fue 5xx). Si no tiene, `409 SIN_RECETA`; si Inventario no contesta, `503 INVENTARIO_NO_DISPONIBLE`, sin tomarlo como "no tiene receta". Cambiar el precio o desactivar no consulta a Inventario.
+
+Las etiquetas válidas son Vegano, Vegetariano, Sin TACC y Picante (las mismas que usa Búsqueda). El precio de un plato que ya está en un carrito no cambia: Pedidos guarda el precio al agregarlo (RN15). Mismo control de concurrencia que las cocinas: cada plato tiene su `version`.
+
+**Mientras no estén los mensajes (G13 y V12)**, Inventario no se entera de los platos nuevos, así que todavía no les puede cargar receta y quedan desactivados. Con los mensajes, Inventario recibe `plato.creado` y el circuito se completa.
 
 ## Qué datos guarda (MongoDB)
 
@@ -128,6 +144,7 @@ MongoDB debe correr como **replica set**: el cambio comercial y el evento del ou
 | `MONGO_URI` | `mongodb://mongo:27017` | Conexión a MongoDB. En Docker Compose usa el usuario `catalogo` y `CATALOGO_DB_PASSWORD` de `.env` |
 | `MONGO_DB` | `catalogo_db` | Base del servicio |
 | `MONGO_TIMEOUT_MS` | `2000` | Tiempo máximo de cada operación contra MongoDB |
+| `INVENTARIO_URL` | `http://inventario:8084` | Para saber si un plato tiene receta antes de activarlo (G12) |
 | `SEED_AL_INICIAR` | `true` | Insertar los datos iniciales que falten (no pisa los existentes) |
 
 El usuario `catalogo` lo crea [`infra/mongo/01-catalogo.js`](../../infra/mongo/01-catalogo.js) la primera vez que arranca MongoDB, con permiso `readWrite` solo sobre `catalogo_db`. Si se cambia la contraseña en `.env`, hay que borrar el volumen (`docker compose down -v`). Más adelante se suman Memcached (TTL de 60 s), RabbitMQ y el identificador de cada instancia.
