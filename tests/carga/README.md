@@ -52,3 +52,31 @@ Base de trabajo 2f37248. k6 0.54.0 en Docker, con gateway real, Usuarios, Pedido
 | 200 | 20 | 180 | 0 | 0 | 19,22 ms | 34,63 ms | 42,83 ms |
 
 Inventario terminó con total 20, reservado 20 y disponible 0. k6 no descartó iteraciones.
+
+## V20 · Caché, balanceo y caída de una copia
+
+Desde la raíz del repositorio, con Docker y PowerShell 7:
+
+```powershell
+& ./tests/carga/probar-catalogo.ps1
+```
+
+El runner crea un proyecto Docker aislado con volúmenes propios. Corre cinco casos secuenciales por el gateway real, cada uno con 100 usuarios virtuales durante 3 minutos. Alterna una y dos copias de Catálogo, con y sin Memcached. En el quinto caso apaga catalogo-2 a mitad de la carga. El comando imprime el directorio temporal con el JSON de k6 y el resumen de cada caso. Para comprobar el montaje en menos tiempo, se puede usar -Segundos 12 -Usuarios 10. Usá -SoloCaida para repetir únicamente el quinto caso. El parámetro opcional -BinarioCatalogo acepta un binario Linux amd64 de Catálogo compilado desde la misma versión del repo.
+
+Cada caso espera que Catálogo termine de verificar el seed antes de medir. La caché arranca vacía y el setup de k6 valida los cuatro menús antes de iniciar la carga. Los percentiles de fase:carga excluyen ese setup. Los deltas de MongoDB (comandos find y aggregate) y de caché (aciertos, fallos y errores de menú) sí incluyen el setup. Son contadores de comandos observados durante el caso, no un conteo de lecturas físicas en disco. El conteo de la copia caída usa su última muestra anterior al apagado.
+
+En el caso de caída, el resumen registra las respuestas de la copia activa, los errores visibles y el tiempo hasta el último intento observado a la IP de la copia caída. Ese tiempo sale del log del gateway, con resolución de un segundo. El valor nulo indica que el log no mostró un intento después del apagado. El runner elimina sus contenedores y volúmenes al terminar y conserva los resultados para V21.
+
+### Corrida local del 9 de noviembre de 2026
+
+Base de trabajo a769d3b. k6 0.54.0, NGINX del proyecto, MongoDB y Memcached en Docker local. Se usó un binario de Catálogo de esa base compilado para Linux. Cada caso mantuvo 100 usuarios virtuales durante tres minutos, con una pausa de un segundo entre lecturas por usuario.
+
+| Configuración | Solicitudes | Solicitudes/s | p50 (ms) | p95 (ms) | p99 (ms) | Errores | find + aggregate | Aciertos de menú |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Sin caché, una copia | 17.900 | 99,31 | 4,02 | 13,44 | 24,76 | 0 | 35.842 | 0 |
+| Sin caché, dos copias | 17.900 | 99,27 | 3,95 | 14,05 | 31,69 | 0 | 35.843 | 0 |
+| Con caché, una copia | 17.900 | 99,39 | 3,62 | 11,66 | 23,67 | 0 | 67 | 17.879 |
+| Con caché, dos copias | 17.900 | 99,41 | 3,38 | 12,49 | 23,41 | 0 | 82 | 17.872 |
+| Con caché, caída de una de dos copias | 17.936 | 99,08 | 3,25 | 10,32 | 20,79 | 0 | 66 | 17.870 |
+
+En ambos casos estables con dos copias, el reparto fue 8.950 y 8.950. Tras apagar catalogo-2, el gateway registró 8.815 respuestas exitosas de catalogo-1 y cero errores visibles. El último intento observado hacia la IP apagada apareció 83 segundos después de iniciar el apagado. Hubo solicitudes de hasta aproximadamente 1 segundo durante el caso de caída. Se repitió ese caso completo después de corregir el campo estado del resumen de logs.
