@@ -41,6 +41,21 @@ func (m *memoria) Obtener(_ context.Context, c, id string) (domain.Ingrediente, 
 	return domain.Ingrediente{}, domain.ErrNoEncontrado
 }
 
+func (m *memoria) MoverStock(_ context.Context, cocina, id, _ string, delta int64) (domain.Ingrediente, error) {
+	for pos, item := range m.items {
+		if item.CocinaID == cocina && item.ID == id {
+			if delta < -item.Disponible {
+				return item, domain.ErrSinStock
+			}
+			item.Total += delta
+			item.Disponible += delta
+			m.items[pos] = item
+			return item, nil
+		}
+	}
+	return domain.Ingrediente{}, domain.ErrNoEncontrado
+}
+
 func TestCargaIngredientesYPermisos(t *testing.T) {
 	repo := &memoria{}
 	r := adapter.Nuevo(application.Nuevo(repo), func(context.Context) error { return nil }, slog.New(slog.NewTextHandler(io.Discard, nil)))

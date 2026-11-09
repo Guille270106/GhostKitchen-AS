@@ -14,6 +14,7 @@ import (
 
 	httpadapter "ghostkitchen/inventario/internal/adapters/http"
 	mysqladapter "ghostkitchen/inventario/internal/adapters/mysql"
+	"ghostkitchen/inventario/internal/adapters/rabbitmq"
 	"ghostkitchen/inventario/internal/application"
 	"github.com/go-sql-driver/mysql"
 )
@@ -51,9 +52,28 @@ func run(log *slog.Logger) error {
 	repo := mysqladapter.Nuevo(db)
 	ctx, parar := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer parar()
+	go periodico(ctx, log, "vencer reservas", 15*time.Second, 10*time.Second, repo.VencerReservas)
+	if usuario := os.Getenv("RABBITMQ_USER"); usuario != "" {
+		host, clave := valor("RABBITMQ_HOST", "rabbitmq"), os.Getenv("RABBITMQ_PASSWORD")
+		publicar := rabbitmq.NuevoPublicador(host, usuario, clave)
+		go consumirReferencias(ctx, log, func(ctx context.Context) error {
+			return rabbitmq.ConsumirReferencias(ctx, host, usuario, clave, repo.AplicarReferencia)
+		})
+		go periodico(ctx, log, "publicar outbox", time.Second, 5*time.Second, func(ctx context.Context) error {
+			for range 20 {
+				enviado, err := repo.PublicarSiguiente(ctx, publicar)
+				if err != nil || !enviado {
+					return err
+				}
+			}
+			return nil
+		})
+	}
 	router := httpadapter.Nuevo(application.Nuevo(repo), repo.Ready, log)
 	httpadapter.RegistrarRecetas(router, application.NuevasRecetas(repo))
 	httpadapter.RegistrarReservas(router, application.NuevasReservas(repo))
+	httpadapter.RegistrarConsumos(router, application.NuevosConsumos(repo))
+	httpadapter.RegistrarDisponibilidad(router, repo.ListarDisponibilidad)
 	srv := &http.Server{Addr: ":" + valor("PORT", "8084"), Handler: router, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	fallos := make(chan error, 1)
 	go func() { fallos <- srv.ListenAndServe() }()
@@ -71,10 +91,43 @@ func run(log *slog.Logger) error {
 	}
 }
 
+func periodico(ctx context.Context, log *slog.Logger, tarea string, intervalo, plazo time.Duration, hacer func(context.Context) error) {
+	ticker := time.NewTicker(intervalo)
+	defer ticker.Stop()
+	for ctx.Err() == nil {
+		intento, cancelar := context.WithTimeout(ctx, plazo)
+		err := hacer(intento)
+		cancelar()
+		if err != nil && ctx.Err() == nil {
+			log.Warn("falló tarea de Inventario", "tarea", tarea, "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if err := run(log); err != nil {
 		log.Error("Inventario no pudo continuar; revisar configuración y MySQL")
 		os.Exit(1)
+	}
+}
+
+func consumirReferencias(ctx context.Context, log *slog.Logger, consumir func(context.Context) error) {
+	for ctx.Err() == nil {
+		err := consumir(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		log.Warn("se interrumpió el consumo de referencias", "error", err)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second):
+		}
 	}
 }

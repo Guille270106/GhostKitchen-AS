@@ -12,14 +12,14 @@ import (
 var _ ports.Recetas = (*Repositorio)(nil)
 
 func (r *Repositorio) GuardarReceta(ctx context.Context, receta domain.Receta) (domain.Receta, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return domain.Receta{}, err
 	}
 	defer tx.Rollback()
 	var existe int
 	err = tx.QueryRowContext(ctx, `SELECT 1 FROM plato_ref p JOIN cocina_ref c ON c.id=p.cocina_id
- WHERE p.id=? AND p.cocina_id=? AND p.activo=1 AND c.activa=1 FOR UPDATE`, receta.PlatoID, receta.CocinaID).Scan(&existe)
+ WHERE p.id=? AND p.cocina_id=? AND c.activa=1 FOR SHARE`, receta.PlatoID, receta.CocinaID).Scan(&existe)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Receta{}, domain.ErrNoEncontrado
 	}
@@ -53,6 +53,9 @@ func (r *Repositorio) GuardarReceta(ctx context.Context, receta domain.Receta) (
 	if err = tx.QueryRowContext(ctx, `SELECT version FROM receta WHERE plato_id=?`, receta.PlatoID).Scan(&receta.Version); err != nil {
 		return domain.Receta{}, err
 	}
+	if err = actualizarDisponibilidad(ctx, tx, receta.CocinaID); err != nil {
+		return domain.Receta{}, err
+	}
 	if err = tx.Commit(); err != nil {
 		return domain.Receta{}, err
 	}
@@ -61,7 +64,7 @@ func (r *Repositorio) GuardarReceta(ctx context.Context, receta domain.Receta) (
 
 const seleccionarRecetas = `SELECT r.plato_id,r.cocina_id,r.version,i.ingrediente_id,i.cantidad
  FROM receta r JOIN receta_item i ON i.plato_id=r.plato_id
- JOIN plato_ref p ON p.id=r.plato_id AND p.activo=1
+ JOIN plato_ref p ON p.id=r.plato_id
  JOIN cocina_ref c ON c.id=r.cocina_id AND c.activa=1
  WHERE r.cocina_id=?`
 

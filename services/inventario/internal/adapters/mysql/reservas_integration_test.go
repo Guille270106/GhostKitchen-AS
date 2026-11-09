@@ -52,6 +52,8 @@ func prepararReservas(t *testing.T) *baseReservas {
 	f.ingredientes = []string{uuid.NewString(), uuid.NewString()}
 	sort.Strings(f.ingredientes)
 	t.Cleanup(func() {
+		db.Exec(`DELETE c FROM consumo c JOIN reserva r ON r.id=c.reserva_id WHERE r.cocina_id=?`, f.cocina)
+		db.Exec(`DELETE FROM outbox WHERE JSON_UNQUOTE(JSON_EXTRACT(cuerpo, '$.datos.cocina_id'))=?`, f.cocina)
 		for _, tabla := range []string{"reserva_item", "reserva_plato", "reserva", "receta_item", "receta", "plato_ref", "ingrediente"} {
 			db.Exec("DELETE FROM "+tabla+" WHERE cocina_id=?", f.cocina)
 		}
@@ -234,6 +236,15 @@ func TestMySQLReservaVencidaYReferencias(t *testing.T) {
 	if _, err := f.svc.Liberar(ctx, f.prefijo+"liberar", res.ID); err != nil || f.stock(t, f.ingredientes[0]) != 0 {
 		t.Fatal("liberar vencida", err)
 	}
+	var estado string
+	if err := f.db.QueryRow("SELECT estado FROM reserva WHERE id=?", res.ID).Scan(&estado); err != nil || estado != "VENCIDA" {
+		t.Fatalf("estado persistido = %q, error = %v", estado, err)
+	}
+	var cantidad int
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM outbox WHERE tipo='reserva.vencida'
+ AND JSON_UNQUOTE(JSON_EXTRACT(cuerpo, '$.datos.reserva_id'))=?`, res.ID).Scan(&cantidad); err != nil || cantidad != 1 {
+		t.Fatalf("eventos de vencimiento = %d, error = %v", cantidad, err)
+	}
 	// Plato ajeno y plato sin receta no pueden producir una reserva parcial.
 	for j, plato := range []string{"p1", f.prefijo + "-sin-receta"} {
 		if j == 1 {
@@ -273,5 +284,99 @@ func TestMySQLReservasConcurrentes(t *testing.T) {
 	// Otra clave y otro carrito no consiguen el stock ya apartado.
 	if _, err := f.svc.Crear(ctx, f.prefijo+"competidor", f.solicitud("otro", domain.PlatoSolicitado{PlatoID: f.platos[0], Cantidad: 1})); !errors.Is(err, domain.ErrSinStock) {
 		t.Fatal(err)
+	}
+}
+
+func TestMySQLConsumoYDevolucionIdempotentes(t *testing.T) {
+	f := prepararReservas(t)
+	ctx := context.Background()
+	svc := application.NuevosConsumos(f.repo)
+	pedido := f.prefijo + "-pedido"
+	item := domain.PlatoSolicitado{PlatoID: f.platos[0], Cantidad: 1}
+	res, err := f.svc.Crear(ctx, f.prefijo+"reserva", f.solicitud("cart", item))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingrediente := f.ingredientes[0]
+	f.receta(t, f.platos[0], domain.RecetaItem{IngredienteID: ingrediente, Cantidad: 9})
+	verStock := func(esperado int64) {
+		t.Helper()
+		var total, reservado int64
+		err := f.db.QueryRow("SELECT total,reservado FROM ingrediente WHERE id=?", ingrediente).Scan(&total, &reservado)
+		if err != nil || total != esperado || reservado != 0 {
+			t.Fatalf("stock = %d, reservado = %d, error = %v", total, reservado, err)
+		}
+	}
+	for _, sufijo := range []string{"consumo", "consumo", "otro-consumo"} {
+		c, err := svc.Consumir(ctx, f.prefijo+sufijo, res.ID, pedido)
+		if err != nil || c.Estado != "CONSUMIDO" {
+			t.Fatalf("consumo = %+v, error = %v", c, err)
+		}
+		verStock(18)
+	}
+	for _, sufijo := range []string{"devolucion", "devolucion", "otra-devolucion"} {
+		c, err := svc.Devolver(ctx, f.prefijo+sufijo, pedido)
+		if err != nil || c.Estado != "DEVUELTO" {
+			t.Fatalf("devolución = %+v, error = %v", c, err)
+		}
+		verStock(20)
+	}
+	c, err := svc.Obtener(ctx, pedido)
+	if err != nil || c.Estado != "DEVUELTO" || c.ReservaID != res.ID {
+		t.Fatalf("consulta = %+v, error = %v", c, err)
+	}
+}
+
+func TestMySQLReferenciasYDisponibilidad(t *testing.T) {
+	f := prepararReservas(t)
+	ctx := context.Background()
+	plato := f.platos[0]
+	ref := domain.Referencia{EventoID: uuid.NewString(), ID: plato, CocinaID: f.cocina, Version: 2, Activa: false}
+	t.Cleanup(func() {
+		f.db.Exec("DELETE FROM mensaje_procesado WHERE evento_id=?", ref.EventoID)
+	})
+	if err := f.repo.AplicarReferencia(ctx, ref); err != nil {
+		t.Fatal(err)
+	}
+	var secuencia int
+	var disponible, receta bool
+	estado := func() {
+		t.Helper()
+		if err := f.db.QueryRow("SELECT secuencia,disponible,tiene_receta FROM disponibilidad_estado WHERE plato_id=?", plato).Scan(&secuencia, &disponible, &receta); err != nil {
+			t.Fatal(err)
+		}
+	}
+	estado()
+	if disponible || !receta {
+		t.Fatal("el plato inactivo debe conservar la receta y quedar no disponible")
+	}
+	anterior := secuencia
+	viejo := ref
+	viejo.EventoID, viejo.Version, viejo.Activa = uuid.NewString(), 1, true
+	t.Cleanup(func() { f.db.Exec("DELETE FROM mensaje_procesado WHERE evento_id=?", viejo.EventoID) })
+	for _, evento := range []domain.Referencia{ref, viejo} {
+		if err := f.repo.AplicarReferencia(ctx, evento); err != nil {
+			t.Fatal(err)
+		}
+	}
+	estado()
+	if disponible || secuencia != anterior {
+		t.Fatal("el duplicado o evento viejo cambió el estado")
+	}
+	nuevo := viejo
+	nuevo.EventoID, nuevo.Version = uuid.NewString(), 3
+	t.Cleanup(func() { f.db.Exec("DELETE FROM mensaje_procesado WHERE evento_id=?", nuevo.EventoID) })
+	if err := f.repo.AplicarReferencia(ctx, nuevo); err != nil {
+		t.Fatal(err)
+	}
+	estado()
+	if !disponible || secuencia != anterior+1 {
+		t.Fatal("faltó publicar la reactivación")
+	}
+	var n int
+	err := f.db.QueryRow(`SELECT COUNT(*) FROM outbox WHERE tipo='disponibilidad.cambiada'
+ AND JSON_UNQUOTE(JSON_EXTRACT(cuerpo,'$.agregado_id'))=?`, plato).Scan(&n)
+	if err != nil || n != secuencia {
+		t.Fatal(n, secuencia, err)
 	}
 }

@@ -18,9 +18,9 @@ import (
 
 var _ ports.Reservas = (*Repositorio)(nil)
 
-type resultadoReserva struct {
-	Reserva domain.Reserva `json:"reserva"`
-	Error   string         `json:"error,omitempty"`
+type resultadoOperacion[T any] struct {
+	Valor T      `json:"reserva"`
+	Error string `json:"error,omitempty"`
 }
 
 var erroresReserva = map[string]error{
@@ -40,9 +40,10 @@ func codigoReserva(err error) string {
 
 // Clave, resultado y efectos se confirman en la misma transacción. Nunca se deja
 // una clave EN_PROCESO confirmada sin efecto. Los duplicados esperan el commit.
-func (r *Repositorio) idempotente(ctx context.Context, operacion, clave string, datos any, efecto func(*sql.Tx) (domain.Reserva, error)) (domain.Reserva, error) {
+func idempotente[T any](r *Repositorio, ctx context.Context, operacion, clave string, datos any, efecto func(*sql.Tx) (T, error)) (T, error) {
+	var cero T
 	for intento := 0; ; intento++ {
-		res, err := r.idempotenteIntento(ctx, operacion, clave, datos, efecto)
+		res, err := idempotenteIntento(r, ctx, operacion, clave, datos, efecto)
 		var mysqlErr *driver.MySQLError
 		if intento >= 2 || !errors.As(err, &mysqlErr) || mysqlErr.Number != 1213 {
 			return res, err
@@ -50,73 +51,76 @@ func (r *Repositorio) idempotente(ctx context.Context, operacion, clave string, 
 		// El deadlock deshizo la transacción completa; repetir con la misma clave.
 		select {
 		case <-ctx.Done():
-			return domain.Reserva{}, ctx.Err()
+			return cero, ctx.Err()
 		case <-time.After(time.Duration(intento+1) * 20 * time.Millisecond):
 		}
 	}
 }
 
-func (r *Repositorio) idempotenteIntento(ctx context.Context, operacion, clave string, datos any, efecto func(*sql.Tx) (domain.Reserva, error)) (domain.Reserva, error) {
+func idempotenteIntento[T any](r *Repositorio, ctx context.Context, operacion, clave string, datos any, efecto func(*sql.Tx) (T, error)) (T, error) {
+	var cero T
 	encoded, err := json.Marshal(datos)
 	if err != nil {
-		return domain.Reserva{}, err
+		return cero, err
 	}
 	hash := sha256.Sum256(encoded)
 	huella := hex.EncodeToString(hash[:])
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
-		return domain.Reserva{}, err
+		return cero, err
 	}
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx, `INSERT INTO idempotencia (operacion,clave,huella) VALUES (?,?,?) ON DUPLICATE KEY UPDATE clave=clave`, operacion, clave, huella)
 	if err != nil {
 		var mysqlErr *driver.MySQLError
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) || (errors.As(err, &mysqlErr) && mysqlErr.Number == 1205) {
-			return domain.Reserva{}, domain.ErrEnProceso
+			return cero, domain.ErrEnProceso
 		}
-		return domain.Reserva{}, err
+		return cero, err
 	}
 	var anterior string
 	var respuesta []byte
 	if err = tx.QueryRowContext(ctx, `SELECT huella,resultado FROM idempotencia WHERE operacion=? AND clave=? FOR UPDATE`, operacion, clave).Scan(&anterior, &respuesta); err != nil {
-		return domain.Reserva{}, err
+		return cero, err
 	}
 	if anterior != huella {
-		return domain.Reserva{}, domain.ErrIdempotencia
+		return cero, domain.ErrIdempotencia
 	}
 	if len(respuesta) > 0 {
-		var result resultadoReserva
+		var result resultadoOperacion[T]
 		if err = json.Unmarshal(respuesta, &result); err != nil {
-			return domain.Reserva{}, err
+			return cero, err
 		}
-		return result.Reserva, erroresReserva[result.Error]
+		return result.Valor, erroresReserva[result.Error]
 	}
 	if _, err = tx.ExecContext(ctx, `SAVEPOINT efecto`); err != nil {
-		return domain.Reserva{}, err
+		return cero, err
 	}
-	reserva, fallo := efecto(tx)
-	result := resultadoReserva{Reserva: reserva}
+	valor, fallo := efecto(tx)
+	result := resultadoOperacion[T]{Valor: valor}
 	if fallo != nil {
 		result.Error = codigoReserva(fallo)
 		if result.Error == "" {
-			return domain.Reserva{}, fallo
+			return cero, fallo
 		}
-		// Deshacer todas las escrituras de negocio, pero conservar el rechazo estable.
-		if _, err = tx.ExecContext(ctx, `ROLLBACK TO SAVEPOINT efecto`); err != nil {
-			return domain.Reserva{}, err
+		// Una operación tardía se rechaza, pero su vencimiento y evento se confirman.
+		if !errors.Is(fallo, domain.ErrReservaVencida) {
+			if _, err = tx.ExecContext(ctx, `ROLLBACK TO SAVEPOINT efecto`); err != nil {
+				return cero, err
+			}
 		}
 	}
 	respuesta, err = json.Marshal(result)
 	if err != nil {
-		return domain.Reserva{}, err
+		return cero, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE idempotencia SET resultado=? WHERE operacion=? AND clave=?`, string(respuesta), operacion, clave); err != nil {
-		return domain.Reserva{}, err
+		return cero, err
 	}
 	if err = tx.Commit(); err != nil {
-		return domain.Reserva{}, err
+		return cero, err
 	}
-	return reserva, fallo
+	return valor, fallo
 }
 
 func leerReserva(ctx context.Context, tx *sql.Tx, id string, bloquear bool) (domain.Reserva, time.Time, error) {
@@ -193,7 +197,7 @@ func recetaParaReserva(ctx context.Context, tx *sql.Tx, cocina, plato string) (d
 	return receta, nil
 }
 
-func (r *Repositorio) aplicarItems(ctx context.Context, tx *sql.Tx, res domain.Reserva, deseados []domain.PlatoSolicitado) (domain.Reserva, error) {
+func (r *Repositorio) aplicarItems(ctx context.Context, tx *sql.Tx, res domain.Reserva, deseados []domain.PlatoSolicitado, estadoFinal string) (domain.Reserva, error) {
 	anteriores := map[string]domain.PlatoReservado{}
 	for _, p := range res.Items {
 		anteriores[p.PlatoID] = p
@@ -304,16 +308,16 @@ func (r *Repositorio) aplicarItems(ctx context.Context, tx *sql.Tx, res domain.R
 	}
 	res.Items = nuevos
 	if len(nuevos) == 0 {
-		res.Estado = "LIBERADA"
-		if _, err = tx.ExecContext(ctx, `UPDATE reserva SET estado='LIBERADA' WHERE id=?`, res.ID); err != nil {
+		res.Estado = estadoFinal
+		if _, err = tx.ExecContext(ctx, `UPDATE reserva SET estado=? WHERE id=?`, estadoFinal, res.ID); err != nil {
 			return res, err
 		}
 	}
-	return res, nil
+	return res, actualizarDisponibilidad(ctx, tx, res.CocinaID)
 }
 
 func (r *Repositorio) CrearReserva(ctx context.Context, clave string, datos domain.SolicitudReserva) (domain.Reserva, error) {
-	return r.idempotente(ctx, "reservar", clave, datos, func(tx *sql.Tx) (domain.Reserva, error) {
+	return idempotente(r, ctx, "reservar", clave, datos, func(tx *sql.Tx) (domain.Reserva, error) {
 		var existe int
 		err := tx.QueryRowContext(ctx, `SELECT 1 FROM cocina_ref WHERE id=? AND activa=1 FOR SHARE`, datos.CocinaID).Scan(&existe)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -335,7 +339,7 @@ func (r *Repositorio) CrearReserva(ctx context.Context, clave string, datos doma
 		if err != nil {
 			return res, err
 		}
-		return r.aplicarItems(ctx, tx, res, datos.Items)
+		return r.aplicarItems(ctx, tx, res, datos.Items, "LIBERADA")
 	})
 }
 
@@ -344,21 +348,32 @@ func (r *Repositorio) modificarReserva(ctx context.Context, op, clave, id string
 		ID    string
 		Items []domain.PlatoSolicitado
 	}{id, items}
-	return r.idempotente(ctx, op, clave, datos, func(tx *sql.Tx) (domain.Reserva, error) {
+	return idempotente(r, ctx, op, clave, datos, func(tx *sql.Tx) (domain.Reserva, error) {
 		res, ahora, err := leerReserva(ctx, tx, id, true)
 		if err != nil {
 			return res, err
 		}
-		if op == "liberar" && res.Estado == "LIBERADA" {
+		if op == "liberar" && (res.Estado == "LIBERADA" || res.Estado == "VENCIDA") {
 			return res, nil
+		}
+		if res.Estado == "VENCIDA" {
+			return res, domain.ErrReservaVencida
 		}
 		if res.Estado != "ACTIVA" {
 			return res, domain.ErrReservaConflicto
 		}
-		if len(items) > 0 && !res.VenceEn.After(ahora) {
+		// El reloj se consulta después de tomar el bloqueo.
+		if err = tx.QueryRowContext(ctx, `SELECT UTC_TIMESTAMP(6)`).Scan(&ahora); err != nil {
+			return res, err
+		}
+		if !res.VenceEn.After(ahora) {
+			res, err = r.vencerReserva(ctx, tx, res, ahora)
+			if err != nil || op == "liberar" {
+				return res, err
+			}
 			return res, domain.ErrReservaVencida
 		}
-		return r.aplicarItems(ctx, tx, res, items)
+		return r.aplicarItems(ctx, tx, res, items, "LIBERADA")
 	})
 }
 func (r *Repositorio) AjustarReserva(ctx context.Context, clave, id string, items []domain.PlatoSolicitado) (domain.Reserva, error) {

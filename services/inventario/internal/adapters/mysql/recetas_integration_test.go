@@ -87,9 +87,9 @@ func TestMySQLRecetas(t *testing.T) {
 			t.Fatal("no conservó receta y versión", trasFallo, err)
 		}
 	}
-	for _, plato := range []string{"recetas-ajeno", "recetas-inactivo", "no-existe"} {
+	for _, plato := range []string{"recetas-ajeno", "no-existe"} {
 		if _, err := repo.GuardarReceta(ctx, nueva(plato, "recetas-prueba", domain.RecetaItem{IngredienteID: ids[0], Cantidad: 1})); !errors.Is(err, domain.ErrNoEncontrado) {
-			t.Fatal("aceptó plato ajeno/inactivo/desconocido", err)
+			t.Fatal("aceptó plato ajeno o desconocido", err)
 		}
 	}
 	if _, err := repo.ObtenerReceta(ctx, "recetas-otra", "recetas-plato"); !errors.Is(err, domain.ErrNoEncontrado) {

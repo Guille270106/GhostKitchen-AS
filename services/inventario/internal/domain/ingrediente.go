@@ -8,6 +8,7 @@ import (
 
 var (
 	ErrDatosInvalidos = errors.New("datos de ingrediente inválidos")
+	ErrStockExcedido  = errors.New("la reposición supera el máximo de stock")
 	ErrNoEncontrado   = errors.New("recurso no encontrado")
 	ErrSinPermiso     = errors.New("solo el rol Cocina puede administrar inventario")
 	ErrSinIdentidad   = errors.New("falta identidad verificada")
