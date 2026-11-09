@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 	"ghostkitchen/pedidos/internal/adapters/inventario"
 	mysqladapter "ghostkitchen/pedidos/internal/adapters/mysql"
 	"ghostkitchen/pedidos/internal/application"
+	"ghostkitchen/pedidos/internal/ports"
 	"github.com/go-sql-driver/mysql"
 )
 
@@ -57,8 +59,17 @@ func main() {
 	// 2. Adaptadores de salida (implementan los puertos).
 	pedidosRepo := mysqladapter.PedidosMySQL{DB: db}
 	carritosRepo := mysqladapter.CarritosMySQL{DB: db}
+	confirmacionesRepo := mysqladapter.ConfirmacionesMySQL{DB: db}
 	catalogoCliente := catalogo.Nuevo(valor("CATALOGO_URL", "http://catalogo:8082"))
 	inventarioCliente := inventario.Nuevo(valor("INVENTARIO_URL", "http://inventario:8084"))
+
+	// El descuento de stock es la V10 de Inventario, que todavía no existe. Mientras tanto se
+	// usa el Inventario falso; con CONSUMO_INVENTARIO=real se usa el de verdad.
+	var consumo ports.Consumo = inventario.ConsumoSimulado{}
+	if valor("CONSUMO_INVENTARIO", "simulado") == "real" {
+		consumo = inventarioCliente
+	}
+	logger.Info("descuento de stock", "modo", valor("CONSUMO_INVENTARIO", "simulado"))
 
 	// 3. Casos de uso: reciben las interfaces, no MySQL ni HTTP.
 	pedidosService := application.PedidosService{Repo: pedidosRepo}
@@ -67,15 +78,34 @@ func main() {
 		Catalogo:   catalogoCliente,
 		Inventario: inventarioCliente,
 	}
+	confirmacionService := application.ConfirmacionService{
+		Repo:     confirmacionesRepo,
+		Carritos: carritosRepo,
+		Pedidos:  pedidosRepo,
+		Consumo:  consumo,
+	}
 
 	// 4. Controllers (adaptador de entrada) y rutas.
 	router := httpadapter.Rutas(logger,
 		httpadapter.SaludController{Repo: pedidosRepo},
 		httpadapter.PedidosController{Service: pedidosService},
 		httpadapter.CarritoController{Service: carritoService},
+		httpadapter.ConfirmacionController{Service: confirmacionService},
 	)
 
-	// 5. Servidor, con tiempos máximos para no quedar colgado con clientes lentos.
+	// 5. Proceso en segundo plano: cada 10 s sigue las confirmaciones que quedaron a medias.
+	go func() {
+		for range time.Tick(10 * time.Second) {
+			revisadas, err := confirmacionService.RecuperarPendientes(context.Background())
+			if err != nil {
+				logger.Error("no se pudieron revisar las confirmaciones pendientes", "error", err.Error())
+			} else if revisadas > 0 {
+				logger.Info("confirmaciones pendientes revisadas", "cantidad", revisadas)
+			}
+		}
+	}()
+
+	// 6. Servidor, con tiempos máximos para no quedar colgado con clientes lentos.
 	puerto := valor("PORT", "8085")
 	servidor := &http.Server{
 		Addr:              ":" + puerto,

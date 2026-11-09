@@ -81,6 +81,10 @@ func (InventarioMock) Ajustar(_ context.Context, _, _ string, items []ports.Item
 func (InventarioMock) Liberar(context.Context, string, string) error { return nil }
 
 func servidor(t *testing.T, falla error) http.Handler {
+	return servidorConConsumo(t, falla, ConsumoMock{})
+}
+
+func servidorConConsumo(t *testing.T, falla error, consumo ConsumoMock) http.Handler {
 	t.Helper()
 	cliente := domain.Actor{UsuarioID: "u-1", Rol: domain.RolCliente}
 	pedido, err := domain.NuevoPedido("ped-1", cliente, "c@ejemplo.com", "cerro",
@@ -89,13 +93,16 @@ func servidor(t *testing.T, falla error) http.Handler {
 		t.Fatal(err)
 	}
 	pedidosRepo := PedidosMock{pedido: pedido, falla: falla}
-	carritoService := application.CarritoService{
-		Repo: &CarritosMock{carritos: map[string]domain.Carrito{}}, Catalogo: CatalogoMock{}, Inventario: InventarioMock{},
+	carritos := &CarritosMock{carritos: map[string]domain.Carrito{}}
+	carritoService := application.CarritoService{Repo: carritos, Catalogo: CatalogoMock{}, Inventario: InventarioMock{}}
+	confirmacionService := application.ConfirmacionService{
+		Repo: &ConfirmacionesMock{lista: map[string]domain.Confirmacion{}}, Carritos: carritos, Pedidos: pedidosRepo, Consumo: consumo,
 	}
 	return Rutas(slog.New(slog.NewJSONHandler(io.Discard, nil)),
 		SaludController{Repo: pedidosRepo},
 		PedidosController{Service: application.PedidosService{Repo: pedidosRepo}},
 		CarritoController{Service: carritoService},
+		ConfirmacionController{Service: confirmacionService},
 	)
 }
 
@@ -203,6 +210,95 @@ func TestCarritoPorHTTP(t *testing.T) {
 	// Vaciar.
 	w, m = pedir(h, "DELETE", "/carrito", "", clienteHeaders)
 	if w.Code != 200 || len(m["items"].([]any)) != 0 || m["reservaId"] != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+// ConfirmacionesMock guarda las confirmaciones en un mapa (versión mínima para las rutas).
+type ConfirmacionesMock struct {
+	lista map[string]domain.Confirmacion
+}
+
+func (m *ConfirmacionesMock) Iniciar(_ context.Context, c domain.Confirmacion) (domain.Confirmacion, bool, error) {
+	m.lista[c.ID] = c
+	return c, false, nil
+}
+func (m *ConfirmacionesMock) Obtener(_ context.Context, id string) (domain.Confirmacion, error) {
+	c, ok := m.lista[id]
+	if !ok {
+		return domain.Confirmacion{}, domain.ErrNoEncontrado
+	}
+	return c, nil
+}
+func (m *ConfirmacionesMock) BuscarPorClave(_ context.Context, clienteID, clave string) (domain.Confirmacion, error) {
+	for _, c := range m.lista {
+		if c.ClienteID == clienteID && c.Clave == clave {
+			return c, nil
+		}
+	}
+	return domain.Confirmacion{}, domain.ErrNoEncontrado
+}
+func (m *ConfirmacionesMock) MarcarPaso(_ context.Context, id string, paso domain.PasoConfirmacion) error {
+	c := m.lista[id]
+	c.Paso = paso
+	m.lista[id] = c
+	return nil
+}
+func (m *ConfirmacionesMock) Completar(_ context.Context, c domain.Confirmacion, _ domain.Pedido) error {
+	c.Estado = domain.ConfirmacionCompletada
+	m.lista[c.ID] = c
+	return nil
+}
+func (m *ConfirmacionesMock) Fallar(_ context.Context, c domain.Confirmacion, motivo string) error {
+	c.Estado, c.Motivo = domain.ConfirmacionFallida, motivo
+	m.lista[c.ID] = c
+	return nil
+}
+func (m *ConfirmacionesMock) Pendientes(context.Context, time.Time) ([]domain.Confirmacion, error) {
+	return nil, nil
+}
+
+// ConsumoMock responde siempre lo mismo.
+type ConsumoMock struct{ err error }
+
+func (m ConsumoMock) Consumir(context.Context, string, string, string) error { return m.err }
+
+func TestConfirmarPorHTTP(t *testing.T) {
+	cliente := map[string]string{"X-Usuario-Id": "u-1", "X-Usuario-Email": "c@ejemplo.com", "X-Rol": "cliente"}
+	conClave := func(clave string) map[string]string {
+		h := map[string]string{"Idempotency-Key": clave}
+		for k, v := range cliente {
+			h[k] = v
+		}
+		return h
+	}
+
+	// Sin clave: 400. Con el carrito vacío: 409.
+	h := servidor(t, nil)
+	if w, m := pedir(h, "POST", "/pedidos", "", cliente); w.Code != 400 || m["code"] != "IDEMPOTENCY_KEY_INVALIDA" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w, m := pedir(h, "POST", "/pedidos", "", conClave("k-1")); w.Code != 409 || m["code"] != "CARRITO_VACIO" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+
+	// Con un plato en el carrito: 201 con el pedido en RECIBIDO y su Location.
+	pedir(h, "POST", "/carrito/items", `{"platoId":"p17","cantidad":2}`, cliente)
+	w, m := pedir(h, "POST", "/pedidos", "", conClave("k-2"))
+	if w.Code != 201 || m["estado"] != "RECIBIDO" || m["total"] != 24000.0 || m["clienteEmail"] != "c@ejemplo.com" ||
+		!strings.HasPrefix(w.Header().Get("Location"), "/pedidos/") {
+		t.Fatal(w.Code, w.Body.String())
+	}
+
+	// Inventario no contesta: 202 "Estamos confirmando tu pedido", y se puede consultar.
+	h = servidorConConsumo(t, nil, ConsumoMock{err: domain.ErrInventarioCaido})
+	pedir(h, "POST", "/carrito/items", `{"platoId":"p17","cantidad":1}`, cliente)
+	w, m = pedir(h, "POST", "/pedidos", "", conClave("k-3"))
+	if w.Code != 202 || m["estado"] != "CONFIRMANDO" || m["mensaje"] != "Estamos confirmando tu pedido" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w, m = pedir(h, "GET", w.Header().Get("Location"), "", cliente)
+	if w.Code != 200 || m["estado"] != "EN_CURSO" || m["pedidoId"] != nil {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }

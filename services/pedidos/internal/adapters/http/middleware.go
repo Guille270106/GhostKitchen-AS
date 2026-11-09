@@ -55,6 +55,7 @@ func Plazo(ctx *gin.Context) {
 func identidad(ctx *gin.Context) domain.Actor {
 	return domain.Actor{
 		UsuarioID: ctx.GetHeader("X-Usuario-Id"),
+		Email:     ctx.GetHeader("X-Usuario-Email"),
 		Rol:       strings.ToLower(ctx.GetHeader("X-Rol")),
 		CocinaID:  ctx.GetHeader("X-Cocina-Id"),
 	}

@@ -24,8 +24,17 @@ func (repo PedidosMySQL) Crear(ctx context.Context, p domain.Pedido) error {
 	// Si algo falla antes del Commit, se deshace todo. Después del Commit no hace nada.
 	defer tx.Rollback()
 
+	if err := insertarPedido(ctx, tx, p); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// insertarPedido guarda pedido, platos e historial dentro de una transacción que ya está abierta.
+// La usan Crear y también Completar (la confirmación), que guarda más cosas en la misma transacción.
+func insertarPedido(ctx context.Context, tx *sql.Tx, p domain.Pedido) error {
 	// 1. El pedido.
-	_, err = tx.ExecContext(ctx, `INSERT INTO pedido
+	_, err := tx.ExecContext(ctx, `INSERT INTO pedido
  (id,cliente_id,cliente_email,cocina_id,estado,total,moneda,version,creado_en,actualizado_en)
  VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		p.ID, p.ClienteID, p.ClienteEmail, p.CocinaID, p.Estado, p.Total, p.Moneda, p.Version, p.CreadoEn, p.ActualizadoEn)
@@ -49,7 +58,7 @@ func (repo PedidosMySQL) Crear(ctx context.Context, p domain.Pedido) error {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 // Obtener lee el pedido con sus items y su historial ordenado por versión.
@@ -137,7 +146,8 @@ func (repo PedidosMySQL) Ready(ctx context.Context) error {
 	var n int
 	return repo.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pedido p
  JOIN pedido_item i ON i.pedido_id=p.id JOIN pedido_historial h ON h.pedido_id=p.id
- JOIN carrito c ON c.cliente_id=p.cliente_id JOIN carrito_item ci ON ci.cliente_id=c.cliente_id WHERE 1=0`).Scan(&n)
+ JOIN carrito c ON c.cliente_id=p.cliente_id JOIN carrito_item ci ON ci.cliente_id=c.cliente_id
+ JOIN confirmacion cf ON cf.pedido_id=p.id WHERE 1=0`).Scan(&n)
 }
 
 func insertarHistorial(ctx context.Context, tx *sql.Tx, pedidoID string, c domain.CambioEstado) error {

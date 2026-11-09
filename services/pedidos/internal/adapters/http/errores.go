@@ -31,6 +31,10 @@ func responderError(ctx *gin.Context, err error) {
 		fallo(ctx, 400, "DATOS_INVALIDOS", err.Error())
 	case errors.Is(err, domain.ErrCantidadInvalida):
 		fallo(ctx, 400, "CANTIDAD_INVALIDA", err.Error())
+	case errors.Is(err, domain.ErrClaveInvalida):
+		fallo(ctx, 400, "IDEMPOTENCY_KEY_INVALIDA", err.Error())
+	case errors.Is(err, domain.ErrCarritoVacio):
+		fallo(ctx, 409, "CARRITO_VACIO", err.Error())
 
 	// La regla de negocio no lo permite ahora.
 	case errors.Is(err, domain.ErrOtraCocina):

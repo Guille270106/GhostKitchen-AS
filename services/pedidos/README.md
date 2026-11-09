@@ -7,6 +7,8 @@
 > **L6:** el **carrito**. El cliente agrega, cambia y saca platos de una sola cocina; el precio sale de Catálogo y se guarda al agregar, y cada cambio deja la reserva de Inventario igual al carrito. Entra por el gateway en `/api/v1/carrito` (con login). La confirmación llega en L8.
 >
 > **L7:** el carrito muestra **cuánto le queda a la reserva** (`segundosRestantes`) y si ya venció (`vencido`).
+>
+> **L8:** **confirmar el pedido como saga**, con plazo de 3 s, circuit breaker (`sony/gobreaker`) y reintentos con backoff (`cenkalti/backoff`). El descuento en Inventario es **simulado** (`CONSUMO_INVENTARIO=simulado`) hasta que exista la V10.
 
 Maneja **el pedido de principio a fin**. Puerto interno **8085**. Es uno de los dos servicios donde no se puede equivocar nada.
 
@@ -14,14 +16,14 @@ Maneja **el pedido de principio a fin**. Puerto interno **8085**. Es uno de los 
 
 | Pieza | Rol en hexagonal | Archivo |
 | --- | --- | --- |
-| `PedidosController`, `CarritoController` | Adaptador de entrada (Gin) | `internal/adapters/http/controllers.go` |
-| `PedidosService`, `CarritoService` | Casos de uso (núcleo) | `internal/application/` |
-| `Pedido`, `Carrito` y sus reglas | Dominio (núcleo) | `internal/domain/` |
-| `PedidosRepo`, `CarritosRepo`, `Catalogo`, `Inventario` | Puertos de salida (interfaces) | `internal/ports/` |
-| `PedidosMySQL`, `CarritosMySQL` | Adaptadores de salida a MySQL | `internal/adapters/mysql/` |
-| `CatalogoHTTP`, `InventarioHTTP` | Adaptadores de salida a los otros servicios | `internal/adapters/catalogo/`, `internal/adapters/inventario/` |
+| `PedidosController`, `CarritoController`, `ConfirmacionController` | Adaptador de entrada (Gin) | `internal/adapters/http/controllers.go` |
+| `PedidosService`, `CarritoService`, `ConfirmacionService` | Casos de uso (núcleo) | `internal/application/` |
+| `Pedido`, `Carrito`, `Confirmacion` y sus reglas | Dominio (núcleo) | `internal/domain/` |
+| `PedidosRepo`, `CarritosRepo`, `ConfirmacionesRepo`, `Catalogo`, `Inventario`, `Consumo` | Puertos de salida (interfaces) | `internal/ports/` |
+| `PedidosMySQL`, `CarritosMySQL`, `ConfirmacionesMySQL` | Adaptadores de salida a MySQL | `internal/adapters/mysql/` |
+| `CatalogoHTTP`, `InventarioHTTP`, `ConsumoSimulado` | Adaptadores de salida a los otros servicios | `internal/adapters/catalogo/`, `internal/adapters/inventario/` |
 
-Las piezas se arman a mano en `cmd/api/main.go` (`PedidosService{Repo: pedidosRepo}`), igual que en las demos de clase. En los tests, los puertos se reemplazan por mocks en memoria (`PedidosMock`, `CarritosMock`, `CatalogoMock`, `InventarioMock`).
+Las piezas se arman a mano en `cmd/api/main.go` (`PedidosService{Repo: pedidosRepo}`), igual que en las demos de clase. En los tests, los puertos se reemplazan por mocks en memoria (`PedidosMock`, `CarritosMock`, `ConfirmacionesMock`, `CatalogoMock`, `InventarioMock`, `ConsumoMock`).
 
 ## El carrito (L6)
 
@@ -61,6 +63,31 @@ Todas las respuestas del carrito traen:
 - Sin platos no hay reserva: `segundosRestantes` es 0 y `vencido` es `false`.
 - Cuando se cumple el plazo, `GET /carrito` responde `vencido: true` y `segundosRestantes: 0`, pero **no cambia nada**: mirar el carrito no modifica datos. Inventario libera los ingredientes en su barrido de cada 15 s; el próximo cambio del cliente recibe `409 CARRITO_VENCIDO` y el carrito queda vacío.
 - El frontend puede mostrar la cuenta regresiva a partir de `venceEn`, sin pedir el carrito cada segundo.
+
+## Confirmar el pedido (L8)
+
+| Ruta en el gateway | Para qué |
+| --- | --- |
+| `POST /api/v1/pedidos` | Confirmar el carrito. Pide el header `Idempotency-Key` |
+| `GET /api/v1/confirmaciones/{id}` | Ver cómo va una confirmación que respondió 202 |
+| `GET /api/v1/pedidos/{id}` | Ver el pedido |
+
+Confirmar toca Pedidos e Inventario, así que no entra en una sola transacción: es una **saga coordinada por Pedidos**, y cada paso queda guardado en la tabla `confirmacion` (ADR-004).
+
+1. **Anotar** la confirmación, con una copia del carrito. La misma `Idempotency-Key` del mismo cliente es la misma confirmación (doble clic: un solo pedido), y un carrito se confirma una sola vez aunque lleguen dos claves a la vez.
+2. **Descontar** en Inventario (`POST /reservas/{id}/consumir`). Si no contesta, se reintenta con **backoff y jitter** (100 ms, 200 ms, 400 ms… con ±50 % de azar), siempre con la **misma clave**, hasta 2 s. El **circuit breaker** se abre si en 10 llamadas falla la mitad: durante 10 s responde al instante sin llamar a Inventario.
+3. *(El paso del grupo proveedor va acá cuando la cátedra lo asigne: L15.)*
+4. **Crear el pedido** en RECIBIDO, marcar la confirmación COMPLETADA y vaciar el carrito, en **una sola transacción**.
+
+| Respuesta | Cuándo |
+| --- | --- |
+| `201` + el pedido | Se completó. Repetir con la misma clave devuelve el mismo pedido |
+| `202` + `"Estamos confirmando tu pedido"` | No sabemos todavía si Inventario descontó. **No se dice que falló.** Un proceso en segundo plano sigue cada 10 s desde el paso guardado; se consulta en `GET /confirmaciones/{id}` |
+| `409 CARRITO_VENCIDO` | La reserva venció: no se descontó nada, la confirmación queda FALLIDA y el carrito vacío |
+| `409 CARRITO_VACIO` | No hay platos para confirmar |
+| `400 IDEMPOTENCY_KEY_INVALIDA` | Falta el header o no es válido |
+
+**Mientras no exista la V10**, el descuento es simulado: siempre sale bien, pero **no descuenta stock de verdad** (la reserva queda activa y se libera sola cuando venza). Cuando Vale la termine se cambia `CONSUMO_INVENTARIO: real` en `docker-compose.yml`; el adaptador real ya está hecho y probado con un Inventario falso.
 
 ## Probar
 

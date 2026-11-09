@@ -81,3 +81,56 @@ func TestInventarioSiempreCaidoDa503(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestConsumirMandaElPedidoYLaClave(t *testing.T) {
+	falso := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var cuerpo map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&cuerpo)
+		if r.Method != "POST" || r.URL.Path != "/reservas/res-1/consumir" || r.Header.Get("Idempotency-Key") != "conf-1-descontar" || cuerpo["pedidoId"] != "ped-1" {
+			t.Errorf("solicitud inesperada: %s %s %v", r.Method, r.URL.Path, cuerpo)
+		}
+		w.Write([]byte(`{}`))
+	}))
+	defer falso.Close()
+	if err := Nuevo(falso.URL).Consumir(context.Background(), "conf-1-descontar", "res-1", "ped-1"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Después de 10 fallas seguidas el circuito se abre: Consumir responde al instante sin llamar.
+func TestCircuitBreakerSeAbreConInventarioCaido(t *testing.T) {
+	var llamadas atomic.Int32
+	falso := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		llamadas.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer falso.Close()
+	cliente := Nuevo(falso.URL)
+	for i := 0; i < 10; i++ {
+		_ = cliente.Consumir(context.Background(), "k", "res-1", "ped-1")
+	}
+	if llamadas.Load() != 10 {
+		t.Fatal("las primeras 10 llegan a Inventario:", llamadas.Load())
+	}
+	if err := cliente.Consumir(context.Background(), "k", "res-1", "ped-1"); !errors.Is(err, domain.ErrInventarioCaido) {
+		t.Fatal(err)
+	}
+	if llamadas.Load() != 10 {
+		t.Fatal("con el circuito abierto no se llama a Inventario:", llamadas.Load())
+	}
+}
+
+// Que la reserva haya vencido es una respuesta del negocio: no abre el circuito.
+func TestReservaVencidaNoAbreElCircuito(t *testing.T) {
+	falso := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte(`{"code":"RESERVA_VENCIDA"}`))
+	}))
+	defer falso.Close()
+	cliente := Nuevo(falso.URL)
+	for i := 0; i < 15; i++ {
+		if err := cliente.Consumir(context.Background(), "k", "res-1", "ped-1"); !errors.Is(err, domain.ErrCarritoVencido) {
+			t.Fatalf("llamada %d: %v", i, err)
+		}
+	}
+}

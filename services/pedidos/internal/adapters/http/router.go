@@ -10,7 +10,7 @@ import (
 
 // Rutas arma el servidor con sus middlewares y todas las rutas de Pedidos.
 // Ninguna se publica directo: el frontend entra por el gateway en /api/v1.
-func Rutas(log *slog.Logger, salud SaludController, pedidos PedidosController, carrito CarritoController) *gin.Engine {
+func Rutas(log *slog.Logger, salud SaludController, pedidos PedidosController, carrito CarritoController, confirmacion ConfirmacionController) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 
@@ -30,6 +30,10 @@ func Rutas(log *slog.Logger, salud SaludController, pedidos PedidosController, c
 	router.PATCH("/carrito/items/:platoId", carrito.CambiarCantidad)
 	router.DELETE("/carrito/items/:platoId", carrito.Quitar)
 	router.DELETE("/carrito", carrito.Vaciar)
+
+	// Confirmar el pedido (la saga) y ver cómo va una confirmación.
+	router.POST("/pedidos", confirmacion.Confirmar)
+	router.GET("/confirmaciones/:id", confirmacion.Ver)
 
 	// Pedidos.
 	router.GET("/pedidos/:id", pedidos.Obtener)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,10 +14,13 @@ import (
 
 // CarritosMock guarda los carritos en un mapa, con el mismo control de versión que MySQL.
 type CarritosMock struct {
+	mu       sync.Mutex
 	carritos map[string]domain.Carrito
 }
 
 func (r *CarritosMock) Obtener(_ context.Context, clienteID string) (domain.Carrito, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	c, ok := r.carritos[clienteID]
 	if !ok {
 		return domain.Carrito{ClienteID: clienteID}, nil
@@ -26,11 +30,22 @@ func (r *CarritosMock) Obtener(_ context.Context, clienteID string) (domain.Carr
 }
 
 func (r *CarritosMock) Guardar(_ context.Context, c domain.Carrito, versionAnterior int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.carritos[c.ClienteID].Version != versionAnterior {
 		return domain.ErrCarritoModificado
 	}
 	r.carritos[c.ClienteID] = c
 	return nil
+}
+
+// vaciar deja vacío el carrito del cliente (lo usa el mock de confirmaciones).
+func (r *CarritosMock) vaciar(clienteID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := r.carritos[clienteID]
+	c.Reiniciar("car-nuevo")
+	r.carritos[clienteID] = c
 }
 
 // CatalogoMock tiene dos platos de Cerro y uno de Nueva Córdoba.

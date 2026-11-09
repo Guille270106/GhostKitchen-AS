@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"ghostkitchen/pedidos/internal/application"
+	"ghostkitchen/pedidos/internal/domain"
 	"ghostkitchen/pedidos/internal/ports"
 	"github.com/gin-gonic/gin"
 )
@@ -123,4 +124,46 @@ func leerJSON(ctx *gin.Context, destino any) bool {
 	decoder := json.NewDecoder(ctx.Request.Body)
 	decoder.DisallowUnknownFields()
 	return decoder.Decode(destino) == nil
+}
+
+// ConfirmacionController atiende la confirmación del pedido (la saga).
+type ConfirmacionController struct {
+	Service application.ConfirmacionService
+}
+
+// Confirmar es "Confirmar pedido". Pide el header Idempotency-Key: si el cliente aprieta dos
+// veces (o el navegador reintenta), la misma clave devuelve el mismo pedido.
+//   - 201: el pedido quedó creado en RECIBIDO.
+//   - 202: "Estamos confirmando tu pedido": no sabemos todavía si Inventario descontó; se sigue
+//     en segundo plano. Se consulta en GET /confirmaciones/{id}.
+func (c ConfirmacionController) Confirmar(ctx *gin.Context) {
+	resultado, err := c.Service.Confirmar(ctx.Request.Context(), identidad(ctx), ctx.GetHeader("Idempotency-Key"))
+	if err != nil {
+		responderError(ctx, err)
+		return
+	}
+	if resultado.Pedido != nil {
+		ctx.Header("Location", "/pedidos/"+resultado.Pedido.ID)
+		ctx.JSON(http.StatusCreated, resultado.Pedido)
+		return
+	}
+	ctx.Header("Location", "/confirmaciones/"+resultado.Confirmacion.ID)
+	ctx.JSON(http.StatusAccepted, gin.H{
+		"estado":         "CONFIRMANDO",
+		"confirmacionId": resultado.Confirmacion.ID,
+		"mensaje":        "Estamos confirmando tu pedido",
+	})
+}
+
+// Ver dice cómo va una confirmación: EN_CURSO, COMPLETADA (con el pedidoId) o FALLIDA.
+func (c ConfirmacionController) Ver(ctx *gin.Context) {
+	conf, err := c.Service.Ver(ctx.Request.Context(), identidad(ctx), ctx.Param("id"))
+	if err != nil {
+		responderError(ctx, err)
+		return
+	}
+	if conf.Estado != domain.ConfirmacionCompletada {
+		conf.PedidoID = "" // el pedido todavía no existe
+	}
+	ctx.JSON(http.StatusOK, conf)
 }
