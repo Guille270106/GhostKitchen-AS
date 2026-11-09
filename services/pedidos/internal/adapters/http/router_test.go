@@ -173,7 +173,8 @@ func TestCarritoPorHTTP(t *testing.T) {
 
 	// Agregar un plato.
 	w, m = pedir(h, "POST", "/carrito/items", `{"platoId":"p17","cantidad":2}`, clienteHeaders)
-	if w.Code != 200 || m["total"] != 24000.0 || m["reservaId"] == nil || m["venceEn"] == nil {
+	if w.Code != 200 || m["total"] != 24000.0 || m["reservaId"] == nil || m["venceEn"] == nil ||
+		m["segundosRestantes"].(float64) < 590 || m["vencido"] != false {
 		t.Fatal(w.Code, w.Body.String())
 	}
 

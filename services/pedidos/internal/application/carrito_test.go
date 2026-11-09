@@ -259,3 +259,24 @@ func TestSoloElClienteUsaElCarrito(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestVerMuestraElTiempoQueQueda(t *testing.T) {
+	svc, repo, _ := carritoEntorno()
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1); err != nil {
+		t.Fatal(err)
+	}
+	c, err := svc.Ver(context.Background(), clienteCarrito)
+	if err != nil || c.SegundosRestantes < 590 || c.SegundosRestantes > 600 || c.Vencido {
+		t.Fatal(err, c.SegundosRestantes, c.Vencido)
+	}
+
+	// Pasaron los 10 minutos: Ver lo avisa, pero no cambia el carrito.
+	guardado := repo.carritos["u-cliente"]
+	vencio := time.Now().Add(-time.Second)
+	guardado.VenceEn = &vencio
+	repo.carritos["u-cliente"] = guardado
+	c, _ = svc.Ver(context.Background(), clienteCarrito)
+	if !c.Vencido || c.SegundosRestantes != 0 || len(c.Items) != 1 {
+		t.Fatal("tiene que avisar que venció sin borrar nada:", c.Vencido, c.SegundosRestantes, len(c.Items))
+	}
+}
