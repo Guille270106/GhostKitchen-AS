@@ -15,6 +15,7 @@ import Home from "../pages/Home";
 import KitchenDetail from "../pages/KitchenDetail";
 import Login from "../pages/Login";
 import NotFound from "../pages/NotFound";
+import RecetasMermas from "../pages/RecetasMermas";
 import Register from "../pages/Register";
 import Search from "../pages/Search";
 
@@ -67,6 +68,7 @@ function AppRouter() {
                 <Route path="/cocina" element={<ProtectedRoute allowedRoles={["COCINA"]}><WorkspaceLayout /></ProtectedRoute>}>
                   <Route index element={<Navigate to="inventario" replace />} />
                   <Route path="inventario" element={<StockIngredientes />} />
+                  <Route path="platos" element={<RecetasMermas />} />
                 </Route>
                 <Route path="*" element={<NotFound />} />
               </Routes>
