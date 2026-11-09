@@ -417,7 +417,7 @@ Con true, Solr busca además nuestra cocina activa más cercana al cliente, no a
 - **Quién lo llama:** Pedidos, directo. No lo llama el frontend ni pasa por nuestro gateway.
 - **Cómo:** con el tiempo que quede del total de 3 s, reintentando solo si es seguro, cortando un rato si falla mucho (circuit breaker) y con un **test de contrato** que avise si su API cambia.
 - **Dónde se usa:** en el paso de la confirmación que corresponda según lo que haga.
-- **Qué ve el cliente si falla:** un mensaje claro, y el pedido no se pierde. Cómo lo integramos está en el [ADR-009](adr/ADR-009-consumo-del-proveedor.md); el detalle se completa cuando conozcamos su contrato.
+- **Qué ve el cliente si falla:** el pedido se confirma igual y la factura queda pendiente; sale sola cuando el proveedor vuelve. El proveedor es la API de comprobantes del Grupo 4 y cómo lo integramos está en el [ADR-009](adr/ADR-009-consumo-del-proveedor.md).
 
 ## 10. Qué pasa si algo falla
 
@@ -510,7 +510,7 @@ El objetivo es probar las reglas importantes y explicar los resultados. Un porce
 | [ADR-006](adr/ADR-006-busqueda.md) | D6 Búsqueda | Aceptada | 2 |
 | [ADR-007](adr/ADR-007-cache.md) | D7 Caché | Propuesta | 2 |
 | [ADR-008](adr/ADR-008-contrato-propio.md) | D8 Lo que publicamos | Aceptada, implementada (contrato 1.1.0 sin cambios) | 1 (implementada en la 2) |
-| [ADR-009](adr/ADR-009-consumo-del-proveedor.md) | D9 Lo que consumimos | Propuesta (falta que asignen el proveedor) | 2 |
+| [ADR-009](adr/ADR-009-consumo-del-proveedor.md) | D9 Lo que consumimos | Aceptada (Grupo 4, comprobantes) | 2 |
 | [ADR-010](adr/ADR-010-resiliencia.md) | D10 Qué pasa cuando algo falla | Aceptada | 2 |
 | [ADR-011](adr/ADR-011-observabilidad.md) | D11 Monitoreo | Primera versión | 2 |
 | [ADR-012](adr/ADR-012-balanceo-de-carga.md) | D12 Balanceo de carga | Propuesta | 2 |
@@ -519,7 +519,7 @@ El objetivo es probar las reglas importantes y explicar los resultados. Un porce
 ## 14. Limitaciones conocidas
 
 - **Funcionan tres piezas de siete:** gateway, Búsqueda y Catálogo. Usuarios, Inventario, Pedidos y Notificaciones todavía no tienen código, así que la disponibilidad de los platos sale de los datos iniciales y la búsqueda no recibe mensajes.
-- **No sabemos qué grupo vamos a consumir**, así que el [ADR-009](adr/ADR-009-consumo-del-proveedor.md) define cómo lo vamos a integrar, pero no el contrato concreto.
+- **El grupo proveedor (Grupo 4) todavía no publicó su URL pública:** Pedidos usa su mock, servido desde su contrato, y el test de contrato corre contra ese mock ([ADR-009](adr/ADR-009-consumo-del-proveedor.md)). Cuando la publiquen, se completa el `.env` y se pide la API key.
 - **Tenemos que confirmar con la cátedra:** que los pedidos los reciba la cocina (y no cada restaurante), que los 10 minutos no se reinicien al agregar platos y hasta cuándo puede cancelar el cliente.
 - **Usuarios es una pieza crítica:** el gateway le pregunta en cada solicitud con login. Si se cae, nadie puede usar las funciones privadas. La alternativa sería que NGINX verifique el token por su cuenta, pero eso requiere un módulo extra o un gateway propio.
 - **NGINX gratuito solo detecta una copia caída cuando le fallan los pedidos** (no la revisa por su cuenta cada tanto; eso es de la versión paga).

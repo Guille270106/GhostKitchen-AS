@@ -209,12 +209,14 @@ go test ./...
 Contra MySQL real, en una base descartable que no usa el `.env` ni los datos de desarrollo:
 
 ```powershell
-docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml up -d --build --wait pedidos
+docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml up -d --build --wait pedidos comprobantes-mock
 docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml run --rm --build pruebas
 docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml down -v
 ```
 
 El test `TestMySQLCambiosSimultaneosGanaUnoSolo` manda 20 veces "cancelar" (cliente) y "aceptar" (cocina) al mismo pedido a la vez: en cada vuelta gana uno solo, la versión queda en 2 y el historial tiene dos entradas.
+
+El mismo comando corre el **test de contrato con el grupo proveedor** (`adapters/proveedor/contrato_test.go`): le manda al mock del Grupo 4, servido desde la copia de su OpenAPI, lo que arma nuestro adaptador. Prism valida cada solicitud contra su contrato y responde `422` si algo no cumple. Si el Grupo 4 publica una versión nueva, se reemplaza `docs/contracts/proveedor/comprobantes-v1.yaml` y este test avisa si algo dejó de ser compatible ([ADR-009](../../docs/adr/ADR-009-consumo-del-proveedor.md)).
 
 **De punta a punta**, con todo el sistema levantado y entrando por el gateway como el frontend:
 
