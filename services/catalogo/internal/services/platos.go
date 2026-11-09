@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"ghostkitchen/catalogo/internal/domain"
+	"ghostkitchen/catalogo/internal/middleware"
 	"ghostkitchen/catalogo/internal/repositories"
 )
 
@@ -84,7 +85,8 @@ func (s *PlatosCocina) CrearPlato(ctx context.Context, quien Cocina, restaurante
 		return domain.Plato{}, err
 	}
 	p.ActualizadoEn = s.ahora().UTC()
-	if err := s.esc.CrearPlato(ctx, p); err != nil {
+	ev := domain.EventoPlato(domain.PlatoCreado, p, middleware.IDDesdeContexto(ctx), p.ActualizadoEn)
+	if err := s.esc.CrearPlato(ctx, p, ev); err != nil {
 		return domain.Plato{}, err
 	}
 	return p, nil
@@ -108,7 +110,7 @@ func (s *PlatosCocina) ModificarPlato(ctx context.Context, quien Cocina, id stri
 			return domain.Plato{}, domain.ErrOtraCocina
 		}
 		seActiva := cambios.Activo != nil && *cambios.Activo && !p.Activo
-		anterior := p.Version
+		anterior, estabaActivo := p.Version, p.Activo
 		if err := p.Aplicar(cambios); err != nil {
 			return domain.Plato{}, err
 		}
@@ -119,7 +121,9 @@ func (s *PlatosCocina) ModificarPlato(ctx context.Context, quien Cocina, id stri
 		}
 		p.Version = anterior + 1
 		p.ActualizadoEn = s.ahora().UTC()
-		err = s.esc.ReemplazarPlato(ctx, p, anterior)
+		tipo := domain.TipoCambio(estabaActivo, p.Activo, domain.PlatoActualizado, domain.PlatoDesactivado)
+		ev := domain.EventoPlato(tipo, p, correlationID, p.ActualizadoEn)
+		err = s.esc.ReemplazarPlato(ctx, p, anterior, ev)
 		if errors.Is(err, domain.ErrConflicto) {
 			continue
 		}

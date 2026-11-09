@@ -22,6 +22,7 @@ import (
 	"ghostkitchen/catalogo/internal/clients"
 	"ghostkitchen/catalogo/internal/config"
 	"ghostkitchen/catalogo/internal/handlers"
+	"ghostkitchen/catalogo/internal/mensajeria"
 	repomongo "ghostkitchen/catalogo/internal/repositories/mongo"
 	"ghostkitchen/catalogo/internal/router"
 	"ghostkitchen/catalogo/internal/seed"
@@ -67,6 +68,15 @@ func main() {
 	// La base se prepara en segundo plano para que /health conteste mientras MongoDB arranca.
 	repo := repomongo.Nuevo(cliente, cfg.MongoBase)
 	go prepararBase(ctx, log, repo, cfg.SeedAlIniciar)
+
+	// Publicador del outbox (G13): manda a RabbitMQ los eventos que cada escritura guardó junto
+	// con su cambio. Sin RABBITMQ_URL los eventos se siguen guardando y salen cuando se configure.
+	if cfg.RabbitMQURL != "" {
+		pub := mensajeria.NuevoPublicador(repo, func() (mensajeria.Canal, error) { return mensajeria.Conectar(cfg.RabbitMQURL) }, log)
+		go pub.Correr(ctx)
+	} else {
+		log.Warn("sin RABBITMQ_URL: los eventos quedan en el outbox sin publicar")
+	}
 
 	r := router.Nuevo(log,
 		handlers.Nuevo(services.Nuevo(repo), repo.Ping),

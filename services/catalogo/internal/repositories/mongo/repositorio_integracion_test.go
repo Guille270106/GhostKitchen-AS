@@ -93,25 +93,39 @@ func TestIntegracionEscriturasMongo(t *testing.T) {
 	t.Cleanup(func() { _ = cli.Database(base).Drop(context.Background()); _ = cli.Disconnect(context.Background()) })
 	repo := Nuevo(cli, base)
 
+	ahora := time.Now()
 	c := domain.Cocina{ID: "guemes", Nombre: "Güemes", Activa: true, Version: 1, Restaurantes: []domain.Restaurante{}}
-	if err := repo.CrearCocina(ctx, c); err != nil {
+	if err := repo.CrearCocina(ctx, c, domain.EventoCocina(domain.CocinaCreada, c, "t1", ahora)); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.CrearCocina(ctx, c); !errors.Is(err, domain.ErrYaExiste) {
+	if err := repo.CrearCocina(ctx, c, domain.EventoCocina(domain.CocinaCreada, c, "t2", ahora)); !errors.Is(err, domain.ErrYaExiste) {
 		t.Fatalf("crear dos veces: %v", err)
 	}
 	c.Restaurantes = append(c.Restaurantes, domain.Restaurante{ID: "r1", Nombre: "Mostaza", Activo: true})
 	c.Version = 2
-	if err := repo.ReemplazarCocina(ctx, c, 1); err != nil {
+	if err := repo.ReemplazarCocina(ctx, c, 1, domain.EventoCocina(domain.CocinaActualizada, c, "t3", ahora.Add(time.Second))); err != nil {
 		t.Fatal(err)
 	}
 	// Otra solicitud que había leído la versión 1 ya no puede guardar.
 	viejo := domain.Cocina{ID: "guemes", Nombre: "Pisado", Version: 2}
-	if err := repo.ReemplazarCocina(ctx, viejo, 1); !errors.Is(err, domain.ErrConflicto) {
+	if err := repo.ReemplazarCocina(ctx, viejo, 1, domain.EventoCocina(domain.CocinaActualizada, viejo, "t4", ahora.Add(2*time.Second))); !errors.Is(err, domain.ErrConflicto) {
 		t.Fatalf("versión vieja: %v", err)
 	}
 	guardada, _, _ := repo.ObtenerCocina(ctx, "guemes")
 	if guardada.Nombre != "Güemes" || guardada.Version != 2 || len(guardada.Restaurantes) != 1 {
 		t.Fatalf("quedó %+v", guardada)
+	}
+
+	// Outbox: solo los dos cambios que se guardaron tienen su evento; los que fallaron, no
+	// (la transacción se canceló entera).
+	pend, err := repo.Pendientes(ctx, 10)
+	if err != nil || len(pend) != 2 || pend[0].Tipo != domain.CocinaCreada || pend[1].Tipo != domain.CocinaActualizada {
+		t.Fatalf("pendientes: %+v %v", pend, err)
+	}
+	if err := repo.MarcarPublicado(ctx, pend[0].EventoID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if pend, _ := repo.Pendientes(ctx, 10); len(pend) != 1 || pend[0].Tipo != domain.CocinaActualizada {
+		t.Fatalf("después de publicar el primero: %+v", pend)
 	}
 }
