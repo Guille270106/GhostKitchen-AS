@@ -1,0 +1,60 @@
+/* Selector de sede: cuadro sobre la pantalla principal con el fondo borroso */
+body.no-scroll { overflow: hidden; }
+.sede-overlay { position: fixed; inset: 0; z-index: 150; background: rgba(20, 20, 24, .38); backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px); display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; overflow-y: auto; }
+.sede-dialog { position: relative; width: min(920px, 100%); background: #fff; border-radius: 8px; padding: 30px 32px 32px; box-shadow: 0 18px 50px rgba(0,0,0,.3); }
+.sede-dialog h2 { font-size: 28px; margin: 0 0 8px; padding-right: 32px; }
+.sede-lead { color: var(--muted); font-size: 16px; margin: 0 0 20px; }
+.sede-close { position: absolute; top: 18px; right: 18px; border: 0; background: none; color: var(--muted); padding: 4px; }
+.sede-close:hover { color: var(--ink); }
+
+/* Buscador de zona (tambien se usa en el registro) */
+.zone-search { position: relative; color: var(--ink); }
+.zone-input { height: 54px; background: #fff; border: 1px solid #c9ccd1; border-radius: 6px; padding: 0 16px; display: flex; align-items: center; gap: 10px; }
+.zone-input:focus-within { border-color: var(--red); box-shadow: 0 0 0 3px rgba(225,29,72,.1); }
+.zone-input svg { color: var(--red); flex: 0 0 auto; }
+.zone-input input { border: 0; outline: 0; flex: 1; min-width: 0; font-size: 16px; background: transparent; }
+.zone-results { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); list-style: none; margin: 0; padding: 4px; background: #fff; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.14); }
+.zone-results button { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; text-align: left; border: 0; background: none; padding: 10px 12px; border-radius: 4px; font-size: 15px; }
+.zone-results button small { color: var(--muted); font-size: 13px; }
+.zone-results button:hover, .zone-results button.active { background: var(--red-soft); }
+.zone-results button:hover small, .zone-results button.active small { color: var(--red); }
+.zone-empty { padding: 12px; color: var(--muted); font-size: 14px; }
+
+.sede-suggestion { margin-top: 12px; background: var(--red-soft); border: 1px solid #fecdd3; border-radius: 6px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.sede-suggestion div { display: grid; gap: 2px; }
+.sede-suggestion small { color: var(--muted); font-size: 13px; }
+.sede-suggestion strong { font-family: var(--font-title); font-size: 20px; }
+.sede-suggestion span { color: #4b5563; font-size: 14px; }
+.sede-suggestion p { margin: 0; }
+
+.sede-divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin: 24px 0 14px; }
+.sede-divider::before, .sede-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+.sede-warning { display: flex; align-items: center; gap: 6px; background: var(--amber-soft); color: var(--amber); padding: 10px 12px; border-radius: 6px; font-size: 14px; }
+.sede-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.sede-card { position: relative; display: flex; text-align: left; padding: 0; background: #fff; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; transition: box-shadow .15s, border-color .15s; }
+.sede-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,.1); border-color: #fda4af; }
+.sede-card:hover h3 { color: var(--red); }
+.sede-card.current { border-color: var(--red); box-shadow: 0 0 0 2px rgba(225,29,72,.14); }
+.sede-card img { width: 120px; flex: 0 0 120px; object-fit: cover; }
+.sede-card > div { padding: 12px 14px; min-width: 0; }
+.sede-card h3 { font-size: 17px; margin: 0 0 3px; }
+.sede-address { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+.sede-brands { list-style: none; padding: 0; margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 5px; }
+.sede-brands li { font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 4px; background: var(--red-soft); color: var(--red); }
+.sede-meta { display: flex; gap: 12px; margin: 0; font-size: 12px; color: #4b5563; }
+.sede-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.sede-current { position: absolute; top: 8px; left: 8px; background: var(--red); color: #fff; font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 4px; }
+
+@media (max-width: 760px) {
+  .sede-overlay { padding: 16px 12px; }
+  .sede-dialog { padding: 22px 18px 20px; }
+  .sede-dialog h2 { font-size: 22px; }
+  .sede-grid { grid-template-columns: 1fr; }
+  .sede-suggestion { flex-direction: column; align-items: stretch; }
+  .zone-results button { flex-direction: column; gap: 2px; }
+}
+
+@media (max-width: 420px) {
+  .sede-card img { width: 88px; flex-basis: 88px; }
+}

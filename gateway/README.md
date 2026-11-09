@@ -14,6 +14,7 @@
 >
 > | Ruta | Destino | Login |
 > | --- | --- | --- |
+> | `GET /api/v1/busqueda/sedes[/{id}[/platos]]` y `/api/v1/busqueda/platos/{id}` (G18) | Búsqueda `/v1` | No. Sin API key, 10 por segundo por IP (ráfaga de 40) |
 > | `POST /api/v1/auth/registro` y `POST /api/v1/auth/login` | Usuarios | No. Límite de 10 por minuto por IP (ráfaga de 5), contra quien prueba contraseñas: después, `429` con `Retry-After: 6` |
 > | `POST /api/v1/admin/cuentas-cocina` | Usuarios | Sí (Usuarios además controla que sea admin) |
 > | `/api/v1/admin/cocinas[/{id}[/restaurantes[/{rid}]]]` (G11) | Catálogo | Sí (Catálogo controla que sea admin y que la cocina sea de su localidad) |

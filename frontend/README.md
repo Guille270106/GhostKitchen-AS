@@ -42,6 +42,19 @@ npm run dev      # http://localhost:5173, reenvía /api a http://localhost:8080
 npm run lint
 ```
 
+## De dónde sale cada dato (G18)
+
+| Pantalla | Función de `ghostkitchen.js` | Backend |
+| --- | --- | --- |
+| Elegir la sede, encabezado | `getCocinas` | Catálogo `GET /api/v1/cocinas` |
+| Sugerir la sede por zona | `buscarZonas` | Las zonas son datos fijos (`data/visual.js`); la cocina más cercana se calcula con la ubicación que da Catálogo |
+| Inicio: platos destacados | `getPlatosDestacados` | Búsqueda `GET /api/v1/busqueda/sedes/{sede}/platos` |
+| Buscar platos y filtros | `searchPlatos`, `autocompletePlatos` | Búsqueda (dos consultas: resultados con filtros, y opciones de filtro con solo el texto) |
+| Detalle de una cocina | `getCocinaById` | Catálogo (cocina y menú) + Búsqueda (qué platos tienen stock). Si Búsqueda no contesta, el menú se muestra igual |
+| Login y registro | `loginUser`, `registerUser` | Usuarios. El registro pide la dirección (HU01) |
+
+Las fotos de los platos de ejemplo están en `data/dishPhotos.js` y `public/images/platos`; las de portada y las categorías del inicio, en `data/visual.js`. El botón "Agregar" ya está en cada plato, pero el carrito real llega con L17: hasta entonces `context/CartContext.jsx` es una versión provisoria que avisa que todavía no está disponible.
+
 ## Qué entra en cada parte
 
 El frontend se suma por partes, cada una en el commit de quien la hace:

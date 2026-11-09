@@ -7,6 +7,8 @@
 // Cada parte del sistema suma sus funciones en su commit (G14 la base y la sesión; G18 la
 // búsqueda; V16/V17 el inventario; L17/L18 el carrito y los pedidos; G21 el admin).
 
+import { dishPhotos } from "../data/dishPhotos";
+import { FOTOS_COCINA, photos, zonas } from "../data/visual";
 import { clearAuthToken, getAuthToken, setAuthToken, setSessionProfile } from "../utils/auth";
 
 // El frontend siempre habla con el gateway por la misma dirección: en desarrollo, Vite
@@ -164,6 +166,7 @@ export function cocinaParaPantallas(c) {
     tiempo: c.tiempoEntregaMin ? `${c.tiempoEntregaMin}–${c.tiempoEntregaMax} min` : "",
     envio: c.costoEnvio,
     activa: c.activa !== false,
+    foto: FOTOS_COCINA[c.id] || photos.local,
     marcas: (c.restaurantes || []).filter((r) => r.activo !== false).map((r) => ({ id: r.id, nombre: r.nombre })),
   };
 }
@@ -173,4 +176,163 @@ export async function getCocinas({ localidadId } = {}) {
   const datos = await pedir("GET", "/cocinas");
   const lista = Array.isArray(datos) ? datos : datos?.items || [];
   return lista.map(cocinaParaPantallas).filter((c) => !localidadId || c.localidadId === localidadId);
+}
+
+// ---------------------------------------------------------------------------
+// Detalle de una cocina, búsqueda de platos y sede más cercana (G18)
+// ---------------------------------------------------------------------------
+
+// Foto de un plato: la que cargó la cocina o, para los platos de ejemplo, la de dishPhotos.
+function fotoDe(id, fotoUrl) {
+  return fotoUrl || dishPhotos[id]?.foto || "";
+}
+
+// Convierte un plato de Búsqueda a la forma que usan las pantallas. "disponible" es
+// orientativo (puede tener unos segundos de atraso, RN21): el control real es al reservar.
+function platoDeBusqueda(p) {
+  return {
+    id: p.id,
+    nombre: p.nombre,
+    descripcion: p.descripcion || "",
+    categoria: p.categoria,
+    etiquetas: p.etiquetas || [],
+    precio: p.precio,
+    foto: fotoDe(p.id, p.fotoUrl),
+    restauranteId: p.restaurante?.id,
+    restauranteNombre: p.restaurante?.nombre,
+    cocinaId: p.sede?.id,
+    cocinaNombre: p.sede?.nombre,
+    localidadId: p.sede?.id,
+    sinStock: p.disponible === false,
+  };
+}
+
+// Pide platos a Búsqueda (GET /api/v1/busqueda/sedes/{sede}/platos). Los parámetros son los
+// del contrato de Búsqueda: q, categoria, etiqueta, restauranteId, precioMax, soloDisponibles,
+// orden (relevancia, precio_asc, precio_desc), page y pageSize (hasta 50).
+async function buscarEnSede(sedeId, params) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
+  });
+  return pedir("GET", `/busqueda/sedes/${encodeURIComponent(sedeId)}/platos?${qs}`);
+}
+
+// Una cocina con sus marcas y su menú. El menú sale de Catálogo (la fuente de verdad); si
+// Búsqueda contesta, se le suma qué platos tienen stock. Si Búsqueda no contesta, el menú se
+// muestra igual: la disponibilidad se controla de verdad al agregar al carrito.
+export async function getCocinaById(id) {
+  const [cocina, menu, disponibles] = await Promise.all([
+    pedir("GET", `/cocinas/${encodeURIComponent(id)}`),
+    pedir("GET", `/cocinas/${encodeURIComponent(id)}/platos`),
+    buscarEnSede(id, { soloDisponibles: false, pageSize: 50 }).catch(() => null),
+  ]);
+  const c = cocinaParaPantallas(cocina);
+  const nombres = Object.fromEntries(c.marcas.map((m) => [m.id, m.nombre]));
+  const stock = disponibles ? Object.fromEntries(disponibles.items.map((p) => [p.id, p.disponible])) : {};
+  const platos = (menu.items || []).map((p) => ({
+    id: p.id,
+    nombre: p.nombre,
+    descripcion: p.descripcion || "",
+    categoria: p.categoria,
+    etiquetas: p.etiquetas || [],
+    precio: p.precio,
+    foto: fotoDe(p.id, p.fotoUrl),
+    restauranteId: p.restauranteId,
+    restauranteNombre: nombres[p.restauranteId],
+    cocinaId: c.id,
+    cocinaNombre: c.nombre,
+    localidadId: c.id,
+    sinStock: stock[p.id] === false,
+  }));
+  return { cocina: c, marcas: c.marcas, platos };
+}
+
+// Algunos platos con stock de la sede, para el inicio.
+export async function getPlatosDestacados({ localidadId, limit = 4 } = {}) {
+  if (!localidadId) return [];
+  const res = await buscarEnSede(localidadId, { pageSize: limit });
+  return res.items.map(platoDeBusqueda);
+}
+
+// Sugerencias mientras se escribe: nombres de platos de la sede que empiezan con lo escrito.
+export async function autocompletePlatos(q, { localidadId } = {}) {
+  const texto = String(q || "").trim();
+  if (texto.length < 3 || !localidadId) return [];
+  const res = await buscarEnSede(localidadId, { q: texto, soloDisponibles: false, pageSize: 20 });
+  const inicio = normalizar(texto);
+  return [...new Set(res.items.map((p) => p.nombre).filter((n) => normalizar(n).startsWith(inicio)))].sort().slice(0, 5);
+}
+
+const ORDENES = { relevancia: "relevancia", "precio-asc": "precio_asc", "precio-desc": "precio_desc" };
+
+// Búsqueda de platos con filtros (HU04). Hace dos consultas a Búsqueda: una con los filtros
+// (los resultados) y otra solo con el texto, para armar las opciones de filtro (marcas,
+// categorías y precio máximo) sobre todo lo que coincide con el texto.
+export async function searchPlatos(filters = {}) {
+  const { q = "", localidadId, restauranteIds = [], categoria, etiqueta, precioMax, soloDisponibles = false, orden = "relevancia", page = 1, pageSize = 12 } = filters;
+  if (!localidadId) return { items: [], total: 0, page: 1, pages: 1, facetas: { cocinas: [], restaurantes: [], categorias: [], precioMaximo: 0 } };
+  const texto = q.trim();
+  // Búsqueda filtra por una sola marca: con varias elegidas se piden todas y se filtra acá.
+  const unaMarca = restauranteIds.length === 1 ? restauranteIds[0] : undefined;
+  const varias = restauranteIds.length > 1;
+  const [res, todo] = await Promise.all([
+    buscarEnSede(localidadId, {
+      q: texto, categoria, etiqueta, precioMax, restauranteId: unaMarca,
+      soloDisponibles, orden: ORDENES[orden] || "relevancia",
+      page: varias ? 1 : page, pageSize: varias ? 50 : pageSize,
+    }),
+    buscarEnSede(localidadId, { q: texto, soloDisponibles: false, pageSize: 50 }),
+  ]);
+
+  let items = res.items.map(platoDeBusqueda);
+  let total = res.total;
+  let paginaActual = res.page || page;
+  let paginas = res.totalPages || Math.max(1, Math.ceil(total / pageSize));
+  if (varias) {
+    const todos = items.filter((p) => restauranteIds.includes(p.restauranteId));
+    total = todos.length;
+    paginas = Math.max(1, Math.ceil(total / pageSize));
+    paginaActual = Math.min(Math.max(1, page), paginas);
+    items = todos.slice((paginaActual - 1) * pageSize, paginaActual * pageSize);
+  }
+
+  const base = todo.items.map(platoDeBusqueda);
+  const facetas = {
+    cocinas: [...new Map(base.map((p) => [p.cocinaId, { id: p.cocinaId, nombre: p.cocinaNombre }])).values()],
+    restaurantes: [...new Map(base.map((p) => [p.restauranteId, { id: p.restauranteId, nombre: p.restauranteNombre, cantidad: base.filter((x) => x.restauranteId === p.restauranteId).length }])).values()],
+    categorias: [...new Set(base.map((p) => p.categoria))],
+    precioMaximo: Math.max(0, ...base.map((p) => p.precio)),
+  };
+  return { items, total, page: paginaActual, pages: paginas, facetas, toleranciaAplicada: false };
+}
+
+const normalizar = (texto) => String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+// Distancia en km entre dos puntos (fórmula de haversine), la misma que usa Búsqueda.
+function distanciaKm(a, b) {
+  const rad = (g) => (g * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(Math.min(1, Math.max(0, h))));
+}
+
+// Zonas que coinciden con lo escrito, cada una con su cocina activa más cercana (HU03). Las
+// zonas son datos fijos de la pantalla; las cocinas y su ubicación vienen de Catálogo.
+export async function buscarZonas(q, limit = 6) {
+  const termino = normalizar(q);
+  if (termino.length < 2) return [];
+  const cocinas = (await getCocinas()).filter((c) => c.activa && Number.isFinite(c.lat) && Number.isFinite(c.lng));
+  return zonas
+    .map((z) => ({ zona: z, nombre: normalizar(z.nombre) }))
+    .filter(({ nombre }) => nombre.includes(termino))
+    .sort((a, b) => Number(b.nombre.startsWith(termino)) - Number(a.nombre.startsWith(termino)) || a.nombre.localeCompare(b.nombre))
+    .slice(0, limit)
+    .map(({ zona }) => {
+      const [cercana] = cocinas
+        .map((c) => ({ ...c, distanciaKm: Math.round(distanciaKm(zona, c) * 10) / 10 }))
+        .sort((a, b) => a.distanciaKm - b.distanciaKm);
+      return { ...zona, cocina: cercana ? { id: cercana.id, nombre: cercana.nombre, localidadId: cercana.localidadId, distanciaKm: cercana.distanciaKm } : null };
+    });
 }
