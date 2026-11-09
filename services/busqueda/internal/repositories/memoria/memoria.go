@@ -95,7 +95,8 @@ func (r *Repositorio) SedeMasCercana(ctx context.Context, punto domain.Ubicacion
 }
 
 // BuscarPlatos aplica los mismos filtros que Solr y busca el texto igual que text_gk
-// (palabras enteras, sin acentos, con raíces en español y todas las palabras, como mm=100%),
+// (palabras enteras, sin acentos, con raíces en español y todas las palabras, como mm=100%;
+// la última también como comienzo de palabra),
 // usando el paquete texto. No calcula puntaje: "relevancia" ordena por id.
 func (r *Repositorio) BuscarPlatos(_ context.Context, f domain.FiltroPlatos) ([]domain.Plato, int, error) {
 	if r.Falla != nil {
@@ -113,7 +114,7 @@ func (r *Repositorio) BuscarPlatos(_ context.Context, f domain.FiltroPlatos) ([]
 			f.RestauranteID != "" && p.Restaurante.ID != f.RestauranteID,
 			f.PrecioMax > 0 && p.Precio > f.PrecioMax,
 			f.Etiqueta != "" && !contiene(p.Etiquetas, f.Etiqueta),
-			texto != "" && !tx.Contiene(p.Nombre+" "+p.Descripcion+" "+p.Categoria+" "+p.Restaurante.Nombre, texto):
+			texto != "" && !tx.ContieneConPrefijo(p.Nombre+" "+p.Descripcion+" "+p.Categoria+" "+p.Restaurante.Nombre, texto):
 			continue
 		}
 		res = append(res, p)

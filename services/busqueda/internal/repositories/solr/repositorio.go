@@ -8,8 +8,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"ghostkitchen/busqueda/internal/domain"
+	"ghostkitchen/busqueda/internal/texto"
 )
 
 // Repositorio implementa repositories.Lector y repositories.Indexador sobre Solr.
@@ -154,7 +156,7 @@ func ParametrosBusqueda(f domain.FiltroPlatos) url.Values {
 	p := url.Values{}
 	if t := strings.TrimSpace(f.Texto); t != "" {
 		p.Set("defType", "edismax")
-		p.Set("q", escaparTexto(t))
+		p.Set("q", consultaTexto(t))
 		p.Set("qf", "nombre^3 restaurante_nombre^2 categoria_txt^2 descripcion")
 		p.Set("mm", "100%") // todas las palabras tienen que aparecer
 	} else {
@@ -301,6 +303,37 @@ func leerPunto(s string) (domain.Ubicacion, error) {
 		return domain.Ubicacion{}, fmt.Errorf("ubicación %q inválida", s)
 	}
 	return domain.Ubicacion{Lat: lat, Lng: lng}, nil
+}
+
+// consultaTexto arma la consulta del texto que escribió la persona. Cada palabra se escapa
+// (se busca como texto, no como sintaxis de Solr). La última, si tiene al menos 3 letras, se
+// busca también como comienzo de palabra: así "hambur" encuentra "Hamburguesa" mientras se
+// escribe (búsqueda y sugerencias del frontend, G18).
+//
+// Va "hambur OR hambur*" y no solo "hambur*" porque el comodín no pasa por la raíz en
+// español: "hamburguesas*" no encontraría "hamburgues", que es lo que guarda el índice. La
+// palabra entera sí. Con mm=100% el grupo entre paréntesis cuenta como una palabra más.
+func consultaTexto(t string) string {
+	palabras := strings.Fields(t)
+	ultima := palabras[len(palabras)-1]
+	for i, w := range palabras {
+		palabras[i] = escaparTexto(w)
+	}
+	if soloLetras(ultima) && len([]rune(ultima)) >= texto.MinPrefijo {
+		e := palabras[len(palabras)-1]
+		palabras[len(palabras)-1] = "(" + e + " OR " + e + "*)"
+	}
+	return strings.Join(palabras, " ")
+}
+
+// soloLetras dice si w es una sola palabra para Solr (sin signos que la partan en dos).
+func soloLetras(w string) bool {
+	for _, r := range w {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
 }
 
 // frase arma un valor exacto entre comillas para un filtro (fq). Escapar \ y " impide que un

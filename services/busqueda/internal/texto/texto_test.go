@@ -46,3 +46,24 @@ func TestContiene(t *testing.T) {
 		}
 	}
 }
+
+func TestContieneConPrefijo(t *testing.T) {
+	plato := "Hamburguesa doble con queso"
+	casos := map[string]bool{
+		"hambur":           true, // la última palabra, como comienzo
+		"HAMBÚR":           true, // sin mayúsculas ni acentos
+		"hamburguesas":     true, // la palabra entera, por su raíz
+		"doble hambur":     true,
+		"hambur doble":     false, // solo la última puede estar a medias
+		"doble queso hamb": true,
+		"hamb doble":       false, // solo la última puede estar a medias
+		"ha":               false, // menos de 3 letras: no cuenta como comienzo
+		"pizza":            false,
+		"":                 true,
+	}
+	for consulta, quiero := range casos {
+		if got := ContieneConPrefijo(plato, consulta); got != quiero {
+			t.Errorf("%q: %v, esperaba %v", consulta, got, quiero)
+		}
+	}
+}

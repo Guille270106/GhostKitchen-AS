@@ -124,6 +124,21 @@ func TestParametrosBusqueda(t *testing.T) {
 	}
 }
 
+func TestLaUltimaPalabraTambienEsPrefijo(t *testing.T) {
+	casos := map[string]string{
+		"hambur":       "(hambur OR hambur*)",
+		"Doble hambúr": "Doble (hambúr OR hambúr*)",
+		"ha":           "ha",     // muy corta: sería casi todo
+		"pan *":        `pan \*`, // solo un signo: no se agrega comodín
+		"a-b":          `a\-b`,   // dos palabras pegadas: igual que antes
+	}
+	for entrada, quiero := range casos {
+		if got := ParametrosBusqueda(domain.FiltroPlatos{SedeID: "x", Texto: entrada, Pagina: 1, TamPagina: 1}).Get("q"); got != quiero {
+			t.Errorf("%q: %q, esperaba %q", entrada, got, quiero)
+		}
+	}
+}
+
 func TestParametrosBusquedaSinTextoNiFiltros(t *testing.T) {
 	p := ParametrosBusqueda(domain.FiltroPlatos{SedeID: "cerro", Pagina: 1, TamPagina: 20})
 	if p.Get("q") != "*:*" || p.Get("defType") != "" || p.Get("sort") != "score desc,id asc" || len(p["fq"]) != 2 {
@@ -141,12 +156,12 @@ func TestFiltroEscapaComillas(t *testing.T) {
 func TestPrepararEsquemaSoloAgregaLoQueFalta(t *testing.T) {
 	repo, sf := nuevoSolrFalso(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-			case strings.HasSuffix(r.URL.Path, "/schema/fieldtypes"):
-				_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"fieldTypes":[{"name":"string"},{"name":"text_gk","analyzer":{"filters":[{"class":"solr.LowerCaseFilterFactory"},{"class":"solr.ASCIIFoldingFilterFactory"},{"class":"solr.SpanishLightStemFilterFactory"}]}}]}`)
-			case strings.HasSuffix(r.URL.Path, "/schema/fields"):
-				_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"fields":[{"name":"id"},{"name":"nombre"},{"name":"activo"}]}`)
-			case strings.HasSuffix(r.URL.Path, "/schema/copyfields"):
-				_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"copyFields":[{"source":"categoria","dest":"categoria_txt"}]}`)
+		case strings.HasSuffix(r.URL.Path, "/schema/fieldtypes"):
+			_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"fieldTypes":[{"name":"string"},{"name":"text_gk","analyzer":{"filters":[{"class":"solr.LowerCaseFilterFactory"},{"class":"solr.ASCIIFoldingFilterFactory"},{"class":"solr.SpanishLightStemFilterFactory"}]}}]}`)
+		case strings.HasSuffix(r.URL.Path, "/schema/fields"):
+			_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"fields":[{"name":"id"},{"name":"nombre"},{"name":"activo"}]}`)
+		case strings.HasSuffix(r.URL.Path, "/schema/copyfields"):
+			_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"copyFields":[{"source":"categoria","dest":"categoria_txt"}]}`)
 		default:
 			_, _ = io.WriteString(w, `{"responseHeader":{"status":0}}`)
 		}
