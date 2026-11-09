@@ -3,7 +3,6 @@ package solr
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -35,10 +34,6 @@ type docCocina struct {
 	CostoEnvio       int    `json:"costo_envio"`
 	RestaurantesJSON string `json:"restaurantes_json"`
 	Activo           bool   `json:"activo"`
-	// G15
-	InactivosJSON   string `json:"restaurantes_inactivos_json,omitempty"`
-	VersionCatalogo int64  `json:"version_catalogo"`
-	Version         int64  `json:"_version_,omitempty"` // concurrencia optimista de Solr
 }
 
 // docPlato es un plato tal como se guarda en el core "platos".
@@ -58,13 +53,6 @@ type docPlato struct {
 	CocinaID          string   `json:"cocina_id"`
 	CocinaNombre      string   `json:"cocina_nombre"`
 	ActualizadoEn     string   `json:"actualizado_en"`
-	// G15. PlatoActivo es puntero porque los documentos de antes de G15 no lo tienen: en
-	// ese caso vale lo mismo que Activo.
-	PlatoActivo       *bool `json:"plato_activo,omitempty"`
-	TieneReceta       bool  `json:"tiene_receta"`
-	VersionCatalogo   int64 `json:"version_catalogo"`
-	VersionInventario int64 `json:"version_inventario"`
-	Version           int64 `json:"_version_,omitempty"` // concurrencia optimista de Solr
 }
 
 // ---------- Lectura ----------
@@ -216,11 +204,16 @@ func ParametrosBusqueda(f domain.FiltroPlatos) url.Values {
 func (r *Repositorio) GuardarSedes(ctx context.Context, sedes []domain.Sede) error {
 	docs := make([]docCocina, 0, len(sedes))
 	for _, s := range sedes {
-		d, err := docDeSede(s)
+		rest, err := json.Marshal(s.Restaurantes)
 		if err != nil {
 			return err
 		}
-		docs = append(docs, d)
+		docs = append(docs, docCocina{
+			ID: s.ID, Nombre: s.Nombre, Localidad: s.Localidad, Direccion: s.Direccion,
+			Ubicacion: formatearPunto(s.Ubicacion), TiempoMin: s.TiempoEntregaMin,
+			TiempoMax: s.TiempoEntregaMax, CostoEnvio: s.CostoEnvio,
+			RestaurantesJSON: string(rest), Activo: s.Activa,
+		})
 	}
 	return r.cli.Actualizar(ctx, CoreCocinas, docs)
 }
@@ -230,165 +223,19 @@ func (r *Repositorio) GuardarSedes(ctx context.Context, sedes []domain.Sede) err
 func (r *Repositorio) GuardarPlatos(ctx context.Context, platos []domain.Plato) error {
 	docs := make([]docPlato, 0, len(platos))
 	for _, p := range platos {
-		docs = append(docs, docDePlato(p))
+		docs = append(docs, docPlato{
+			ID: p.ID, Nombre: p.Nombre, Descripcion: p.Descripcion, Categoria: p.Categoria,
+			Etiquetas: p.Etiquetas, Precio: p.Precio, Moneda: p.Moneda, FotoURL: p.FotoURL,
+			Disponible: p.Disponible, Activo: p.Activo,
+			RestauranteID: p.Restaurante.ID, RestauranteNombre: p.Restaurante.Nombre,
+			CocinaID: p.Sede.ID, CocinaNombre: p.Sede.Nombre,
+			ActualizadoEn: p.ActualizadoEn.UTC().Format(time.RFC3339),
+		})
 	}
 	return r.cli.Actualizar(ctx, CorePlatos, docs)
 }
 
-// intentosConflicto es cuántas veces se vuelve a leer y escribir un documento si otro lo
-// cambió en el medio. Con un solo lector de mensajes y una reconstrucción, alcanza y sobra.
-const intentosConflicto = 5
-
-// CambiarSede lee la sede con el real-time get (ve lo último aunque no haya commit), llama a
-// cambiar y la guarda con el _version_ leído (repositories.Actualizador).
-func (r *Repositorio) CambiarSede(ctx context.Context, id string, cambiar func(domain.Sede, bool) (domain.Sede, bool, error)) error {
-	for intento := 1; ; intento++ {
-		raw, err := r.cli.Get(ctx, CoreCocinas, id)
-		if err != nil {
-			return err
-		}
-		var actual domain.Sede
-		version := int64(-1) // -1: Solr solo la guarda si sigue sin existir
-		if raw != nil {
-			if actual, err = decodificarSede(raw); err != nil {
-				return err
-			}
-			if version, err = leerVersion(raw); err != nil {
-				return err
-			}
-		}
-		nueva, guardar, err := cambiar(actual, raw != nil)
-		if err != nil || !guardar {
-			return err
-		}
-		doc, err := docDeSede(nueva)
-		if err != nil {
-			return err
-		}
-		doc.Version = version
-		err = r.cli.Escribir(ctx, CoreCocinas, []docCocina{doc})
-		if !errors.Is(err, ErrConflicto) || intento == intentosConflicto {
-			return err
-		}
-	}
-}
-
-// CambiarPlato es lo mismo que CambiarSede, para un plato.
-func (r *Repositorio) CambiarPlato(ctx context.Context, id string, cambiar func(domain.Plato, bool) (domain.Plato, bool, error)) error {
-	for intento := 1; ; intento++ {
-		raw, err := r.cli.Get(ctx, CorePlatos, id)
-		if err != nil {
-			return err
-		}
-		var actual domain.Plato
-		version := int64(-1)
-		if raw != nil {
-			if actual, err = decodificarPlato(raw); err != nil {
-				return err
-			}
-			if version, err = leerVersion(raw); err != nil {
-				return err
-			}
-		}
-		nuevo, guardar, err := cambiar(actual, raw != nil)
-		if err != nil || !guardar {
-			return err
-		}
-		doc := docDePlato(nuevo)
-		doc.Version = version
-		err = r.cli.Escribir(ctx, CorePlatos, []docPlato{doc})
-		if !errors.Is(err, ErrConflicto) || intento == intentosConflicto {
-			return err
-		}
-	}
-}
-
-// IDsPlatosDeSede devuelve los ids de todos los platos de la sede, activos o no. Antes hace
-// un commit para que /select vea también los platos recién escritos por mensajes (que con
-// commitWithin tardan hasta 1 s en aparecer). Lo usa el mensaje de una cocina, que es raro.
-func (r *Repositorio) IDsPlatosDeSede(ctx context.Context, sedeID string) ([]string, error) {
-	if err := r.cli.Actualizar(ctx, CorePlatos, []docPlato{}); err != nil {
-		return nil, err
-	}
-	p := url.Values{}
-	p.Set("q", "*:*")
-	p.Set("fq", "cocina_id:"+frase(sedeID))
-	p.Set("fl", "id")
-	p.Set("sort", "id asc")
-	p.Set("rows", "1000") // una cocina tiene a lo sumo 4 restaurantes con sus platos
-	resp, err := r.cli.Select(ctx, CorePlatos, p)
-	if err != nil {
-		return nil, err
-	}
-	ids := make([]string, 0, len(resp.Response.Docs))
-	for _, raw := range resp.Response.Docs {
-		var d struct {
-			ID string `json:"id"`
-		}
-		if err := json.Unmarshal(raw, &d); err != nil {
-			return nil, fmt.Errorf("%w: id inválido: %v", domain.ErrNoDisponible, err)
-		}
-		ids = append(ids, d.ID)
-	}
-	return ids, nil
-}
-
 // ---------- Conversión ----------
-
-// leerVersion saca el _version_ de un documento. Se decodifica como int64 (y no como número
-// genérico) porque es un número de 19 cifras que un float64 redondearía.
-func leerVersion(raw json.RawMessage) (int64, error) {
-	var d struct {
-		Version int64 `json:"_version_"`
-	}
-	if err := json.Unmarshal(raw, &d); err != nil {
-		return 0, fmt.Errorf("%w: _version_ inválido: %v", domain.ErrNoDisponible, err)
-	}
-	return d.Version, nil
-}
-
-// docDeSede arma el documento de una sede. La ubicación se guarda como "lat,lng", el formato
-// del tipo location de Solr.
-func docDeSede(s domain.Sede) (docCocina, error) {
-	rest := s.Restaurantes
-	if rest == nil {
-		rest = []domain.Referencia{}
-	}
-	activos, err := json.Marshal(rest)
-	if err != nil {
-		return docCocina{}, err
-	}
-	d := docCocina{
-		ID: s.ID, Nombre: s.Nombre, Localidad: s.Localidad, Direccion: s.Direccion,
-		Ubicacion: formatearPunto(s.Ubicacion), TiempoMin: s.TiempoEntregaMin,
-		TiempoMax: s.TiempoEntregaMax, CostoEnvio: s.CostoEnvio,
-		RestaurantesJSON: string(activos), Activo: s.Activa, VersionCatalogo: s.VersionCatalogo,
-	}
-	if len(s.RestaurantesInactivos) > 0 {
-		inactivos, err := json.Marshal(s.RestaurantesInactivos)
-		if err != nil {
-			return docCocina{}, err
-		}
-		d.InactivosJSON = string(inactivos)
-	}
-	return d, nil
-}
-
-// docDePlato arma el documento de un plato. La fecha va en UTC y RFC 3339, el formato que
-// acepta el tipo pdate.
-func docDePlato(p domain.Plato) docPlato {
-	propio := p.PlatoActivo
-	return docPlato{
-		ID: p.ID, Nombre: p.Nombre, Descripcion: p.Descripcion, Categoria: p.Categoria,
-		Etiquetas: p.Etiquetas, Precio: p.Precio, Moneda: p.Moneda, FotoURL: p.FotoURL,
-		Disponible: p.Disponible, Activo: p.Activo,
-		RestauranteID: p.Restaurante.ID, RestauranteNombre: p.Restaurante.Nombre,
-		CocinaID: p.Sede.ID, CocinaNombre: p.Sede.Nombre,
-		ActualizadoEn: p.ActualizadoEn.UTC().Format(time.RFC3339),
-		PlatoActivo:   &propio, TieneReceta: p.TieneReceta,
-		VersionCatalogo: p.VersionCatalogo, VersionInventario: p.VersionInventario,
-	}
-}
 
 func decodificarSedes(raws []json.RawMessage) ([]domain.Sede, error) {
 	sedes := make([]domain.Sede, 0, len(raws))
@@ -417,17 +264,10 @@ func decodificarSede(raw json.RawMessage) (domain.Sede, error) {
 			return domain.Sede{}, fmt.Errorf("%w: restaurantes de %s: %v", domain.ErrNoDisponible, d.ID, err)
 		}
 	}
-	var inactivos []domain.Referencia
-	if d.InactivosJSON != "" {
-		if err := json.Unmarshal([]byte(d.InactivosJSON), &inactivos); err != nil {
-			return domain.Sede{}, fmt.Errorf("%w: restaurantes inactivos de %s: %v", domain.ErrNoDisponible, d.ID, err)
-		}
-	}
 	return domain.Sede{
 		ID: d.ID, Nombre: d.Nombre, Localidad: d.Localidad, Direccion: d.Direccion,
 		Ubicacion: ub, TiempoEntregaMin: d.TiempoMin, TiempoEntregaMax: d.TiempoMax,
 		CostoEnvio: d.CostoEnvio, Restaurantes: rest, Activa: d.Activo,
-		RestaurantesInactivos: inactivos, VersionCatalogo: d.VersionCatalogo,
 	}, nil
 }
 
@@ -437,10 +277,6 @@ func decodificarPlato(raw json.RawMessage) (domain.Plato, error) {
 		return domain.Plato{}, fmt.Errorf("%w: plato inválido: %v", domain.ErrNoDisponible, err)
 	}
 	act, _ := time.Parse(time.RFC3339, d.ActualizadoEn)
-	propio := d.Activo // documento de antes de G15
-	if d.PlatoActivo != nil {
-		propio = *d.PlatoActivo
-	}
 	etq := d.Etiquetas
 	if etq == nil {
 		etq = []string{}
@@ -452,8 +288,6 @@ func decodificarPlato(raw json.RawMessage) (domain.Plato, error) {
 		Restaurante:   domain.Referencia{ID: d.RestauranteID, Nombre: d.RestauranteNombre},
 		Sede:          domain.Referencia{ID: d.CocinaID, Nombre: d.CocinaNombre},
 		ActualizadoEn: act.UTC(),
-		PlatoActivo:   propio, TieneReceta: d.TieneReceta,
-		VersionCatalogo: d.VersionCatalogo, VersionInventario: d.VersionInventario,
 	}, nil
 }
 
