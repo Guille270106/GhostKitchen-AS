@@ -54,7 +54,11 @@ func run(log *slog.Logger) error {
 	defer parar()
 	go periodico(ctx, log, "vencer reservas", 15*time.Second, 10*time.Second, repo.VencerReservas)
 	if usuario := os.Getenv("RABBITMQ_USER"); usuario != "" {
-		publicar := rabbitmq.NuevoPublicador(valor("RABBITMQ_HOST", "rabbitmq"), usuario, os.Getenv("RABBITMQ_PASSWORD"))
+		host, clave := valor("RABBITMQ_HOST", "rabbitmq"), os.Getenv("RABBITMQ_PASSWORD")
+		publicar := rabbitmq.NuevoPublicador(host, usuario, clave)
+		go consumirReferencias(ctx, log, func(ctx context.Context) error {
+			return rabbitmq.ConsumirReferencias(ctx, host, usuario, clave, repo.AplicarReferencia)
+		})
 		go periodico(ctx, log, "publicar outbox", time.Second, 5*time.Second, func(ctx context.Context) error {
 			for range 20 {
 				enviado, err := repo.PublicarSiguiente(ctx, publicar)
@@ -69,6 +73,7 @@ func run(log *slog.Logger) error {
 	httpadapter.RegistrarRecetas(router, application.NuevasRecetas(repo))
 	httpadapter.RegistrarReservas(router, application.NuevasReservas(repo))
 	httpadapter.RegistrarConsumos(router, application.NuevosConsumos(repo))
+	httpadapter.RegistrarDisponibilidad(router, repo.ListarDisponibilidad)
 	srv := &http.Server{Addr: ":" + valor("PORT", "8084"), Handler: router, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	fallos := make(chan error, 1)
 	go func() { fallos <- srv.ListenAndServe() }()
@@ -109,5 +114,20 @@ func main() {
 	if err := run(log); err != nil {
 		log.Error("Inventario no pudo continuar; revisar configuración y MySQL")
 		os.Exit(1)
+	}
+}
+
+func consumirReferencias(ctx context.Context, log *slog.Logger, consumir func(context.Context) error) {
+	for ctx.Err() == nil {
+		err := consumir(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		log.Warn("se interrumpió el consumo de referencias", "error", err)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second):
+		}
 	}
 }

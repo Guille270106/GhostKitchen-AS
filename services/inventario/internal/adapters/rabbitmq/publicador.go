@@ -11,27 +11,12 @@ import (
 )
 
 func NuevoPublicador(host, usuario, clave string) func(context.Context, string, string, []byte) error {
-	direccion := url.URL{Scheme: "amqp", Host: net.JoinHostPort(host, "5672"), User: url.UserPassword(usuario, clave), Path: "/"}
 	return func(ctx context.Context, id, tipo string, cuerpo []byte) error {
-		var detener func() bool
-		conn, err := amqp.DialConfig(direccion.String(), amqp.Config{
-			Dial: func(network, addr string) (net.Conn, error) {
-				dialer := net.Dialer{Timeout: 2 * time.Second}
-				socket, err := dialer.DialContext(ctx, network, addr)
-				if err != nil {
-					return nil, err
-				}
-				detener = context.AfterFunc(ctx, func() { socket.Close() })
-				return socket, nil
-			},
-		})
-		if detener != nil {
-			defer detener()
-		}
+		conn, cerrar, err := conectar(ctx, host, usuario, clave)
 		if err != nil {
-			return errors.New("RabbitMQ no disponible")
+			return err
 		}
-		defer conn.Close()
+		defer cerrar()
 		ch, err := conn.Channel()
 		if err != nil {
 			return err
@@ -64,4 +49,37 @@ func NuevoPublicador(host, usuario, clave string) func(context.Context, string, 
 			}
 		}
 	}
+}
+
+func conectar(ctx context.Context, host, usuario, clave string) (*amqp.Connection, func(), error) {
+	direccion := url.URL{Scheme: "amqp", Host: net.JoinHostPort(host, "5672"), User: url.UserPassword(usuario, clave), Path: "/"}
+	var socket net.Conn
+	var detener func() bool
+	conn, err := amqp.DialConfig(direccion.String(), amqp.Config{
+		Dial: func(network, addr string) (net.Conn, error) {
+			dialer := net.Dialer{Timeout: 2 * time.Second}
+			var err error
+			socket, err = dialer.DialContext(ctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
+			if err = socket.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+				socket.Close()
+				return nil, err
+			}
+			detener = context.AfterFunc(ctx, func() { socket.Close() })
+			return socket, nil
+		},
+	})
+	if err != nil {
+		if detener != nil {
+			detener()
+		}
+		return nil, nil, errors.New("RabbitMQ no disponible")
+	}
+	return conn, func() {
+		detener()
+		socket.Close()
+		conn.Close()
+	}, nil
 }

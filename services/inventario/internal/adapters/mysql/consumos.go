@@ -134,5 +134,5 @@ func moverStock(ctx context.Context, tx *sql.Tx, res domain.Reserva, devolver bo
 			return errors.New("no se pudo aplicar el movimiento de stock")
 		}
 	}
-	return nil
+	return actualizarDisponibilidad(ctx, tx, res.CocinaID)
 }

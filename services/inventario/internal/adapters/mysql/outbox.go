@@ -3,12 +3,10 @@ package mysql
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"time"
 
 	"ghostkitchen/inventario/internal/domain"
-	"github.com/google/uuid"
 )
 
 const eventoReservaVencida = "reserva.vencida"
@@ -54,22 +52,16 @@ func (r *Repositorio) vencerReserva(ctx context.Context, tx *sql.Tx, res domain.
 	if err != nil {
 		return res, err
 	}
-	id := uuid.NewString()
-	cid := domain.Correlacion(ctx)
-	if cid == "" {
-		cid = id
-	}
-	cuerpo, err := json.Marshal(map[string]any{
-		"evento_id": id, "tipo": eventoReservaVencida, "version": 1,
-		"ocurrido_en": ahora.UTC(), "correlation_id": cid,
-		"agregado_id": res.CarritoID, "secuencia": 1,
-		"datos": map[string]string{"reserva_id": res.ID, "carrito_id": res.CarritoID, "cocina_id": res.CocinaID},
-	})
-	if err != nil {
-		return res, err
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO outbox (id,tipo,cuerpo) VALUES (?,?,?)`, id, eventoReservaVencida, cuerpo)
+	err = guardarEvento(ctx, tx, eventoReservaVencida, res.CarritoID, 1, ahora,
+		map[string]string{"reserva_id": res.ID, "carrito_id": res.CarritoID, "cocina_id": res.CocinaID})
 	return res, err
+}
+
+func correlacionEvento(ctx context.Context, id string) string {
+	if cid := domain.Correlacion(ctx); cid != "" {
+		return cid
+	}
+	return id
 }
 
 // Un fallo conserva la fila. Si el commit falla después del ACK, el próximo

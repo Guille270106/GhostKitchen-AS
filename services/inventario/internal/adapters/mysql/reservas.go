@@ -65,7 +65,7 @@ func idempotenteIntento[T any](r *Repositorio, ctx context.Context, operacion, c
 	}
 	hash := sha256.Sum256(encoded)
 	huella := hex.EncodeToString(hash[:])
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return cero, err
 	}
@@ -313,7 +313,7 @@ func (r *Repositorio) aplicarItems(ctx context.Context, tx *sql.Tx, res domain.R
 			return res, err
 		}
 	}
-	return res, nil
+	return res, actualizarDisponibilidad(ctx, tx, res.CocinaID)
 }
 
 func (r *Repositorio) CrearReserva(ctx context.Context, clave string, datos domain.SolicitudReserva) (domain.Reserva, error) {

@@ -41,5 +41,8 @@ func (r *Repositorio) MoverStock(ctx context.Context, cocina, id, usuario string
 	if _, err = tx.ExecContext(ctx, `INSERT INTO movimiento_stock (ingrediente_id,usuario_id,delta) VALUES (?,?,?)`, id, usuario, delta); err != nil {
 		return i, err
 	}
+	if err = actualizarDisponibilidad(ctx, tx, cocina); err != nil {
+		return i, err
+	}
 	return i, tx.Commit()
 }

@@ -326,3 +326,57 @@ func TestMySQLConsumoYDevolucionIdempotentes(t *testing.T) {
 		t.Fatalf("consulta = %+v, error = %v", c, err)
 	}
 }
+
+func TestMySQLReferenciasYDisponibilidad(t *testing.T) {
+	f := prepararReservas(t)
+	ctx := context.Background()
+	plato := f.platos[0]
+	ref := domain.Referencia{EventoID: uuid.NewString(), ID: plato, CocinaID: f.cocina, Version: 2, Activa: false}
+	t.Cleanup(func() {
+		f.db.Exec("DELETE FROM mensaje_procesado WHERE evento_id=?", ref.EventoID)
+	})
+	if err := f.repo.AplicarReferencia(ctx, ref); err != nil {
+		t.Fatal(err)
+	}
+	var secuencia int
+	var disponible, receta bool
+	estado := func() {
+		t.Helper()
+		if err := f.db.QueryRow("SELECT secuencia,disponible,tiene_receta FROM disponibilidad_estado WHERE plato_id=?", plato).Scan(&secuencia, &disponible, &receta); err != nil {
+			t.Fatal(err)
+		}
+	}
+	estado()
+	if disponible || !receta {
+		t.Fatal("el plato inactivo debe conservar la receta y quedar no disponible")
+	}
+	anterior := secuencia
+	viejo := ref
+	viejo.EventoID, viejo.Version, viejo.Activa = uuid.NewString(), 1, true
+	t.Cleanup(func() { f.db.Exec("DELETE FROM mensaje_procesado WHERE evento_id=?", viejo.EventoID) })
+	for _, evento := range []domain.Referencia{ref, viejo} {
+		if err := f.repo.AplicarReferencia(ctx, evento); err != nil {
+			t.Fatal(err)
+		}
+	}
+	estado()
+	if disponible || secuencia != anterior {
+		t.Fatal("el duplicado o evento viejo cambió el estado")
+	}
+	nuevo := viejo
+	nuevo.EventoID, nuevo.Version = uuid.NewString(), 3
+	t.Cleanup(func() { f.db.Exec("DELETE FROM mensaje_procesado WHERE evento_id=?", nuevo.EventoID) })
+	if err := f.repo.AplicarReferencia(ctx, nuevo); err != nil {
+		t.Fatal(err)
+	}
+	estado()
+	if !disponible || secuencia != anterior+1 {
+		t.Fatal("faltó publicar la reactivación")
+	}
+	var n int
+	err := f.db.QueryRow(`SELECT COUNT(*) FROM outbox WHERE tipo='disponibilidad.cambiada'
+ AND JSON_UNQUOTE(JSON_EXTRACT(cuerpo,'$.agregado_id'))=?`, plato).Scan(&n)
+	if err != nil || n != secuencia {
+		t.Fatal(n, secuencia, err)
+	}
+}
