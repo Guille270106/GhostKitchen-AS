@@ -1,0 +1,9 @@
+.recetas-mermas, .recetas-mermas fieldset, .recetas-mermas label { display: grid; gap: .65rem; }
+.recetas-mermas button { justify-self: start; }
+.recetas-mermas-formularios {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+}
+.recetas-mermas fieldset { min-width: 0; }
+.receta-fila { display: grid; gap: .5rem; padding-block: .5rem; border-bottom: 1px solid currentColor; }

@@ -1,6 +1,9 @@
 import { useEffect } from "react";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
+import ProtectedRoute from "../components/auth/ProtectedRoute";
+import WorkspaceLayout from "../components/layout/WorkspaceLayout";
+import StockIngredientes from "../pages/StockIngredientes";
 import BottomNav from "../components/layout/BottomNav";
 import Footer from "../components/layout/Footer";
 import Header from "../components/layout/Header";
@@ -12,6 +15,7 @@ import Home from "../pages/Home";
 import KitchenDetail from "../pages/KitchenDetail";
 import Login from "../pages/Login";
 import NotFound from "../pages/NotFound";
+import RecetasMermas from "../pages/RecetasMermas";
 import Register from "../pages/Register";
 import Search from "../pages/Search";
 
@@ -61,6 +65,11 @@ function AppRouter() {
                 <Route path="/cocinas/:id" element={<KitchenDetail />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/registro" element={<Register />} />
+                <Route path="/cocina" element={<ProtectedRoute allowedRoles={["COCINA"]}><WorkspaceLayout /></ProtectedRoute>}>
+                  <Route index element={<Navigate to="inventario" replace />} />
+                  <Route path="inventario" element={<StockIngredientes />} />
+                  <Route path="platos" element={<RecetasMermas />} />
+                </Route>
                 <Route path="*" element={<NotFound />} />
               </Routes>
               <SedeGate />

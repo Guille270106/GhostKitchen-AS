@@ -1,0 +1,21 @@
+.stock-ingredientes { display: grid; gap: 1rem; }
+.stock-tabla { overflow-x: auto; }
+.stock-tabla table { border-collapse: collapse; width: 100%; }
+.stock-tabla caption { text-align: left; padding-block: .5rem; }
+.stock-tabla th, .stock-tabla td {
+  text-align: left;
+  padding: .55rem;
+  border-bottom: 1px solid currentColor;
+}
+.stock-formularios {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+}
+.stock-formularios fieldset {
+  display: grid;
+  gap: .65rem;
+  min-width: 0;
+}
+.stock-formularios label { display: grid; gap: .25rem; }
+.stock-formularios button { justify-self: start; }
