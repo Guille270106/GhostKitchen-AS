@@ -149,13 +149,28 @@ func (r *Repositorio) ObtenerPlato(ctx context.Context, id string) (domain.Plato
 	return pl, pl.Activo, nil
 }
 
-// Ping hace la consulta más barata posible (rows=0) para ver si Solr responde.
+// Ping hace la consulta más barata posible (rows=0) en los dos cores, para ver si Solr
+// responde. Revisa los dos (G22): si se borró uno, Búsqueda no puede atender aunque el otro ande.
 func (r *Repositorio) Ping(ctx context.Context) error {
 	p := url.Values{}
 	p.Set("q", "*:*")
 	p.Set("rows", "0")
-	_, err := r.cli.Select(ctx, CoreCocinas, p)
-	return err
+	for _, core := range []string{CoreCocinas, CorePlatos} {
+		if _, err := r.cli.Select(ctx, core, p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Confirmar hace commit en los dos cores: todo lo escrito queda visible en las búsquedas.
+func (r *Repositorio) Confirmar(ctx context.Context) error {
+	for _, core := range []string{CoreCocinas, CorePlatos} {
+		if err := r.cli.Confirmar(ctx, core); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ParametrosBusqueda traduce el filtro a parámetros de Solr (exportada para testearla).
@@ -222,7 +237,7 @@ func (r *Repositorio) GuardarSedes(ctx context.Context, sedes []domain.Sede) err
 		}
 		docs = append(docs, d)
 	}
-	return r.cli.Actualizar(ctx, CoreCocinas, docs)
+	return r.cli.Escribir(ctx, CoreCocinas, docs)
 }
 
 // GuardarPlatos agrega o reemplaza platos por id. La fecha va en UTC y RFC 3339, el formato
@@ -232,7 +247,7 @@ func (r *Repositorio) GuardarPlatos(ctx context.Context, platos []domain.Plato) 
 	for _, p := range platos {
 		docs = append(docs, docDePlato(p))
 	}
-	return r.cli.Actualizar(ctx, CorePlatos, docs)
+	return r.cli.Escribir(ctx, CorePlatos, docs)
 }
 
 // intentosConflicto es cuántas veces se vuelve a leer y escribir un documento si otro lo
@@ -307,7 +322,7 @@ func (r *Repositorio) CambiarPlato(ctx context.Context, id string, cambiar func(
 // un commit para que /select vea también los platos recién escritos por mensajes (que con
 // commitWithin tardan hasta 1 s en aparecer). Lo usa el mensaje de una cocina, que es raro.
 func (r *Repositorio) IDsPlatosDeSede(ctx context.Context, sedeID string) ([]string, error) {
-	if err := r.cli.Actualizar(ctx, CorePlatos, []docPlato{}); err != nil {
+	if err := r.cli.Confirmar(ctx, CorePlatos); err != nil {
 		return nil, err
 	}
 	p := url.Values{}

@@ -99,9 +99,16 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 | `GET /zonas?q=` | el frontend | Sugerir la cocina más cercana a una zona |
 | `POST /v1/proximidad` | el gateway para el otro grupo (API key) | Proximidad externa y cocina opcional; contrato 1.1.0 |
 | `GET /v1/...` | el gateway, para el otro grupo (con API key) | Lo que publicamos: ver el [contrato](../../docs/contracts/v1/openapi.yaml). El gateway expone `/public/v1/...` y elimina `/public` al reenviar |
-| `POST /internal/reindexar` | operación técnica autorizada en la red interna | Reconstruir la búsqueda desde cero |
+| `POST /internal/reindexar` | operación técnica autorizada en la red interna | Reconstruir la búsqueda desde cero. 200 con lo indexado; 409 `RECONSTRUCCION_EN_CURSO` (con `Retry-After`) si ya corre otra; 503 con lo que se llegó a guardar (`parcial`) si falla |
 | `GET /internal/apikey/verificar` | el gateway (`auth_request`) | Verificar la `X-API-Key` antes de dejar pasar una solicitud a `/public/v1`: 204 válida, 401 inválida |
-| `GET /health` y `GET /ready` | Docker y el gateway | `/health`: el proceso está vivo. `/ready`: el índice está preparado y Solr responde (503 si no) |
+| `GET /health` y `GET /ready` | Docker y el gateway | `/health`: el proceso está vivo. `/ready`: el índice está preparado y los dos cores de Solr responden (503 si no) |
+
+**Reconstrucción más robusta (G22):**
+- Nunca corren dos a la vez: la del arranque y la manual comparten un candado (`indexer.Exclusiva`). La del arranque espera su turno; la manual responde 409 enseguida.
+- La manual tiene su propio contexto, con plazo de 25 s: si quien la pidió corta la conexión, no queda a medias. Conserva el `correlation_id`.
+- Los errores salen como Problem Details, igual que el resto del servicio.
+- Las escrituras no esperan el commit (`commitWithin` de 1 s). Al terminar de armar el índice se hace un commit, así `/ready` dice "listo" con todo visible.
+- `/ready` revisa los dos cores (`cocinas` y `platos`): si se borró uno, Búsqueda no está lista.
 
 Implementadas en la Entrega 2: las rutas `/v1/...`, `POST /v1/proximidad`, `POST /internal/reindexar`, `/internal/apikey/verificar`, `/health` y `/ready`. Las demás llegan con el frontend y con Catálogo e Inventario.
 
