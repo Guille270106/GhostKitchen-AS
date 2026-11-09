@@ -6,6 +6,8 @@ import (
 	"log/slog"
 
 	"github.com/gin-gonic/gin"
+
+	"ghostkitchen/pedidos/internal/metricas"
 )
 
 // Rutas arma el servidor con sus middlewares y todas las rutas de Pedidos.
@@ -15,10 +17,14 @@ func Rutas(log *slog.Logger, salud SaludController, pedidos PedidosController, c
 	router := gin.New()
 
 	// Middlewares: recuperarse de un panic, correlation id, log JSON y plazo de 3 s.
+	router.Use(metricas.Middleware()) // G19: cuenta y mide cada solicitud, antes de Recovery
 	router.Use(gin.Recovery())
 	router.Use(Correlacion)
 	router.Use(Logs(log))
 	router.Use(Plazo)
+
+	// Métricas para Prometheus (G19).
+	router.GET(metricas.Ruta, metricas.Handler())
 
 	// Chequeos de Docker.
 	router.GET("/health", salud.Health)

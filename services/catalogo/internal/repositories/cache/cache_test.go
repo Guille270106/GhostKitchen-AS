@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	"ghostkitchen/catalogo/internal/domain"
 	"ghostkitchen/catalogo/internal/repositories/memoria"
 )
@@ -182,5 +184,17 @@ func TestTTLConMargen(t *testing.T) {
 		if d := ttlConMargen(); d < 54*time.Second || d > 66*time.Second {
 			t.Fatalf("TTL fuera de 60 s ±10 %%: %v", d)
 		}
+	}
+}
+
+func TestCuentaAciertosYFallosEnMetricas(t *testing.T) {
+	r, _, _ := entorno(t)
+	aciertos := testutil.ToFloat64(usos.WithLabelValues("menu", "acierto"))
+	fallos := testutil.ToFloat64(usos.WithLabelValues("menu", "fallo"))
+	_, _ = r.ListarPlatosDeCocina(context.Background(), "nc") // fallo: va a MongoDB
+	_, _ = r.ListarPlatosDeCocina(context.Background(), "nc") // acierto
+	if testutil.ToFloat64(usos.WithLabelValues("menu", "fallo")) != fallos+1 ||
+		testutil.ToFloat64(usos.WithLabelValues("menu", "acierto")) != aciertos+1 {
+		t.Fatal("catalogo_cache_total no contó un fallo y un acierto del menú")
 	}
 }

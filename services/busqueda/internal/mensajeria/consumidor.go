@@ -12,6 +12,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -20,6 +22,22 @@ import (
 	"ghostkitchen/busqueda/internal/indexer"
 	"ghostkitchen/busqueda/internal/middleware"
 	"ghostkitchen/busqueda/internal/trazas"
+)
+
+// Métricas del lector (G19, ADR-011: panel "Índice" y "Mensajería").
+var (
+	eventos = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "busqueda_eventos_total",
+		Help: "Mensajes leídos de busqueda.indexador, por tipo y resultado (aplicado, rechazado, reintento).",
+	}, []string{"tipo", "resultado"})
+
+	// atraso es el tiempo desde que pasó el cambio (ocurrido_en, en Catálogo o Inventario)
+	// hasta que quedó en el índice. El objetivo es que el 95 % tarde 5 s o menos.
+	atraso = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "busqueda_indice_atraso_seconds",
+		Help:    "Tiempo desde el cambio en Catálogo o Inventario hasta que quedó en el índice.",
+		Buckets: []float64{0.1, 0.25, 0.5, 1, 2, 3, 5, 10, 30, 60},
+	})
 )
 
 // Cola de Búsqueda.
@@ -165,6 +183,7 @@ func (c *Consumidor) Manejar(ctx context.Context, cuerpo []byte, ruta string) Ac
 	s, err := indexer.LeerSobre(cuerpo, ruta)
 	if err != nil {
 		c.log.Error("mensaje rechazado: no cumple el contrato", "ruta", ruta, "motivo", err.Error())
+		eventos.WithLabelValues("desconocido", "rechazado").Inc() // el tipo no es confiable
 		return Rechazar
 	}
 	ctx = middleware.ConCorrelacion(ctx, s.CorrelationID)
@@ -188,17 +207,22 @@ func (c *Consumidor) Manejar(ctx context.Context, cuerpo []byte, ruta string) Ac
 	case err == nil:
 		// demora_ms: desde que pasó el cambio hasta que quedó en el índice. El objetivo es
 		// menos de 5 s (README de Búsqueda).
-		c.log.Info("evento aplicado", append(campos, "demora_ms", time.Since(s.OcurridoEn).Milliseconds())...)
+		demora := time.Since(s.OcurridoEn)
+		c.log.Info("evento aplicado", append(campos, "demora_ms", demora.Milliseconds())...)
+		eventos.WithLabelValues(s.Tipo, "aplicado").Inc()
+		atraso.Observe(demora.Seconds())
 		return Confirmar
 	case errors.Is(err, indexer.ErrEventoInvalido):
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "evento inválido")
 		c.log.Error("mensaje rechazado: no cumple el contrato", append(campos, "motivo", err.Error())...)
+		eventos.WithLabelValues(s.Tipo, "rechazado").Inc()
 		return Rechazar
 	default:
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "falló al aplicar")
 		c.log.Warn("no se pudo aplicar el evento; se reintenta", append(campos, "motivo", err.Error())...)
+		eventos.WithLabelValues(s.Tipo, "reintento").Inc()
 		return Reintentar
 	}
 }
