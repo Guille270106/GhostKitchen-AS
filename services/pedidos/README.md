@@ -180,6 +180,24 @@ docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml down
 
 El test `TestMySQLCambiosSimultaneosGanaUnoSolo` manda 20 veces "cancelar" (cliente) y "aceptar" (cocina) al mismo pedido a la vez: en cada vuelta gana uno solo, la versión queda en 2 y el historial tiene dos entradas.
 
+**De punta a punta**, con todo el sistema levantado y entrando por el gateway como el frontend:
+
+```powershell
+docker compose up -d --build
+node services/pedidos/testdata/e2e.mjs
+```
+
+Necesita Node 18 o más nuevo y el `.env` completo (usa `ADMIN_PASSWORD` y el usuario de RabbitMQ, sin imprimirlos). Si el gateway ya estaba levantado, `docker compose restart gateway` para que tome las rutas nuevas. Cada línea sale `OK` o `FALLA`, y al final `TODO OK`:
+
+| Parte | Qué comprueba |
+| --- | --- |
+| Preparación | El admin crea una cuenta Cocina; la cocina crea un plato, un ingrediente con stock 10 y la receta, y activa el plato |
+| Confirmar y cancelar | Carrito → Inventario reserva; confirmar → 201 y el stock **baja** (doble clic con la misma clave: el mismo pedido); mis pedidos y la pantalla de la cocina con `?estado=`; cancelar → el stock **vuelve** en segundo plano |
+| Cocina y entrega | La cocina acepta y avanza hasta `EN_CAMINO`; antes de eso no se puede confirmar la entrega y después no se puede cancelar; el cliente confirma que lo recibió y el historial tiene los 6 estados |
+| Mensajes | Los 8 `pedido.estado_cambiado` llegan a la cola `notificaciones.mailer` |
+
+Deja datos de prueba (cuentas `cocina.e2e…` y `cliente.e2e…`, un plato y un ingrediente "e2e", pedidos y mensajes en la cola). Un plato recién activado tarda uno o dos segundos en poder pedirse, hasta que Inventario recibe el aviso de Catálogo por RabbitMQ (consistencia eventual): el script lo espera.
+
 ## Qué hace
 
 - **Carrito:** guarda los platos y cantidades que eligió el cliente, todos de **una sola cocina**. Guarda una copia del nombre, el precio y el restaurante de cada plato, y el número de la reserva que hizo Inventario.
