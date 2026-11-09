@@ -55,6 +55,18 @@ npm run lint
 
 Las fotos de los platos de ejemplo están en `data/dishPhotos.js` y `public/images/platos`; las de portada y las categorías del inicio, en `data/visual.js`. El botón "Agregar" ya está en cada plato, pero el carrito real llega con L17: hasta entonces `context/CartContext.jsx` es una versión provisoria que avisa que todavía no está disponible.
 
+## Panel del admin (G21)
+
+| Pantalla | Función de `ghostkitchen.js` | Backend |
+| --- | --- | --- |
+| Cocinas de la localidad, con sus restaurantes | `getAdminCocinas` | Catálogo `GET /api/v1/admin/cocinas` (solo las de su localidad) |
+| Agregar cocina | `crearCocina` | Catálogo `POST /api/v1/admin/cocinas` y Usuarios `POST /api/v1/admin/cuentas-cocina`. La ubicación sale de la zona elegida (`data/visual.js`). Si la cuenta falla, la cocina ya quedó creada y se avisa |
+| Pausar o reactivar una cocina o un restaurante | `toggleCocina`, `toggleRestaurante` | Catálogo `PATCH` (RN19: lo pausado deja de mostrarse) |
+| Nuevo restaurante (hasta 4) | `crearRestaurante` | Catálogo `POST .../restaurantes` (RN20) |
+| Métricas de los últimos 7 días | `getMetricas` | Pedidos `GET /api/v1/admin/metricas?cocinaId=` |
+
+Las rutas `/admin/...` van dentro de `ProtectedRoute` (solo rol `ADMIN`) y `WorkspaceLayout`. La cocina elegida en las métricas se recuerda en el navegador. Quien decide los permisos es el backend: la pantalla solo evita mostrar lo que no corresponde.
+
 ## Qué entra en cada parte
 
 El frontend se suma por partes, cada una en el commit de quien la hace:
@@ -63,6 +75,7 @@ El frontend se suma por partes, cada una en el commit de quien la hace:
 | --- | --- |
 | G14 | Base: proyecto, contenedor, encabezado, pie, paneles, cliente del gateway y sesión |
 | G18 | Login, registro, elegir la sede, inicio, buscar platos y detalle de la cocina |
+| G21 | Panel del admin: cocinas y restaurantes (`/admin/cocinas`) y métricas del negocio (`/admin/metricas`) |
 | V16 · V17 | Inventario · menú, platos y recetas de la cocina |
 | L17 · L18 | Carrito · mis pedidos y tablero de la cocina |
 | G21 | Panel del admin: cocinas, marcas y métricas |

@@ -108,6 +108,7 @@ function usuarioParaPantallas(usuario, localidadId = null) {
     email: usuario.email,
     rol: String(usuario.rol || "").toUpperCase(),
     cocinaId: usuario.cocinaAsignadaId || null,
+    localidad: usuario.localidad || null,
     localidadId,
   };
 }
@@ -605,4 +606,113 @@ export async function rejectOrder(pedidoId) {
   const actualizado = await pedir("POST", `/cocina/pedidos/${pedidoId}/rechazar`);
   avisarCambio();
   return actualizado;
+}
+
+// ---------------------------------------------------------------------------
+// Admin de cocina (G21): cocinas y restaurantes (Catálogo), cuentas (Usuarios) y métricas
+// (Pedidos). El gateway y cada servicio controlan que sea admin y de su localidad: acá solo
+// se arman los pedidos.
+// ---------------------------------------------------------------------------
+
+// Cocinas de la localidad del admin, activas o no, con todos sus restaurantes (HU14, HU16).
+export async function getAdminCocinas() {
+  const res = await pedir("GET", "/admin/cocinas");
+  const cocinas = (res.items || []).map((c) => ({
+    ...cocinaParaPantallas(c),
+    tiempoMin: c.tiempoEntregaMin,
+    tiempoMax: c.tiempoEntregaMax,
+    restaurantes: (c.restaurantes || []).map((r, i) => ({
+      id: r.id,
+      nombre: r.nombre,
+      activo: r.activo !== false,
+      color: COLORES_MARCA[i % COLORES_MARCA.length],
+    })),
+  }));
+  const localidad = cocinas[0]?.localidad || getCurrentUser()?.localidad || "";
+  return { localidad: { nombre: localidad }, cocinas };
+}
+
+// Crea una cocina en la localidad del admin y su cuenta (HU14, HU15). Son dos servicios: si
+// la cuenta falla, la cocina ya quedó creada, y se avisa para crear la cuenta de nuevo.
+export async function crearCocina({ nombre, direccion, zonaId, envio, tiempoMin, tiempoMax, email, password }) {
+  const zona = zonas.find((z) => z.id === zonaId);
+  if (!zona) throw new ApiError("Elegí la zona donde está la cocina.", "DATOS_INVALIDOS", 400);
+  const cocina = await pedir("POST", "/admin/cocinas", {
+    cuerpo: {
+      nombre: nombre.trim(),
+      direccion: direccion.trim(),
+      ubicacion: { lat: zona.lat, lng: zona.lng },
+      tiempoEntregaMin: Number(tiempoMin),
+      tiempoEntregaMax: Number(tiempoMax),
+      costoEnvio: Number(envio) || 0,
+    },
+  });
+  avisarCambio();
+  try {
+    await crearCuentaCocina({ cocinaId: cocina.id, nombre: cocina.nombre, email, password });
+  } catch (error) {
+    throw new ApiError(`Se creó la cocina ${cocina.nombre}, pero no su cuenta: ${error.message}`, error.code, error.status);
+  }
+  return cocina;
+}
+
+// Cuenta con la que la cocina entra a ver sus pedidos, su menú y su stock (HU15).
+export async function crearCuentaCocina({ cocinaId, nombre, email, password }) {
+  return pedir("POST", "/admin/cuentas-cocina", { cuerpo: { cocinaId, nombre, email: email.trim(), password } });
+}
+
+// Pausa o reactiva una cocina: pausada, deja de aparecer para los clientes (RN19).
+export async function toggleCocina(cocina) {
+  const res = await pedir("PATCH", `/admin/cocinas/${encodeURIComponent(cocina.id)}`, { cuerpo: { activa: !cocina.activa } });
+  avisarCambio();
+  return res;
+}
+
+// Agrega un restaurante a una cocina, hasta 4 (HU16, RN20).
+export async function crearRestaurante(cocinaId, { nombre }) {
+  const res = await pedir("POST", `/admin/cocinas/${encodeURIComponent(cocinaId)}/restaurantes`, { cuerpo: { nombre: nombre.trim() } });
+  avisarCambio();
+  return res;
+}
+
+// Pausa o reactiva un restaurante: sus platos dejan de mostrarse (RN19).
+export async function toggleRestaurante(cocinaId, restaurante) {
+  const res = await pedir("PATCH", `/admin/cocinas/${encodeURIComponent(cocinaId)}/restaurantes/${encodeURIComponent(restaurante.id)}`, {
+    cuerpo: { activo: !restaurante.activo },
+  });
+  avisarCambio();
+  return res;
+}
+
+const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+
+// Métricas del negocio de una cocina de su localidad, últimos 7 días (HU22). Las calcula
+// Pedidos con los pedidos guardados; no cuenta los cancelados.
+export async function getMetricas(cocinaId) {
+  const qs = cocinaId ? `?cocinaId=${encodeURIComponent(cocinaId)}` : "";
+  const res = await pedir("GET", `/admin/metricas${qs}`);
+  const d = res.detalle;
+  if (!d) return null;
+  return {
+    pedidos: d.pedidos,
+    cancelados: d.cancelados,
+    facturacion: d.facturacion,
+    ticketPromedio: d.ticketPromedio,
+    minutosPromedio: d.minutosPromedio,
+    // La fecha viene como AAAA-MM-DD (día de Córdoba): se arma a mediodía para que la zona
+    // horaria del navegador no la corra al día anterior.
+    dias: (d.dias || []).map((dia) => ({
+      fecha: dia.fecha,
+      label: DIAS[new Date(`${dia.fecha}T12:00:00`).getDay()],
+      cantidad: dia.cantidad,
+    })),
+    topPlatos: (d.topPlatos || []).map((p) => ({
+      id: p.platoId,
+      nombre: p.nombre,
+      restauranteNombre: p.restauranteNombre,
+      vendidos: p.vendidos,
+      foto: fotoDe(p.platoId),
+    })),
+    porMarca: (d.porMarca || []).map((m) => ({ id: m.restauranteId, nombre: m.nombre, pedidos: m.pedidos, porcentaje: m.porcentaje })),
+  };
 }

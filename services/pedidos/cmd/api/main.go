@@ -100,6 +100,13 @@ func main() {
 		httpadapter.ConfirmacionController{Service: confirmacionService},
 	)
 
+	// Métricas del admin (HU22, G21): solo lectura sobre pedido_db, y Catálogo dice qué
+	// cocinas son de su localidad.
+	httpadapter.RegistrarMetricas(router, httpadapter.MetricasController{Service: application.MetricasService{
+		Cocinas: catalogoCliente,
+		Repo:    mysqladapter.MetricasMySQL{DB: db},
+	}})
+
 	// 5. Proceso en segundo plano: cada 10 s sigue las confirmaciones que quedaron a medias.
 	go func() {
 		for range time.Tick(10 * time.Second) {

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import ProtectedRoute from "../components/auth/ProtectedRoute";
 import WorkspaceLayout from "../components/layout/WorkspaceLayout";
@@ -12,6 +12,8 @@ import { CartProvider } from "../context/CartContext";
 import { SessionProvider, useSession } from "../context/SessionContext";
 import { ToastProvider } from "../context/ToastContext";
 import Cart from "../pages/Cart";
+import AdminKitchens from "../pages/AdminKitchens";
+import AdminMetrics from "../pages/AdminMetrics";
 import Home from "../pages/Home";
 import KitchenOrders from "../pages/KitchenOrders";
 import KitchenDetail from "../pages/KitchenDetail";
@@ -92,6 +94,21 @@ function AppRouter() {
                   <Route path="inventario" element={<StockIngredientes />} />
                   <Route path="platos" element={<RecetasMermas />} />
                 </Route>
+
+                {/* Admin de cocina (G21) */}
+                <Route
+                  path="/admin"
+                  element={
+                    <ProtectedRoute allowedRoles={["ADMIN"]}>
+                      <WorkspaceLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<Navigate to="cocinas" replace />} />
+                  <Route path="cocinas" element={<AdminKitchens />} />
+                  <Route path="metricas" element={<AdminMetrics />} />
+                </Route>
+
                 <Route path="*" element={<NotFound />} />
               </Routes>
               <SedeGate />

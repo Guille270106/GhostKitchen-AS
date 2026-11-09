@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"log/slog"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -58,5 +59,14 @@ func identidad(ctx *gin.Context) domain.Actor {
 		Email:     ctx.GetHeader("X-Usuario-Email"),
 		Rol:       strings.ToLower(ctx.GetHeader("X-Rol")),
 		CocinaID:  ctx.GetHeader("X-Cocina-Id"),
+		// La localidad viene codificada para URL ("Nueva%20C%C3%B3rdoba"): un header solo admite ASCII.
+		Localidad: localidad(ctx.GetHeader("X-Localidad")),
 	}
+}
+
+func localidad(h string) string {
+	if v, err := url.PathUnescape(h); err == nil {
+		return v
+	}
+	return ""
 }
