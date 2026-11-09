@@ -34,6 +34,7 @@ func TestMySQLCancelarAnotaLaDevolucion(t *testing.T) {
 	t.Cleanup(func() {
 		db.Exec("DELETE FROM devolucion WHERE pedido_id=?", conf.PedidoID)
 		db.Exec("DELETE FROM confirmacion WHERE cliente_id=?", cliente.UsuarioID)
+		db.Exec("DELETE FROM comprobante WHERE pedido_id=?", conf.PedidoID)
 		db.Exec("DELETE FROM pedido_historial WHERE pedido_id=?", conf.PedidoID)
 		db.Exec("DELETE FROM pedido_item WHERE pedido_id=?", conf.PedidoID)
 		db.Exec("DELETE FROM pedido WHERE id=?", conf.PedidoID)

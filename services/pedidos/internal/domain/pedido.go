@@ -128,6 +128,8 @@ type Pedido struct {
 	CreadoEn      time.Time      `json:"creadoEn"`
 	ActualizadoEn time.Time      `json:"actualizadoEn"`
 	Historial     []CambioEstado `json:"historial,omitempty"`
+	// Comprobante es cómo va la factura (L15). Solo viene en el detalle del pedido.
+	Comprobante *Comprobante `json:"comprobante,omitempty"`
 }
 
 // IdentificadorValido acepta ids seguros de hasta 64 caracteres (los de Catálogo, Usuarios y UUID).

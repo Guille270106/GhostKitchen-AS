@@ -99,6 +99,16 @@ func (repo PedidosMySQL) Obtener(ctx context.Context, id string) (domain.Pedido,
 		c.EstadoAnterior = domain.Estado(anterior.String)
 		p.Historial = append(p.Historial, c)
 	}
+
+	// 4. Cómo va su factura (L15), si la tiene.
+	var estado string
+	var numero sql.NullString
+	err = repo.DB.QueryRowContext(ctx, `SELECT estado,numero FROM comprobante WHERE pedido_id=?`, id).Scan(&estado, &numero)
+	if err == nil {
+		p.Comprobante = &domain.Comprobante{Estado: domain.EstadoComprobante(estado), Numero: numero.String}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return domain.Pedido{}, err
+	}
 	return p, nil
 }
 
@@ -218,7 +228,7 @@ func (repo PedidosMySQL) Ready(ctx context.Context) error {
 	return repo.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pedido p
  JOIN pedido_item i ON i.pedido_id=p.id JOIN pedido_historial h ON h.pedido_id=p.id
  JOIN carrito c ON c.cliente_id=p.cliente_id JOIN carrito_item ci ON ci.cliente_id=c.cliente_id
- JOIN confirmacion cf ON cf.pedido_id=p.id JOIN devolucion d ON d.pedido_id=p.id JOIN outbox o ON o.id=p.id WHERE 1=0`).Scan(&n)
+ JOIN confirmacion cf ON cf.pedido_id=p.id JOIN devolucion d ON d.pedido_id=p.id JOIN outbox o ON o.id=p.id JOIN comprobante cp ON cp.pedido_id=p.id WHERE 1=0`).Scan(&n)
 }
 
 func insertarHistorial(ctx context.Context, tx *sql.Tx, pedidoID string, c domain.CambioEstado) error {

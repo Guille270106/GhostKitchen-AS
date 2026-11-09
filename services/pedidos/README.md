@@ -177,6 +177,26 @@ Cuando una reserva cumple sus 10 minutos, Inventario libera los ingredientes y p
 
 El consumidor lee de a un mensaje (prefetch 1) y, si se corta la conexión con RabbitMQ, vuelve a conectarse a los 5 s. Mientras tanto, el carrito sigue funcionando: si el cliente lo toca con la reserva vencida, recibe `409 CARRITO_VENCIDO` como antes (L7).
 
+## Factura con el grupo proveedor (L15)
+
+Lo que consumimos de otro grupo es la **API de comprobantes del Grupo 4**: con el mail del cliente y las líneas del pedido, emite la factura en PDF y se la manda por correo. Su contrato y cómo lo usamos están en [`docs/contracts/proveedor`](../../docs/contracts/proveedor/README.md), y la decisión, en el [ADR-009](../../docs/adr/ADR-009-consumo-del-proveedor.md).
+
+**La factura no es un paso esencial: el pedido nunca la espera.**
+
+1. Al completar la confirmación, en la **misma transacción** que crea el pedido, se anota su factura `PENDIENTE` (tabla `comprobante`).
+2. Un proceso en segundo plano (cada 10 s) la pide: `POST /v1/comprobantes` con `X-API-Key`, `Idempotency-Key: pedido-{id}` (**siempre la misma**, así no hay dos facturas) y las líneas del pedido con el precio que se copió al confirmar.
+3. Según la respuesta:
+
+| Responde | Qué hacemos |
+| --- | --- |
+| `201` o `200` | `EMITIDO`, con su número |
+| `400`, `409` o `422` | `RECHAZADO`: reintentar no lo arregla (queda el motivo) |
+| `401`, `429`, `503` o no contesta en 5 s | Sigue `PENDIENTE` y se reintenta en la vuelta siguiente |
+
+- Tiene su propio **circuit breaker** (ADR-010): si en 10 llamadas falla la mitad, no los llamamos durante 10 s.
+- `GET /api/v1/pedidos/{id}` muestra cómo va: `"comprobante": {"estado": "EMITIDO", "numero": "B-0001-00000042"}`.
+- Configuración: `PROVIDER_BASE_URL` y `PROVIDER_API_KEY` del `.env`. Mientras estén vacías (el Grupo 4 todavía no publicó su URL), `docker-compose.yml` usa su mock, `comprobantes-mock`, que valida cada solicitud contra su contrato.
+
 ## Probar
 
 Sin Docker, las reglas del pedido y las rutas (con un repositorio en memoria):
@@ -242,6 +262,7 @@ La cocina lo avanza hasta EN_CAMINO y el cliente confirma que lo recibió (ENTRE
 | `confirmacion` | En qué paso va cada confirmación (la saga), con una copia del carrito |
 | `devolucion` | Los ingredientes a devolver de cada pedido cancelado, y si ya se devolvieron |
 | `outbox` | Los avisos `pedido.estado_cambiado` que todavía no confirmó RabbitMQ (y cuándo se publicó cada uno) |
+| `comprobante` | La factura de cada pedido con el grupo proveedor: pendiente, emitida (con su número) o rechazada |
 
 ## Cómo se organiza por dentro: hexagonal + DDD
 
@@ -307,9 +328,9 @@ Autenticación, llamadas, esperas entre reintentos y trabajo local comparten **3
 
 El cambio de estado, su historial y el evento se guardan en una sola transacción. El admin solo consulta métricas de cocinas de su localidad; Pedidos guarda la localidad de la cocina como referencia al crear el pedido.
 
-## Configuración prevista
+## Configuración
 
-`PEDIDOS_DB_PASSWORD`, `PROVIDER_BASE_URL` y `PROVIDER_API_KEY`, junto con las credenciales comunes de MySQL/RabbitMQ, están en las [variables del `.env`](../../README.md#variables-del-env). Las conexiones, el puerto y las direcciones internas de Catálogo e Inventario se definirán al implementar. El proveedor todavía no fue asignado.
+`PEDIDOS_DB_PASSWORD`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, `PROVIDER_BASE_URL` y `PROVIDER_API_KEY` están en las [variables del `.env`](../../README.md#variables-del-env). Las direcciones internas de Catálogo e Inventario, el modo de Inventario (`CONSUMO_INVENTARIO`) y el mock del proveedor se arman en `docker-compose.yml`. El proveedor es el Grupo 4 (API de comprobantes).
 
 ## Pruebas previstas
 

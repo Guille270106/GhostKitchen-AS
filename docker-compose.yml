@@ -120,6 +120,9 @@ services:
       # Mensajes pedido.estado_cambiado (L13): se guardan en el outbox y se publican en RabbitMQ.
       # Si RabbitMQ está caído, Pedidos sigue atendiendo y los mensajes esperan en MySQL.
       RABBITMQ_URL: amqp://${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}:${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}@rabbitmq:5672/
+      # Facturas del pedido con el grupo proveedor (L15). Si el .env no tiene su URL, se usa su mock.
+      PROVIDER_BASE_URL: ${PROVIDER_BASE_URL:-http://comprobantes-mock:4010}
+      PROVIDER_API_KEY: ${PROVIDER_API_KEY:-clave-del-mock}
     expose:
       - "8085"
     depends_on:
@@ -404,6 +407,16 @@ services:
     ports:
       - "16686:16686"     # interfaz web para ver las trazas
     restart: unless-stopped
+
+  # Mock del grupo proveedor (Grupo 4, API de comprobantes), servido desde su contrato con Prism
+  # (L15). Valida cada solicitud contra su OpenAPI. Pedidos lo usa mientras PROVIDER_BASE_URL esté vacía.
+  comprobantes-mock:
+    image: stoplight/prism:5
+    command: mock -h 0.0.0.0 -p 4010 -m false /contrato/comprobantes-v1.yaml
+    volumes:
+      - ./docs/contracts/proveedor:/contrato:ro
+    expose:
+      - "4010"
 
   contract-mock:
     image: stoplight/prism:5
