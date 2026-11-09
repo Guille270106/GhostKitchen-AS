@@ -283,6 +283,44 @@ func TestConfirmarRecepcionPorHTTP(t *testing.T) {
 	}
 }
 
+func TestPantallaDeLaCocinaPorHTTP(t *testing.T) {
+	h := servidor(t, nil)
+	cocina := map[string]string{"X-Usuario-Id": "u-c", "X-Rol": "cocina", "X-Cocina-Id": "cerro"}
+	otraCocina := map[string]string{"X-Usuario-Id": "u-o", "X-Rol": "cocina", "X-Cocina-Id": "nueva-cordoba"}
+
+	// 1. La lista: la cocina ve los suyos, filtrando por estado; un cliente no entra.
+	if w, m := pedir(h, "GET", "/cocina/pedidos?estado=RECIBIDO", "", cocina); w.Code != 200 || len(m["pedidos"].([]any)) != 1 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w, m := pedir(h, "GET", "/cocina/pedidos", "", clienteHeaders); w.Code != 403 || m["code"] != "SIN_PERMISO" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+
+	// 2. Las acciones (el pedido de prueba está RECIBIDO en cada llamada).
+	casos := []struct {
+		nombre, accion string
+		headers        map[string]string
+		estado         int
+		resultado      string
+	}{
+		{"aceptar", "aceptar", cocina, 200, "ACEPTADO"},
+		{"rechazar", "rechazar", cocina, 200, "CANCELADO"},
+		{"avanzar sin aceptar", "avanzar", cocina, 409, "TRANSICION_INVALIDA"},
+		{"otra cocina", "aceptar", otraCocina, 404, "PEDIDO_NO_ENCONTRADO"},
+		{"un cliente", "aceptar", clienteHeaders, 403, "SIN_PERMISO"},
+	}
+	for _, c := range casos {
+		w, m := pedir(h, "POST", "/cocina/pedidos/ped-1/"+c.accion, "", c.headers)
+		obtenido := m["estado"]
+		if c.estado != 200 {
+			obtenido = m["code"]
+		}
+		if w.Code != c.estado || obtenido != c.resultado {
+			t.Errorf("%s: esperaba %d %s, obtuvo %d %s", c.nombre, c.estado, c.resultado, w.Code, w.Body.String())
+		}
+	}
+}
+
 // ConfirmacionesMock guarda las confirmaciones en un mapa (versión mínima para las rutas).
 type ConfirmacionesMock struct {
 	lista map[string]domain.Confirmacion

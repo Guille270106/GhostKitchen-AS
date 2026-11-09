@@ -121,3 +121,15 @@ func (s PedidosService) Listar(ctx context.Context, actor domain.Actor, estado d
 	// 3. Buscamos la página.
 	return s.Repo.Listar(ctx, filtro)
 }
+
+// ListarDeCocina es la pantalla de pedidos de la cocina: lo mismo que Listar, pero solo para
+// cuentas Cocina (un cliente que entra a esta ruta recibe 403, no sus propios pedidos).
+func (s PedidosService) ListarDeCocina(ctx context.Context, actor domain.Actor, estado domain.Estado, pagina int) ([]domain.Pedido, error) {
+	if err := actor.Validar(); err != nil {
+		return nil, err
+	}
+	if actor.Rol != domain.RolCocina {
+		return nil, domain.ErrSinPermiso
+	}
+	return s.Listar(ctx, actor, estado, pagina)
+}

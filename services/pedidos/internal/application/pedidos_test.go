@@ -240,3 +240,41 @@ func TestElClienteConfirmaQueLoRecibio(t *testing.T) {
 		t.Fatal(err, p.Estado, len(p.Historial))
 	}
 }
+
+func TestLaPantallaDeLaCocinaEsSoloParaCocinas(t *testing.T) {
+	svc, _ := entorno(t)
+	if _, err := svc.ListarDeCocina(context.Background(), cliente, "", 1); !errors.Is(err, domain.ErrSinPermiso) {
+		t.Fatal(err)
+	}
+	lista, err := svc.ListarDeCocina(context.Background(), cocina, domain.EstadoRecibido, 1)
+	if err != nil || len(lista) != 1 {
+		t.Fatal(err, lista)
+	}
+}
+
+// La cocina recorre su pedido: acepta, lo prepara, lo marca listo y lo despacha.
+func TestLaCocinaAvanzaSuPedido(t *testing.T) {
+	svc, _ := entorno(t)
+	esperados := []domain.Estado{domain.EstadoAceptado, domain.EstadoEnPreparacion, domain.EstadoListo, domain.EstadoEnCamino}
+	for i, accion := range []Accion{Aceptar, Avanzar, Avanzar, Avanzar} {
+		p, err := svc.CambiarEstado(context.Background(), cocina, "ped-1", accion)
+		if err != nil || p.Estado != esperados[i] {
+			t.Fatal(accion, err, p.Estado)
+		}
+	}
+	// Desde EN_CAMINO la cocina ya no avanza: lo cierra el cliente al recibirlo.
+	if _, err := svc.CambiarEstado(context.Background(), cocina, "ped-1", Avanzar); !errors.Is(err, domain.ErrTransicionInvalida) {
+		t.Fatal(err)
+	}
+}
+
+func TestOtraCocinaNoVeNiTocaElPedido(t *testing.T) {
+	svc, _ := entorno(t)
+	otra := domain.Actor{UsuarioID: "u-otra", Rol: domain.RolCocina, CocinaID: "nueva-cordoba"}
+	if _, err := svc.CambiarEstado(context.Background(), otra, "ped-1", Rechazar); !errors.Is(err, domain.ErrNoEncontrado) {
+		t.Fatal(err)
+	}
+	if lista, err := svc.ListarDeCocina(context.Background(), otra, "", 1); err != nil || len(lista) != 0 {
+		t.Fatal(err, lista)
+	}
+}
