@@ -45,6 +45,15 @@ func siguienteDeCocina(actual Estado) (Estado, bool) {
 // Final indica si el pedido ya no puede cambiar.
 func (e Estado) Final() bool { return e == EstadoEntregado || e == EstadoCancelado }
 
+// EstadoValido dice si el texto es uno de los estados del pedido (sirve para filtrar listas).
+func EstadoValido(e Estado) bool {
+	switch e {
+	case EstadoRecibido, EstadoAceptado, EstadoEnPreparacion, EstadoListo, EstadoEnCamino, EstadoEntregado, EstadoCancelado:
+		return true
+	}
+	return false
+}
+
 // Roles que manda el gateway en X-Rol.
 const (
 	RolCliente = "cliente"

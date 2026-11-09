@@ -36,7 +36,9 @@ func Rutas(log *slog.Logger, salud SaludController, pedidos PedidosController, c
 	router.GET("/confirmaciones/:id", confirmacion.Ver)
 
 	// Pedidos.
+	router.GET("/pedidos", pedidos.Listar)
 	router.GET("/pedidos/:id", pedidos.Obtener)
+	router.POST("/pedidos/:id/entregado", pedidos.ConfirmarEntrega)
 
 	router.NoRoute(func(ctx *gin.Context) { fallo(ctx, 404, "NO_ENCONTRADO", "Recurso no encontrado") })
 	return router

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"ghostkitchen/pedidos/internal/application"
@@ -41,6 +42,42 @@ type PedidosController struct {
 // Obtener devuelve un pedido: el cliente ve los suyos y la cocina los de su cocina.
 func (c PedidosController) Obtener(ctx *gin.Context) {
 	pedido, err := c.Service.Obtener(ctx.Request.Context(), identidad(ctx), ctx.Param("id"))
+	if err != nil {
+		responderError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, pedido)
+}
+
+// Listar devuelve "mis pedidos" (cliente) o los pedidos de la cocina, de a 20 y del más nuevo al
+// más viejo. Filtros opcionales en la URL: ?estado=RECIBIDO y ?pagina=2.
+func (c PedidosController) Listar(ctx *gin.Context) {
+	pagina := 1
+	if texto := ctx.Query("pagina"); texto != "" {
+		n, err := strconv.Atoi(texto)
+		if err != nil {
+			fallo(ctx, http.StatusBadRequest, "DATOS_INVALIDOS", "pagina tiene que ser un número desde 1")
+			return
+		}
+		pagina = n
+	}
+	pedidos, err := c.Service.Listar(ctx.Request.Context(), identidad(ctx), domain.Estado(ctx.Query("estado")), pagina)
+	if err != nil {
+		responderError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"pedidos": pedidos, "pagina": pagina, "porPagina": application.PorPagina})
+}
+
+// ConfirmarEntrega: el cliente avisa que recibió el pedido (EN_CAMINO → ENTREGADO).
+func (c PedidosController) ConfirmarEntrega(ctx *gin.Context) {
+	c.cambiarEstado(ctx, application.ConfirmarEntrega)
+}
+
+// cambiarEstado le pide la acción al pedido (él decide si se puede) y responde con el pedido
+// actualizado. Si otro cambio se guardó primero, responde 409 PEDIDO_MODIFICADO.
+func (c PedidosController) cambiarEstado(ctx *gin.Context, accion application.Accion) {
+	pedido, err := c.Service.CambiarEstado(ctx.Request.Context(), identidad(ctx), ctx.Param("id"), accion)
 	if err != nil {
 		responderError(ctx, err)
 		return

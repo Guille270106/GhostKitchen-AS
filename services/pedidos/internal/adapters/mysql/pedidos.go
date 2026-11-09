@@ -8,6 +8,7 @@ import (
 	"errors"
 
 	"ghostkitchen/pedidos/internal/domain"
+	"ghostkitchen/pedidos/internal/ports"
 )
 
 // PedidosMySQL guarda pedidos en MySQL.
@@ -75,19 +76,8 @@ func (repo PedidosMySQL) Obtener(ctx context.Context, id string) (domain.Pedido,
 	}
 
 	// 2. Sus platos.
-	filas, err := repo.DB.QueryContext(ctx, `SELECT plato_id,nombre,restaurante_id,restaurante_nombre,precio_unitario,cantidad
- FROM pedido_item WHERE pedido_id=? ORDER BY plato_id`, id)
-	if err != nil {
+	if p.Items, err = repo.leerItems(ctx, id); err != nil {
 		return domain.Pedido{}, err
-	}
-	defer filas.Close()
-	p.Items = []domain.Item{}
-	for filas.Next() {
-		var it domain.Item
-		if err := filas.Scan(&it.PlatoID, &it.Nombre, &it.RestauranteID, &it.RestauranteNombre, &it.PrecioUnitario, &it.Cantidad); err != nil {
-			return domain.Pedido{}, err
-		}
-		p.Items = append(p.Items, it)
 	}
 
 	// 3. Su historial.
@@ -107,6 +97,73 @@ func (repo PedidosMySQL) Obtener(ctx context.Context, id string) (domain.Pedido,
 		p.Historial = append(p.Historial, c)
 	}
 	return p, nil
+}
+
+// leerItems devuelve los platos de un pedido.
+func (repo PedidosMySQL) leerItems(ctx context.Context, pedidoID string) ([]domain.Item, error) {
+	filas, err := repo.DB.QueryContext(ctx, `SELECT plato_id,nombre,restaurante_id,restaurante_nombre,precio_unitario,cantidad
+ FROM pedido_item WHERE pedido_id=? ORDER BY plato_id`, pedidoID)
+	if err != nil {
+		return nil, err
+	}
+	defer filas.Close()
+	items := []domain.Item{}
+	for filas.Next() {
+		var it domain.Item
+		if err := filas.Scan(&it.PlatoID, &it.Nombre, &it.RestauranteID, &it.RestauranteNombre, &it.PrecioUnitario, &it.Cantidad); err != nil {
+			return nil, err
+		}
+		items = append(items, it)
+	}
+	return items, filas.Err()
+}
+
+// Listar devuelve una página de pedidos de un cliente o de una cocina, del más nuevo al más
+// viejo, con sus platos (la cocina los necesita para prepararlos). No trae el historial: para
+// eso está el detalle.
+func (repo PedidosMySQL) Listar(ctx context.Context, f ports.FiltroPedidos) ([]domain.Pedido, error) {
+	// 1. Armamos la consulta según el filtro. Los valores van siempre como parámetros (?).
+	consulta := `SELECT id,cliente_id,cliente_email,cocina_id,estado,total,moneda,version,creado_en,actualizado_en FROM pedido WHERE `
+	var args []any
+	if f.ClienteID != "" {
+		consulta += "cliente_id=?"
+		args = append(args, f.ClienteID)
+	} else {
+		consulta += "cocina_id=?"
+		args = append(args, f.CocinaID)
+	}
+	if f.Estado != "" {
+		consulta += " AND estado=?"
+		args = append(args, f.Estado)
+	}
+	consulta += " ORDER BY creado_en DESC, id LIMIT ? OFFSET ?"
+	args = append(args, f.PorPagina, (f.Pagina-1)*f.PorPagina)
+
+	// 2. Leemos los pedidos.
+	filas, err := repo.DB.QueryContext(ctx, consulta, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer filas.Close()
+	pedidos := []domain.Pedido{}
+	for filas.Next() {
+		var p domain.Pedido
+		if err := filas.Scan(&p.ID, &p.ClienteID, &p.ClienteEmail, &p.CocinaID, &p.Estado, &p.Total, &p.Moneda, &p.Version, &p.CreadoEn, &p.ActualizadoEn); err != nil {
+			return nil, err
+		}
+		pedidos = append(pedidos, p)
+	}
+	if err := filas.Err(); err != nil {
+		return nil, err
+	}
+
+	// 3. Los platos de cada uno (son 20 como mucho).
+	for i := range pedidos {
+		if pedidos[i].Items, err = repo.leerItems(ctx, pedidos[i].ID); err != nil {
+			return nil, err
+		}
+	}
+	return pedidos, nil
 }
 
 // GuardarCambio escribe el nuevo estado solo si el pedido sigue en la versión anterior.

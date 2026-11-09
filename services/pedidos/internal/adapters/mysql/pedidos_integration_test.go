@@ -12,6 +12,7 @@ import (
 	adapter "ghostkitchen/pedidos/internal/adapters/mysql"
 	"ghostkitchen/pedidos/internal/application"
 	"ghostkitchen/pedidos/internal/domain"
+	"ghostkitchen/pedidos/internal/ports"
 	driver "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 )
@@ -119,5 +120,56 @@ func TestMySQLCambiosSimultaneosGanaUnoSolo(t *testing.T) {
 		if exitos != 1 || final.Version != 2 || len(final.Historial) != 2 {
 			t.Fatalf("vuelta %d: ganaron %d, versión %d, historial %d", i, exitos, final.Version, len(final.Historial))
 		}
+	}
+}
+
+// Mis pedidos contra MySQL real: solo los del cliente, del más nuevo al más viejo, con sus
+// platos, filtrando por estado y de a una página.
+func TestMySQLListar(t *testing.T) {
+	db := conectar(t)
+	repo := adapter.PedidosMySQL{DB: db}
+	svc := application.PedidosService{Repo: repo}
+
+	// 1. Tres pedidos del mismo cliente, creados uno después del otro.
+	viejo := crearPedido(t, db, repo)
+	cliente := domain.Actor{UsuarioID: viejo.ClienteID, Rol: domain.RolCliente}
+	var ids []string
+	for i := 1; i <= 2; i++ {
+		p, err := domain.NuevoPedido(uuid.NewString(), cliente, "cliente@ejemplo.com", "cerro",
+			[]domain.Item{{PlatoID: "p17", Nombre: "Burger", RestauranteID: "r5", PrecioUnitario: 12000, Cantidad: 1}},
+			time.Now().Add(time.Duration(i)*time.Second))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.Crear(context.Background(), p); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, p.ID)
+		t.Cleanup(func() {
+			db.Exec("DELETE FROM pedido_historial WHERE pedido_id=?", p.ID)
+			db.Exec("DELETE FROM pedido_item WHERE pedido_id=?", p.ID)
+			db.Exec("DELETE FROM pedido WHERE id=?", p.ID)
+		})
+	}
+
+	// 2. Todos: el más nuevo primero, y cada uno con sus platos.
+	lista, err := repo.Listar(context.Background(), ports.FiltroPedidos{ClienteID: cliente.UsuarioID, Pagina: 1, PorPagina: 20})
+	if err != nil || len(lista) != 3 || lista[0].ID != ids[1] || lista[2].ID != viejo.ID || len(lista[2].Items) != 2 {
+		t.Fatal(err, lista)
+	}
+
+	// 3. De a 2 por página: la segunda página trae el más viejo.
+	lista, err = repo.Listar(context.Background(), ports.FiltroPedidos{ClienteID: cliente.UsuarioID, Pagina: 2, PorPagina: 2})
+	if err != nil || len(lista) != 1 || lista[0].ID != viejo.ID {
+		t.Fatal(err, lista)
+	}
+
+	// 4. Por estado: cancelamos el más viejo y filtramos.
+	if _, err := svc.CambiarEstado(context.Background(), cliente, viejo.ID, application.Cancelar); err != nil {
+		t.Fatal(err)
+	}
+	lista, err = svc.Listar(context.Background(), cliente, domain.EstadoCancelado, 1)
+	if err != nil || len(lista) != 1 || lista[0].ID != viejo.ID {
+		t.Fatal(err, lista)
 	}
 }

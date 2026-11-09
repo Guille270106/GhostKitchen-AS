@@ -38,6 +38,18 @@ func (m PedidosMock) GuardarCambio(context.Context, domain.Pedido, domain.Cambio
 }
 func (m PedidosMock) Ready(context.Context) error { return m.falla }
 
+// Listar devuelve el único pedido si coincide con el filtro (y solo en la primera página).
+func (m PedidosMock) Listar(_ context.Context, f ports.FiltroPedidos) ([]domain.Pedido, error) {
+	if m.falla != nil {
+		return nil, m.falla
+	}
+	if f.ClienteID != "" && f.ClienteID != m.pedido.ClienteID || f.CocinaID != "" && f.CocinaID != m.pedido.CocinaID ||
+		f.Estado != "" && f.Estado != m.pedido.Estado || f.Pagina > 1 {
+		return []domain.Pedido{}, nil
+	}
+	return []domain.Pedido{m.pedido}, nil
+}
+
 // CarritosMock guarda carritos en un mapa.
 type CarritosMock struct{ carritos map[string]domain.Carrito }
 
@@ -210,6 +222,63 @@ func TestCarritoPorHTTP(t *testing.T) {
 	// Vaciar.
 	w, m = pedir(h, "DELETE", "/carrito", "", clienteHeaders)
 	if w.Code != 200 || len(m["items"].([]any)) != 0 || m["reservaId"] != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+func TestMisPedidosPorHTTP(t *testing.T) {
+	h := servidor(t, nil)
+	cocina := map[string]string{"X-Usuario-Id": "u-c", "X-Rol": "cocina", "X-Cocina-Id": "cerro"}
+
+	// 1. El cliente ve sus pedidos; la cocina los de su cocina.
+	for _, headers := range []map[string]string{clienteHeaders, cocina} {
+		w, m := pedir(h, "GET", "/pedidos", "", headers)
+		if w.Code != 200 || len(m["pedidos"].([]any)) != 1 || m["pagina"] != 1.0 || m["porPagina"] != 20.0 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+
+	// 2. Los filtros de la URL llegan al servicio.
+	w, m := pedir(h, "GET", "/pedidos?estado=ENTREGADO", "", clienteHeaders)
+	if w.Code != 200 || len(m["pedidos"].([]any)) != 0 {
+		t.Fatal("filtro por estado:", w.Code, w.Body.String())
+	}
+	w, m = pedir(h, "GET", "/pedidos?pagina=2", "", clienteHeaders)
+	if w.Code != 200 || len(m["pedidos"].([]any)) != 0 || m["pagina"] != 2.0 {
+		t.Fatal("segunda página:", w.Code, w.Body.String())
+	}
+
+	// 3. Errores.
+	casos := []struct {
+		nombre, ruta string
+		headers      map[string]string
+		estado       int
+		code         string
+	}{
+		{"estado inventado", "/pedidos?estado=PERDIDO", clienteHeaders, 400, "DATOS_INVALIDOS"},
+		{"página que no es número", "/pedidos?pagina=dos", clienteHeaders, 400, "DATOS_INVALIDOS"},
+		{"página cero", "/pedidos?pagina=0", clienteHeaders, 400, "DATOS_INVALIDOS"},
+		{"el admin no tiene pedidos", "/pedidos", map[string]string{"X-Usuario-Id": "u-a", "X-Rol": "admin"}, 403, "SIN_PERMISO"},
+		{"sin identidad", "/pedidos", nil, 401, "NO_AUTENTICADO"},
+	}
+	for _, c := range casos {
+		if w, m := pedir(h, "GET", c.ruta, "", c.headers); w.Code != c.estado || m["code"] != c.code {
+			t.Errorf("%s: esperaba %d %s, obtuvo %d %s", c.nombre, c.estado, c.code, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestConfirmarRecepcionPorHTTP(t *testing.T) {
+	h := servidor(t, nil)
+	// El pedido del servidor de prueba está RECIBIDO: todavía no se puede confirmar la entrega.
+	if w, m := pedir(h, "POST", "/pedidos/ped-1/entregado", "", clienteHeaders); w.Code != 409 || m["code"] != "TRANSICION_INVALIDA" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	// Otro cliente no puede, y la cocina tampoco (no es su acción).
+	if w, _ := pedir(h, "POST", "/pedidos/ped-1/entregado", "", map[string]string{"X-Usuario-Id": "u-2", "X-Rol": "cliente"}); w.Code != 404 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w, _ := pedir(h, "POST", "/pedidos/ped-1/entregado", "", map[string]string{"X-Usuario-Id": "u-c", "X-Rol": "cocina", "X-Cocina-Id": "cerro"}); w.Code != 403 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
