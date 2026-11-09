@@ -110,6 +110,19 @@ Confirmar toca Pedidos e Inventario, así que no entra en una sola transacción:
 | `403 SIN_PERMISO` | El admin no tiene pedidos; la cocina no confirma entregas |
 | `404 PEDIDO_NO_ENCONTRADO` | El pedido no existe o es de otro cliente |
 
+## Pantalla de pedidos de la cocina (L12)
+
+| Ruta (por el gateway) | Qué hace |
+| --- | --- |
+| `GET /api/v1/cocina/pedidos` | Los pedidos de mi cocina, de a 20 y del más nuevo al más viejo (`?estado=RECIBIDO`, `?pagina=2`) |
+| `POST /api/v1/cocina/pedidos/{id}/aceptar` | Tomar el pedido: `RECIBIDO` → `ACEPTADO` |
+| `POST /api/v1/cocina/pedidos/{id}/rechazar` | No se puede hacer: `RECIBIDO` → `CANCELADO` |
+| `POST /api/v1/cocina/pedidos/{id}/avanzar` | Paso siguiente: `ACEPTADO` → `EN_PREPARACION` → `LISTO` → `EN_CAMINO` |
+
+- Solo cuentas Cocina (un cliente recibe `403`), y solo los pedidos de **su** cocina: el pedido de otra cocina responde `404`, como si no existiera.
+- Cada acción la decide el pedido (dominio) y se guarda con control de versión: si el cliente cancela mientras la cocina acepta, gana el primero y el otro recibe `409 PEDIDO_MODIFICADO`.
+- Desde `EN_CAMINO` la cocina ya no avanza: lo cierra el cliente al confirmar que lo recibió.
+
 ## Probar
 
 Sin Docker, las reglas del pedido y las rutas (con un repositorio en memoria):

@@ -40,6 +40,12 @@ func Rutas(log *slog.Logger, salud SaludController, pedidos PedidosController, c
 	router.GET("/pedidos/:id", pedidos.Obtener)
 	router.POST("/pedidos/:id/entregado", pedidos.ConfirmarEntrega)
 
+	// Pantalla de pedidos de la cocina.
+	router.GET("/cocina/pedidos", pedidos.ListarDeCocina)
+	router.POST("/cocina/pedidos/:id/aceptar", pedidos.Aceptar)
+	router.POST("/cocina/pedidos/:id/rechazar", pedidos.Rechazar)
+	router.POST("/cocina/pedidos/:id/avanzar", pedidos.Avanzar)
+
 	router.NoRoute(func(ctx *gin.Context) { fallo(ctx, 404, "NO_ENCONTRADO", "Recurso no encontrado") })
 	return router
 }

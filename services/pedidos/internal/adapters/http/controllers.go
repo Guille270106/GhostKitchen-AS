@@ -52,14 +52,9 @@ func (c PedidosController) Obtener(ctx *gin.Context) {
 // Listar devuelve "mis pedidos" (cliente) o los pedidos de la cocina, de a 20 y del más nuevo al
 // más viejo. Filtros opcionales en la URL: ?estado=RECIBIDO y ?pagina=2.
 func (c PedidosController) Listar(ctx *gin.Context) {
-	pagina := 1
-	if texto := ctx.Query("pagina"); texto != "" {
-		n, err := strconv.Atoi(texto)
-		if err != nil {
-			fallo(ctx, http.StatusBadRequest, "DATOS_INVALIDOS", "pagina tiene que ser un número desde 1")
-			return
-		}
-		pagina = n
+	pagina, ok := leerPagina(ctx)
+	if !ok {
+		return
 	}
 	pedidos, err := c.Service.Listar(ctx.Request.Context(), identidad(ctx), domain.Estado(ctx.Query("estado")), pagina)
 	if err != nil {
@@ -69,9 +64,54 @@ func (c PedidosController) Listar(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"pedidos": pedidos, "pagina": pagina, "porPagina": application.PorPagina})
 }
 
+// ListarDeCocina es la pantalla de pedidos de la cocina: los de su cocina, con los mismos
+// filtros que Listar (?estado= y ?pagina=). Solo para cuentas Cocina.
+func (c PedidosController) ListarDeCocina(ctx *gin.Context) {
+	pagina, ok := leerPagina(ctx)
+	if !ok {
+		return
+	}
+	pedidos, err := c.Service.ListarDeCocina(ctx.Request.Context(), identidad(ctx), domain.Estado(ctx.Query("estado")), pagina)
+	if err != nil {
+		responderError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"pedidos": pedidos, "pagina": pagina, "porPagina": application.PorPagina})
+}
+
+// Aceptar: la cocina toma el pedido (RECIBIDO → ACEPTADO).
+func (c PedidosController) Aceptar(ctx *gin.Context) {
+	c.cambiarEstado(ctx, application.Aceptar)
+}
+
+// Rechazar: la cocina no puede hacerlo (RECIBIDO → CANCELADO).
+func (c PedidosController) Rechazar(ctx *gin.Context) {
+	c.cambiarEstado(ctx, application.Rechazar)
+}
+
+// Avanzar: la cocina lo pasa al paso siguiente (ACEPTADO → EN_PREPARACION → LISTO → EN_CAMINO).
+func (c PedidosController) Avanzar(ctx *gin.Context) {
+	c.cambiarEstado(ctx, application.Avanzar)
+}
+
 // ConfirmarEntrega: el cliente avisa que recibió el pedido (EN_CAMINO → ENTREGADO).
 func (c PedidosController) ConfirmarEntrega(ctx *gin.Context) {
 	c.cambiarEstado(ctx, application.ConfirmarEntrega)
+}
+
+// leerPagina lee ?pagina= (1 si no viene). Si no es un número, responde 400 y devuelve false.
+// Que esté entre 1 y 1000 lo valida el servicio.
+func leerPagina(ctx *gin.Context) (int, bool) {
+	texto := ctx.Query("pagina")
+	if texto == "" {
+		return 1, true
+	}
+	pagina, err := strconv.Atoi(texto)
+	if err != nil {
+		fallo(ctx, http.StatusBadRequest, "DATOS_INVALIDOS", "pagina tiene que ser un número desde 1")
+		return 0, false
+	}
+	return pagina, true
 }
 
 // cambiarEstado le pide la acción al pedido (él decide si se puede) y responde con el pedido
