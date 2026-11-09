@@ -91,7 +91,7 @@ Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción
 - **Cambios que rompen** (necesitan `/v2`): sacar o renombrar un campo, cambiar su tipo o lo que significa, agregar un parámetro obligatorio o cambiar los códigos de error.
 - **Si hay una `v2`, la `v1` sigue andando** hasta el final de la materia, y lo avisamos en el `CHANGELOG` (Clase 6: una versión nueva convive con la anterior hasta su retiro).
 - **Historial:** `docs/contracts/CHANGELOG.md` anota cada versión con su fecha. Las versiones viejas no se borran.
-- **Para no romper el contrato sin darnos cuenta:** el OpenAPI se valida en cada pull request, y desde la Entrega 2 los tests de Búsqueda comparan sus respuestas con los esquemas del contrato.
+- **Para no romper el contrato sin darnos cuenta:** en cada pull request corre el test de contrato (`scripts/contrato/probar-contrato.mjs`): cada operación se le pide a la API real a través de Prism, que compara la respuesta con el OpenAPI, y los errores se revisan con su formato Problem Details y su `code`.
 
 ## Implementación (Entrega 2)
 
@@ -107,7 +107,7 @@ Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción
 | Seguimiento | `X-Correlation-Id` devuelto en cada respuesta y registrado en los logs del gateway y de Búsqueda |
 | Privacidad | Las coordenadas de proximidad no se guardan ni se registran en logs ni en trazas ([ADR-011](ADR-011-observabilidad.md)) |
 
-**Cómo lo comprobamos:** las respuestas de Búsqueda se validaron contra el OpenAPI 1.1.0 (esquemas y Problem Details), y el gateway con `scripts/probar-api-publica.ps1` (401, 413, 429 y 503). Falta convertir esa validación en un test automático que corra en cada pull request.
+**Cómo lo comprobamos:** las respuestas de Búsqueda se validaron contra el OpenAPI 1.1.0 (esquemas y Problem Details), y el gateway con `scripts/probar-api-publica.ps1` (401, 413, 429 y 503). Desde la L21 esa validación es **automática en cada pull request** (`.github/workflows/contrato.yml`): se levanta la misma configuración que en la nube y Prism, en modo proxy, compara cada respuesta real con el OpenAPI; si algo no cumple, el pull request queda en rojo con la lista de diferencias.
 
 **Una aclaración en la guía, sin cambiar el contrato:** el gateway manda `RateLimit-Limit: 60` en todas las respuestas, pero `RateLimit-Remaining` solo en el `429` (con valor `0`), porque NGINX gratuito no expone cuántas solicitudes le quedan a cada clave. El contrato ya declaraba esos headers como opcionales, así que es compatible; corregimos la guía, que decía que venía en todas las respuestas, y lo anotamos en el [CHANGELOG](../contracts/CHANGELOG.md).
 
@@ -144,7 +144,7 @@ Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción
 
 - **Entrega 1:** contrato validado con `swagger-cli` 4.0.4 y mock probado con Prism 5.16.0. Las cuatro operaciones y los errores documentados (404, 429, 503, latitud inválida y falta de API key) responden; cómo probarlo está en la [guía del contrato](../contracts/README.md#probar-sin-esperar-al-backend-mock). Que Prism arranque, por sí solo, no sustituye la validación formal de OpenAPI.
 - **Ampliación 1.1.0:** validar formalmente OpenAPI y los ejemplos del nuevo POST; comprobar 200, validaciones estructurales y errores simulados. Las reglas de distancia, rango inclusivo, comparación con el cliente y cobertura se prueban con la implementación real.
-- **Entrega 2 (hecho en parte):** la versión real funciona detrás del gateway y sus respuestas se validaron contra el contrato. La URL pública ya está publicada (`https://57-156-56-219.sslip.io/public`, ver [infra/nube](../../infra/nube/README.md)). Pendiente: el test automático en cada pull request.
+- **Entrega 2 (hecho en parte):** la versión real funciona detrás del gateway y sus respuestas se validaron contra el contrato. La URL pública ya está publicada (`https://57-156-56-219.sslip.io/public`, ver [infra/nube](../../infra/nube/README.md)). El test automático corre en cada pull request (L21).
 - **Durante la integración:** si el otro grupo nos pide un cambio, lo anotamos acá con la versión nueva.
 
 ## Referencias
