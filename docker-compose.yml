@@ -418,6 +418,42 @@ services:
     expose:
       - "4010"
 
+  # Métricas y tablero (G20, ADR-011). Prometheus lee /metrics de cada servicio y evalúa las
+  # alertas; Grafana muestra el tablero "GhostKitchen", ya cargado al arrancar.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: ghostkitchen-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d   # la ventana de los objetivos de servicio (ADR-011)
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alertas.yml:/etc/prometheus/alertas.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"       # consultas y alertas (http://localhost:9090/alerts)
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: ghostkitchen-grafana
+    environment:
+      # Cualquiera que abra localhost:3000 ve el tablero sin entrar (solo lectura). Para editar,
+      # usuario admin y la contraseña de GRAFANA_ADMIN_PASSWORD en .env ("admin" si no está).
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/ghostkitchen.json
+      GF_USERS_DEFAULT_LANGUAGE: es-ES
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"       # tablero (http://localhost:3000)
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
   contract-mock:
     image: stoplight/prism:5
     container_name: ghostkitchen-contract-mock
@@ -428,6 +464,7 @@ services:
       - "4010:4010"
 
 volumes:
+  prometheus-data:
   mysql-data:
   rabbitmq-data:
   mongo-data:

@@ -1,6 +1,6 @@
 # ADR-011 — Observabilidad: logs, trazas, métricas y alertas
 
-- **Estado:** Primera versión. Logs y trazas implementados (Entrega 2); `/metrics` en los servicios (G19); tablero y alertas para la presentación final (G20)
+- **Estado:** Primera versión. Logs y trazas implementados (Entrega 2); `/metrics` en los servicios (G19); Prometheus, tablero en Grafana y alertas (G20)
 - **Fecha:** 2026-10-16
 - **Responsable:** Guillermina Sánchez
 - **Decisión del enunciado:** D11 (estrategia de logs, métricas, trazas y tableros, objetivo de servicio y criterios de alerta)
@@ -81,7 +81,33 @@ Además vienen las de Go y del proceso (memoria, goroutines, CPU). Decisiones:
 - **El servicio y la copia no van como etiqueta:** los agrega Prometheus al leer (`job` e `instance`). Así las dos copias de Catálogo se ven por separado sin cambiar el código.
 - **El middleware va primero**, antes de `gin.Recovery`: una solicitud que termina en panic cuenta como 500.
 - **Las lecturas de `/metrics` no cuentan** como tráfico ni crean trazas en Jaeger.
-- Falta para G20: Prometheus y Grafana en el compose, el tablero y la alerta. Las métricas de Pedidos (confirmaciones pendientes) y de las colas (mensajes en la DLQ) se leen de MySQL y de RabbitMQ, así que se suman ahí.
+
+#### Cómo quedaron Prometheus, el tablero y las alertas (G20)
+
+- **Prometheus** (http://localhost:9090) lee `/metrics` de cada servicio cada 15 s (`infra/prometheus/prometheus.yml`) y guarda 7 días, la ventana de los objetivos. Cada servicio es un `job` y cada copia una `instance`: las dos copias de Catálogo son `catalogo-1:8082` y `catalogo-2:8082`.
+- **RabbitMQ** se lee con su plugin de Prometheus (`/metrics/detailed?family=queue_coarse_metrics`, puerto 15692), que da los mensajes de cada cola y de cada DLQ. No hizo falta código.
+- **Grafana** (http://localhost:3000) arranca con Prometheus configurado y con el tablero **GhostKitchen** como inicio (`infra/grafana`). Se ve sin entrar, en modo lectura. El tablero está en el repo; un cambio hecho en la pantalla no se guarda.
+- **Paneles:**
+  - **Tráfico:** solicitudes por segundo, % de 5xx, p95 por servicio, rutas más lentas y respuestas por código.
+  - **Catálogo:** solicitudes por copia, copias arriba, % de aciertos de la caché y caché por resultado.
+  - **Búsqueda:** p95 de Solr por operación, atraso del índice (p50 y p95, con la línea de 5 s) y mensajes aplicados, rechazados o reintentados.
+  - **Mensajería y estado:** mensajes en cada cola, mensajes en las DLQ, servicios arriba y alertas activas.
+- **Alertas** (`infra/prometheus/alertas.yml`): las cinco de la tabla de arriba.
+
+  | Alerta | Expresión | Diferencia con lo planeado |
+  | --- | --- | --- |
+  | `MuchosErrores5xx` | Por servicio | Solo con más de 0,1 solicitudes por segundo, para que dos errores sueltos con poco tráfico no la disparen |
+  | `BusquedaLenta` | — | — |
+  | `ServicioCaido` | `up == 0` durante 1 minuto | Se usa `up` en lugar de `/ready`: Prometheus no puede leer `/metrics` de esa copia |
+  | `MensajesEnDLQ` | — | — |
+  | `IndiceAtrasado` | — | — |
+
+  Se ven en http://localhost:9090/alerts y en el panel "Alertas activas". No hay Alertmanager (no manda mails ni mensajes): para el trabajo alcanza con verlas en el tablero.
+- **Probado:**
+  - `promtool check` de la configuración y de las reglas, y las 22 expresiones del tablero pasadas por el parser de Prometheus.
+  - Tests de las alertas con `promtool test rules` (`infra/prometheus/alertas_test.yml`): 10 % de 5xx salta a los 5 minutos y un error suelto no; una copia caída salta al minuto; un mensaje en la DLQ salta a los 5 minutos.
+  - Prometheus real contra Usuarios y RabbitMQ: todas las consultas del tablero responden y `ServicioCaido` se disparó para los servicios apagados.
+- **Pendiente:** las métricas de Pedidos (confirmaciones pendientes) y de Notificaciones, cuando las publiquen sus servicios.
 
 ### 4. Objetivos de servicio (SLO)
 
