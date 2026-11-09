@@ -10,6 +10,7 @@ package mongo
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -73,5 +74,44 @@ func TestIntegracionRepositorioMongo(t *testing.T) {
 	}
 	if _, ok, err := repo.ObtenerCocina(ctx, "zzz"); ok || err != nil {
 		t.Fatal("una cocina inexistente tiene que dar ok=false sin error")
+	}
+}
+
+// Las escrituras del admin (G11): crear sin pisar y reemplazar solo con la versión esperada.
+func TestIntegracionEscriturasMongo(t *testing.T) {
+	uri := os.Getenv("MONGO_TEST_URI")
+	if uri == "" {
+		t.Skip("sin MONGO_TEST_URI: se saltea el test contra MongoDB real")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cli, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := "catalogo_test_esc_" + time.Now().Format("150405")
+	t.Cleanup(func() { _ = cli.Database(base).Drop(context.Background()); _ = cli.Disconnect(context.Background()) })
+	repo := Nuevo(cli, base)
+
+	c := domain.Cocina{ID: "guemes", Nombre: "Güemes", Activa: true, Version: 1, Restaurantes: []domain.Restaurante{}}
+	if err := repo.CrearCocina(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CrearCocina(ctx, c); !errors.Is(err, domain.ErrYaExiste) {
+		t.Fatalf("crear dos veces: %v", err)
+	}
+	c.Restaurantes = append(c.Restaurantes, domain.Restaurante{ID: "r1", Nombre: "Mostaza", Activo: true})
+	c.Version = 2
+	if err := repo.ReemplazarCocina(ctx, c, 1); err != nil {
+		t.Fatal(err)
+	}
+	// Otra solicitud que había leído la versión 1 ya no puede guardar.
+	viejo := domain.Cocina{ID: "guemes", Nombre: "Pisado", Version: 2}
+	if err := repo.ReemplazarCocina(ctx, viejo, 1); !errors.Is(err, domain.ErrConflicto) {
+		t.Fatalf("versión vieja: %v", err)
+	}
+	guardada, _, _ := repo.ObtenerCocina(ctx, "guemes")
+	if guardada.Nombre != "Güemes" || guardada.Version != 2 || len(guardada.Restaurantes) != 1 {
+		t.Fatalf("quedó %+v", guardada)
 	}
 }
