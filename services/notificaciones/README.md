@@ -65,3 +65,11 @@ Puede pasar que llegue un mail repetido si el servicio se cae justo después de 
 - Reentrega de un evento ya marcado ENVIADO no manda otro correo; errores transitorios reintentan y mensajes inválidos van a la DLQ.
 - Evento real desde RabbitMQ produce un correo visible en Mailpit.
 - Caída después del envío y antes de persistir: comprobar la recuperación y la excepción de posible duplicado prevista en RN17/HU13, sin perder el aviso.
+
+## V13 · Validar la recepción
+
+El paquete interno valida el sobre de L13 y registra cada evento en MongoDB con el UUID como clave única. Si el mismo evento vuelve, conserva el registro existente y sus intentos.
+
+Para probarlo con instancias descartables, configurar MONGO_URI y RABBITMQ_URL, enlazar la cola notificaciones.v13.prueba a ghostkitchen.events con la clave pedido.estado_cambiado y publicar evento-prueba.json. Ejecutar go run ./cmd/prueba dos veces. El lector vuelve a poner el mensaje en cola para simular la reentrega. Debe quedar un solo documento PENDIENTE en notificaciones_v13_prueba.notificaciones.
+
+El worker continuo, el correo y el ACK después de guardar ENVIADO corresponden a V14.

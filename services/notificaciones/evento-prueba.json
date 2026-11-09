@@ -1,0 +1,14 @@
+{
+  "evento_id": "0b8f2d4e-6c1a-4f7e-9d2b-3a5c7e9f1b20",
+  "tipo": "pedido.estado_cambiado",
+  "version": 1,
+  "ocurrido_en": "2026-11-09T12:00:00Z",
+  "correlation_id": "prueba-v15",
+  "agregado_id": "pedido-prueba-1",
+  "secuencia": 2,
+  "datos": {
+    "estado_anterior": "RECIBIDO",
+    "estado_nuevo": "ACEPTADO",
+    "cliente_email": "cliente@example.test"
+  }
+}
