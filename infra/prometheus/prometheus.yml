@@ -1,0 +1,48 @@
+# Prometheus (G20, ADR-011). Lee /metrics de cada servicio cada 15 s y evalúa las alertas.
+# Los servicios no publican /metrics hacia afuera: Prometheus los lee por la red de Docker.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alertas.yml
+
+scrape_configs:
+  # El nombre del job es el servicio y la etiqueta instance es la copia (ADR-011): así las dos
+  # copias de Catálogo se ven por separado sin que el código lo sepa.
+  - job_name: usuarios
+    static_configs:
+      - targets: ["usuarios:8081"]
+
+  - job_name: catalogo
+    static_configs:
+      - targets: ["catalogo-1:8082", "catalogo-2:8082"]
+
+  - job_name: busqueda
+    static_configs:
+      - targets: ["busqueda:8083"]
+
+  - job_name: inventario
+    static_configs:
+      - targets: ["inventario:8084"]
+
+  - job_name: pedidos
+    static_configs:
+      - targets: ["pedidos:8085"]
+
+  # Notificaciones (V13) no se lee: no tiene servidor HTTP, solo escucha su cola, y arranca
+  # aparte (perfil "notificaciones"). Lo que importa de ella se ve en RabbitMQ: los mensajes en
+  # notificaciones.mailer y en su DLQ (panel "Colas" y alerta MensajesEnDLQ).
+
+  # RabbitMQ trae su plugin de Prometheus (puerto 15692). /metrics/detailed con
+  # queue_coarse_metrics da los mensajes de cada cola, también las DLQ.
+  - job_name: rabbitmq
+    metrics_path: /metrics/detailed
+    params:
+      family: [queue_coarse_metrics]
+    static_configs:
+      - targets: ["rabbitmq:15692"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

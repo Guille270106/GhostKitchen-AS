@@ -85,7 +85,7 @@ Las imágenes de los diagramas están únicamente en **`docs/diagrams/`**. Qué 
 - Go + Gin para los microservicios
 - NGINX como API Gateway y para repartir la carga
 - MySQL, MongoDB, Solr (búsqueda), Memcached (caché) y RabbitMQ (mensajes)
-- Observabilidad: logs JSON con `correlation_id` y `trace_id`, y trazas distribuidas con OpenTelemetry y Jaeger (Entrega 2). Métricas con Prometheus y tablero en Grafana: para la presentación final.
+- Observabilidad: logs JSON con `correlation_id` y `trace_id`, y trazas distribuidas con OpenTelemetry y Jaeger (Entrega 2). Métricas con Prometheus (`/metrics` en cada servicio), tablero en Grafana y alertas (G19, G20).
 - Pruebas previstas: tests de Go para las reglas; integración con bases y RabbitMQ reales en Docker Compose; pruebas de contrato y de carga. La herramienta de carga se definirá al implementar.
 
 **Frontend (Entrega 2):** React + Vite.
@@ -120,6 +120,8 @@ Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedor
 | Panel de Solr (desarrollo) | http://localhost:8983 |
 | MongoDB con Compass (desarrollo) | `mongodb://root:<MONGO_ROOT_PASSWORD>@localhost:27017` |
 | Trazas en Jaeger | http://localhost:16686 |
+| Tablero en Grafana (G20) | http://localhost:3000 (se ve sin entrar; para editar, `admin` y `GRAFANA_ADMIN_PASSWORD`) |
+| Prometheus y alertas (G20) | http://localhost:9090/alerts |
 | Panel de RabbitMQ (desarrollo) | http://localhost:15672 (usuario y contraseña de `RABBITMQ_USER` y `RABBITMQ_PASSWORD`) |
 
 Para detener todo: `docker compose down`. Con `-v` se borran también los volúmenes de MongoDB y Solr: al arrancar de nuevo se cargan los datos iniciales y se reconstruye el índice.
@@ -145,7 +147,7 @@ Las marcadas como **obligatorias** las pide Docker Compose: si falta alguna, no 
 | `ADMIN_PASSWORD` | Contraseña inicial de los 4 admins (una por localidad), de 8 caracteres o más. Si falta, los admins no se crean | No, pero sin ella no hay admins |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Servidor de correo de Notificaciones (en local, Mailpit: `mailpit` y `1025`) | No |
 | `PROVIDER_BASE_URL`, `PROVIDER_API_KEY` | Dirección y clave de la API del grupo proveedor | No |
-| `GRAFANA_ADMIN_PASSWORD` | Contraseña del administrador de Grafana | No |
+| `GRAFANA_ADMIN_PASSWORD` | Contraseña del administrador de Grafana. Si falta, `admin` (solo sirve en local: el tablero se ve sin entrar) | No |
 
 Las contraseñas de MongoDB van dentro de una URL: usar solo letras y números. Si se cambia una contraseña de una base ya creada, hay que borrar su volumen (`docker compose down -v`).
 

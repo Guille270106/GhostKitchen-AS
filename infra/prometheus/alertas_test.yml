@@ -1,0 +1,70 @@
+# Tests de las alertas (G20). Se corren con promtool, sin levantar nada:
+#   docker run --rm -v "${PWD}/infra/prometheus:/p" --entrypoint promtool prom/prometheus:v2.54.1 test rules /p/alertas_test.yml
+rule_files:
+  - alertas.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Pedidos con 10 % de 5xx (1 de cada 10 solicitudes por segundo): salta a los 5 minutos.
+  # Usuarios con un error suelto y poco tráfico: no salta.
+  - interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="pedidos",status="200"}'
+        values: '0+540x15'
+      - series: 'http_requests_total{job="pedidos",status="503"}'
+        values: '0+60x15'
+      - series: 'http_requests_total{job="usuarios",status="200"}'
+        values: '0+3x15'
+      - series: 'http_requests_total{job="usuarios",status="500"}'
+        values: '0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MuchosErrores5xx
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: MuchosErrores5xx
+        exp_alerts:
+          - exp_labels: {job: pedidos, severidad: alta}
+            exp_annotations:
+              resumen: "pedidos: más de 5 % de errores 5xx"
+              detalle: "pedidos responde 5xx en el 10% de las solicitudes."
+
+  # catalogo-2 deja de responder: salta al minuto, solo para esa copia.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="catalogo",instance="catalogo-1:8082"}'
+        values: '1x5'
+      - series: 'up{job="catalogo",instance="catalogo-2:8082"}'
+        values: '1 1 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ServicioCaido
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: ServicioCaido
+        exp_alerts:
+          - exp_labels: {job: catalogo, instance: "catalogo-2:8082", severidad: alta}
+            exp_annotations:
+              resumen: "catalogo (catalogo-2:8082) no responde"
+              detalle: "Prometheus no puede leer catalogo-2:8082 hace más de 1 minuto."
+
+  # Un mensaje queda en la DLQ de Búsqueda: salta a los 5 minutos. La cola normal con
+  # mensajes no cuenta.
+  - interval: 1m
+    input_series:
+      - series: 'rabbitmq_detailed_queue_messages{queue="busqueda.indexador.dlq",vhost="/"}'
+        values: '0 1 1 1 1 1 1 1 1'
+      - series: 'rabbitmq_detailed_queue_messages{queue="busqueda.indexador",vhost="/"}'
+        values: '50x8'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: MensajesEnDLQ
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: MensajesEnDLQ
+        exp_alerts:
+          - exp_labels: {queue: busqueda.indexador.dlq, severidad: media}
+            exp_annotations:
+              resumen: "Hay mensajes en busqueda.indexador.dlq"
+              detalle: "1 mensajes no se pudieron procesar y esperan en busqueda.indexador.dlq."
