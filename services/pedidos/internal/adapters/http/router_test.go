@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"ghostkitchen/pedidos/internal/adapters/inventario"
 	"ghostkitchen/pedidos/internal/application"
 	"ghostkitchen/pedidos/internal/domain"
 	"ghostkitchen/pedidos/internal/ports"
@@ -84,7 +85,7 @@ func servidor(t *testing.T, falla error) http.Handler {
 	return servidorConConsumo(t, falla, ConsumoMock{})
 }
 
-func servidorConConsumo(t *testing.T, falla error, consumo ConsumoMock) http.Handler {
+func servidorConConsumo(t *testing.T, falla error, consumo ports.Consumo) http.Handler {
 	t.Helper()
 	cliente := domain.Actor{UsuarioID: "u-1", Rol: domain.RolCliente}
 	pedido, err := domain.NuevoPedido("ped-1", cliente, "c@ejemplo.com", "cerro",
@@ -299,6 +300,35 @@ func TestConfirmarPorHTTP(t *testing.T) {
 	}
 	w, m = pedir(h, "GET", w.Header().Get("Location"), "", cliente)
 	if w.Code != 200 || m["estado"] != "EN_CURSO" || m["pedidoId"] != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+// Inventario tarda más que los 800 ms de cada intento: la API igual contesta antes de los 3 s,
+// con 202 "Estamos confirmando tu pedido" (usa el adaptador HTTP real de Inventario).
+func TestConfirmarConInventarioLentoPorHTTP(t *testing.T) {
+	lento := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(1500 * time.Millisecond):
+		case <-r.Context().Done():
+		}
+	}))
+	defer lento.Close()
+
+	cliente := map[string]string{"X-Usuario-Id": "u-1", "X-Usuario-Email": "c@ejemplo.com", "X-Rol": "cliente"}
+	h := servidorConConsumo(t, nil, inventario.Nuevo(lento.URL))
+	pedir(h, "POST", "/carrito/items", `{"platoId":"p17","cantidad":1}`, cliente)
+
+	conClave := map[string]string{"Idempotency-Key": "k-lento"}
+	for k, v := range cliente {
+		conClave[k] = v
+	}
+	inicio := time.Now()
+	w, m := pedir(h, "POST", "/pedidos", "", conClave)
+	if tardo := time.Since(inicio); tardo >= 3*time.Second {
+		t.Fatal("la respuesta tiene que llegar antes de los 3 s:", tardo)
+	}
+	if w.Code != 202 || m["mensaje"] != "Estamos confirmando tu pedido" {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
