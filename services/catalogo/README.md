@@ -25,7 +25,7 @@ curl.exe http://localhost:8080/api/v1/platos/p1
 curl.exe -H "X-API-Key: <clave>" http://localhost:8080/public/v1/platos/p1
 ```
 
-También se puede mirar la base con MongoDB Compass en `mongodb://root:<MONGO_ROOT_PASSWORD>@localhost:27017`.
+También se puede mirar la base con MongoDB Compass en `mongodb://root:<MONGO_ROOT_PASSWORD>@localhost:27017/?directConnection=true`. El `directConnection=true` hace falta desde G10: sin él, Compass le pregunta al replica set por sus miembros, recibe `mongo:27017` (el nombre dentro de Docker) y no lo encuentra desde la compu.
 
 Dice **qué se vende y a qué precio**. Puerto **8082**, con **2 copias** para repartir la carga. Lo programamos en la Entrega 2.
 
@@ -112,7 +112,18 @@ MongoDB debe correr como **replica set**: el cambio comercial y el evento del ou
 
 El usuario `catalogo` lo crea [`infra/mongo/01-catalogo.js`](../../infra/mongo/01-catalogo.js) la primera vez que arranca MongoDB, con permiso `readWrite` solo sobre `catalogo_db`. Si se cambia la contraseña en `.env`, hay que borrar el volumen (`docker compose down -v`). Más adelante se suman Memcached (TTL de 60 s), RabbitMQ y el identificador de cada instancia.
 
-**Pendiente:** el diseño pide MongoDB como *replica set* para guardar cambio y outbox en una misma transacción. En la Entrega 2 corre como instancia única porque todavía no hay outbox; se pasa a replica set cuando se sume RabbitMQ.
+**Replica set (G10):** MongoDB corre como replica set de un solo miembro (`rs0`), porque las transacciones del outbox (G13) solo existen en un replica set. En el compose:
+
+- `mongod` arranca con `--replSet rs0` y una `keyFile` que se genera al iniciar el contenedor (con usuarios, un replica set la exige; montarla desde Windows no respeta los permisos que pide MongoDB).
+- El healthcheck inicia el replica set la primera vez (`rs.initiate`) y solo da `healthy` cuando el nodo es el primario, así Catálogo no arranca antes de poder escribir.
+- `MONGO_URI` lleva `replicaSet=rs0`.
+
+No hace falta borrar el volumen: un MongoDB con datos pasa a replica set sin perderlos. Para comprobarlo:
+
+```bash
+docker compose exec mongo sh -c 'mongosh --quiet -u root -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "rs.status().members[0].stateStr"'
+# PRIMARY
+```
 
 ## Rutas implementadas (Entrega 2)
 

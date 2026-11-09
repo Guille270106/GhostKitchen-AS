@@ -207,7 +207,7 @@ services:
     container_name: ghostkitchen-catalogo
     environment:
       PORT: "8082"
-      MONGO_URI: mongodb://catalogo:${CATALOGO_DB_PASSWORD:?Completá CATALOGO_DB_PASSWORD en .env}@mongo:27017/catalogo_db?authSource=catalogo_db
+      MONGO_URI: mongodb://catalogo:${CATALOGO_DB_PASSWORD:?Completá CATALOGO_DB_PASSWORD en .env}@mongo:27017/catalogo_db?authSource=catalogo_db&replicaSet=rs0
       MONGO_DB: catalogo_db
       MONGO_TIMEOUT_MS: "2000"
       SEED_AL_INICIAR: "true"
@@ -224,9 +224,24 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # G10: MongoDB corre como replica set de un solo nodo (rs0). Hace falta para las
+  # transacciones del outbox de Catálogo (G13): guardar el cambio y su mensaje juntos.
+  # MongoDB solo permite transacciones en un replica set, aunque tenga un solo miembro.
   mongo:
     image: mongo:7
     container_name: ghostkitchen-mongo
+    # Con usuarios (autenticación) un replica set exige una clave compartida entre sus miembros
+    # (keyFile). Se genera al arrancar dentro del contenedor, con el dueño y los permisos que
+    # pide MongoDB: montarla desde Windows no respeta esos permisos. No es un secreto que haya
+    # que guardar: con un solo miembro nadie más la usa.
+    command:
+      - bash
+      - -c
+      - |
+        head -c 756 /dev/urandom | base64 -w 0 > /data/configdb/keyfile
+        chmod 400 /data/configdb/keyfile
+        chown 999:999 /data/configdb/keyfile
+        exec docker-entrypoint.sh mongod --replSet rs0 --keyFile /data/configdb/keyfile --bind_ip_all
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Completá MONGO_ROOT_PASSWORD en .env}
@@ -235,12 +250,20 @@ services:
       - mongo-data:/data/db
       - ./infra/mongo:/docker-entrypoint-initdb.d:ro
     ports:
-      - "27017:27017"     # para mirar los datos con MongoDB Compass (solo desarrollo)
+      - "27017:27017"     # Compass (solo desarrollo): mongodb://root:<clave>@localhost:27017/?directConnection=true
+    # El healthcheck además inicia el replica set la primera vez (rs.initiate) y recién da
+    # "healthy" cuando este nodo es el primario: antes de eso Catálogo no podría escribir.
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet -u root -p "$$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval
+          "let ok; try { ok = rs.status().ok } catch (e) { ok = rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }).ok }
+          quit(ok === 1 && db.hello().isWritablePrimary ? 0 : 1)"
       interval: 5s
-      timeout: 3s
-      retries: 20
+      timeout: 5s
+      retries: 30
+      start_period: 20s
     restart: unless-stopped
 
   busqueda:
