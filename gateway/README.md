@@ -2,6 +2,8 @@
 
 **Responsable:** Guillermina Sánchez.
 
+> **Ronda 4 (G17): dos copias de Catálogo.** `upstream catalogo` reparte por turnos entre `catalogo-1` y `catalogo-2`. Si una copia falla 3 veces en 10 s, NGINX la saca 10 s y después la vuelve a probar; una lectura que falla se reintenta una vez en la otra copia, dentro de los 3 s (`proxy-comun.conf`). Las escrituras no se reintentan. El log JSON suma `instancia`, la copia que atendió (header `X-Instancia`). Probado apagando `catalogo-1`: 0 errores. Ver [ADR-012](../docs/adr/ADR-012-balanceo-de-carga.md).
+
 > **Ronda 2 (G9): login en el borde.** Las rutas privadas del frontend verifican el JWT antes de llegar al servicio:
 >
 > 1. `auth_request` le pregunta a Usuarios (`/auth/verify`) si el token sirve. Solo viajan los headers, con 300 ms de tope y sin reintento.

@@ -23,6 +23,7 @@ import (
 	"ghostkitchen/catalogo/internal/config"
 	"ghostkitchen/catalogo/internal/handlers"
 	"ghostkitchen/catalogo/internal/mensajeria"
+	"ghostkitchen/catalogo/internal/middleware"
 	"ghostkitchen/catalogo/internal/repositories"
 	"ghostkitchen/catalogo/internal/repositories/cache"
 	repomongo "ghostkitchen/catalogo/internal/repositories/mongo"
@@ -33,8 +34,10 @@ import (
 )
 
 func main() {
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("servicio", "catalogo")
 	cfg := config.Cargar()
+	// Cada línea de log lleva la copia (catalogo-1 o catalogo-2), y cada respuesta también (G17).
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("servicio", "catalogo", "instancia", cfg.Instancia)
+	middleware.Instancia = cfg.Instancia
 
 	cerrarTrazas, err := trazas.Iniciar(context.Background())
 	if err != nil {
@@ -73,11 +76,17 @@ func main() {
 
 	// Publicador del outbox (G13): manda a RabbitMQ los eventos que cada escritura guardó junto
 	// con su cambio. Sin RABBITMQ_URL los eventos se siguen guardando y salen cuando se configure.
-	if cfg.RabbitMQURL != "" {
+	// Con 2 copias (G17), publica una sola (PUBLICAR_OUTBOX=true solo en catalogo-1): si
+	// publicaran las dos, el mismo evento saldría dos veces y en otro orden. Las dos escriben en
+	// el mismo outbox, así que los cambios hechos en cualquiera de las copias salen igual.
+	switch {
+	case !cfg.PublicarOutbox:
+		log.Info("esta copia no publica el outbox (PUBLICAR_OUTBOX=false)")
+	case cfg.RabbitMQURL == "":
+		log.Warn("sin RABBITMQ_URL: los eventos quedan en el outbox sin publicar")
+	default:
 		pub := mensajeria.NuevoPublicador(repo, func() (mensajeria.Canal, error) { return mensajeria.Conectar(cfg.RabbitMQURL) }, log)
 		go pub.Correr(ctx)
-	} else {
-		log.Warn("sin RABBITMQ_URL: los eventos quedan en el outbox sin publicar")
 	}
 
 	// Caché (G16, ADR-007). Las lecturas públicas pasan por el decorator de Memcached. Las

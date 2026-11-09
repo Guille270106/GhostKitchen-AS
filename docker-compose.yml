@@ -3,7 +3,7 @@
 # Estado (Entrega 2):
 #   - gateway:       NGINX en el puerto 8080. Publica la capacidad en /public/v1 (API key y límite)
 #                    y las lecturas de Catálogo en /api/v1.
-#   - catalogo:      servicio Catálogo (Go + Gin). Fuente de verdad de cocinas, restaurantes y platos.
+#   - catalogo-1/2:  servicio Catálogo (Go + Gin), 2 copias balanceadas. Fuente de verdad de cocinas, restaurantes y platos.
 #   - mongo:         MongoDB, base catalogo_db con su propio usuario.
 #   - busqueda:      servicio Búsqueda (Go + Gin). Arma su índice desde Catálogo y atiende la capacidad publicada.
 #   - solr:          índice de Búsqueda (cores "cocinas" y "platos").
@@ -202,16 +202,28 @@ services:
     depends_on:
       busqueda:
         condition: service_healthy
-      catalogo:
+      catalogo-1:
+        condition: service_healthy
+      catalogo-2:
         condition: service_healthy
       jaeger:
         condition: service_started
     restart: unless-stopped
 
-  catalogo:
+  # G17: Catálogo corre con 2 copias, catalogo-1 y catalogo-2, que el gateway reparte por turnos
+  # (ADR-012). Las dos leen la misma MongoDB y la misma Memcached: da igual cuál conteste.
+  # Las dos responden también al nombre "catalogo" dentro de Docker (alias), así Búsqueda,
+  # Usuarios y Pedidos siguen usando http://catalogo:8082 y, si una copia no contesta, Go prueba
+  # con la otra dirección.
+  catalogo-1:
     build: ./services/catalogo
-    container_name: ghostkitchen-catalogo
+    container_name: ghostkitchen-catalogo-1
+    networks:
+      default:
+        aliases: [catalogo]
     environment:
+      INSTANCIA: catalogo-1
+      PUBLICAR_OUTBOX: "true"     # una sola copia publica el outbox
       PORT: "8082"
       MONGO_URI: mongodb://catalogo:${CATALOGO_DB_PASSWORD:?Completá CATALOGO_DB_PASSWORD en .env}@mongo:27017/catalogo_db?authSource=catalogo_db&replicaSet=rs0
       MONGO_DB: catalogo_db
@@ -236,6 +248,15 @@ services:
       timeout: 2s
       retries: 10
     restart: unless-stopped
+
+  # La segunda copia es igual a la primera (extends), con otro nombre y sin publicar el outbox.
+  catalogo-2:
+    extends:
+      service: catalogo-1
+    container_name: ghostkitchen-catalogo-2
+    environment:
+      INSTANCIA: catalogo-2
+      PUBLICAR_OUTBOX: "false"
 
   # G16: caché compartida de Catálogo (ADR-007). Sin datos propios: si se reinicia, solo se
   # pierden copias. 64 MB alcanzan de sobra para 4 cocinas y sus menús.
@@ -303,7 +324,8 @@ services:
       - "8083"            # solo dentro de la red de Docker: desde afuera se entra por el gateway
     depends_on:
       - solr
-      - catalogo
+      - catalogo-1
+      - catalogo-2
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8083/health"]
       interval: 5s

@@ -107,6 +107,18 @@ Las lecturas públicas (cocinas, una cocina, el menú y el detalle de un plato) 
 
 Para medir con y sin caché: `CACHE_HABILITADA=false` en el `.env` y `docker compose up -d catalogo`.
 
+## Dos copias (G17)
+
+Catálogo corre como `catalogo-1` y `catalogo-2`, detrás del gateway y con la misma MongoDB y la misma Memcached ([ADR-012](../../docs/adr/ADR-012-balanceo-de-carga.md)). Cada respuesta lleva `X-Instancia` con la copia que la atendió. Solo `catalogo-1` publica el outbox (`PUBLICAR_OUTBOX`).
+
+Para ver el reparto y la caída de una copia:
+
+```bash
+curl -s -D - -o /dev/null http://localhost:8080/api/v1/cocinas | grep -i x-instancia   # repetir: alterna 1 y 2
+docker compose stop catalogo-1                                                         # siguen todas con 200, desde catalogo-2
+docker compose start catalogo-1                                                        # a los 10 s vuelve a alternar
+```
+
 ## Qué datos guarda (MongoDB)
 
 | Colección | Qué guarda |
@@ -181,6 +193,8 @@ MongoDB debe correr como **replica set**: el cambio comercial y el evento del ou
 | `RABBITMQ_URL` | (vacía) | Donde se publican los eventos (G13). Sin ella, los eventos quedan en el outbox |
 | `CACHE_HABILITADA` | `true` | Prende o apaga la caché (G16) |
 | `MEMCACHED_ADDR` | `memcached:11211` | Dónde está Memcached |
+| `INSTANCIA` | el nombre del host | Qué copia es (`catalogo-1`, `catalogo-2`) |
+| `PUBLICAR_OUTBOX` | `true` | Si esta copia publica el outbox (solo una) |
 | `SEED_AL_INICIAR` | `true` | Insertar los datos iniciales que falten (no pisa los existentes) |
 
 El usuario `catalogo` lo crea [`infra/mongo/01-catalogo.js`](../../infra/mongo/01-catalogo.js) la primera vez que arranca MongoDB, con permiso `readWrite` solo sobre `catalogo_db`. Si se cambia la contraseña en `.env`, hay que borrar el volumen (`docker compose down -v`). Más adelante se suman Memcached (TTL de 60 s), RabbitMQ y el identificador de cada instancia.
