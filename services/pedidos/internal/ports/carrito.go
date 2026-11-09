@@ -15,6 +15,10 @@ type CarritosRepo interface {
 	// Guardar escribe el carrito solo si sigue en versionAnterior. Si otro cambio se guardó
 	// antes, devuelve domain.ErrCarritoModificado.
 	Guardar(ctx context.Context, c domain.Carrito, versionAnterior int64) error
+	// MarcarVencido vacía el carrito que tiene esa reserva y anota que venció. Si el carrito ya no
+	// tiene esa reserva (ya se vació, se confirmó o es otro), no hace nada y devuelve false: por
+	// eso procesar el mismo aviso dos veces no cambia nada.
+	MarcarVencido(ctx context.Context, carritoID, reservaID string) (bool, error)
 }
 
 // Catalogo es lo que Pedidos le pregunta a Catálogo.

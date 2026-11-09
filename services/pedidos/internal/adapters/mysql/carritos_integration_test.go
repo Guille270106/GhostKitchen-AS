@@ -62,3 +62,51 @@ func TestMySQLCarritoGuardarYLeer(t *testing.T) {
 		t.Fatal(vacio)
 	}
 }
+
+// reserva.vencida contra MySQL real: vacía el carrito que tiene esa reserva y lo marca; el mismo
+// aviso otra vez no hace nada; el próximo cambio del cliente borra la marca.
+func TestMySQLMarcarVencido(t *testing.T) {
+	db := conectar(t)
+	ctx := context.Background()
+	repo := adapter.CarritosMySQL{DB: db}
+
+	// 1. Un carrito con un plato y su reserva.
+	cliente := "u-" + uuid.NewString()[:8]
+	vence := time.Now().Add(time.Minute)
+	c := domain.Carrito{ID: uuid.NewString(), ClienteID: cliente, ReservaID: "res-" + uuid.NewString()[:8], VenceEn: &vence, Version: 1}
+	_ = c.Agregar(domain.PlatoCatalogo{ID: "p17", CocinaID: "cerro", RestauranteID: "r5", Nombre: "Burger", Precio: 12000, Activo: true}, 1)
+	if err := repo.Guardar(ctx, c, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		db.Exec("DELETE FROM carrito_item WHERE cliente_id=?", cliente)
+		db.Exec("DELETE FROM carrito WHERE cliente_id=?", cliente)
+	})
+
+	// 2. Un aviso de otra reserva no lo toca.
+	if cambio, err := repo.MarcarVencido(ctx, c.ID, "res-otra"); err != nil || cambio {
+		t.Fatal("otra reserva no tiene que tocarlo:", cambio, err)
+	}
+
+	// 3. El aviso de su reserva lo vacía y lo marca; repetido, no hace nada.
+	if cambio, err := repo.MarcarVencido(ctx, c.ID, c.ReservaID); err != nil || !cambio {
+		t.Fatal(cambio, err)
+	}
+	if cambio, _ := repo.MarcarVencido(ctx, c.ID, c.ReservaID); cambio {
+		t.Fatal("el mismo aviso dos veces no cambia nada")
+	}
+	leido, err := repo.Obtener(ctx, cliente)
+	if err != nil || len(leido.Items) != 0 || leido.ReservaID != "" || leido.VencioEn == nil || leido.ID == c.ID || leido.Version != 2 {
+		t.Fatalf("%v %+v", err, leido)
+	}
+
+	// 4. El cliente vuelve a cambiar el carrito: la marca se borra.
+	leido.VencioEn = nil
+	leido.Version = 3
+	if err := repo.Guardar(ctx, leido, 2); err != nil {
+		t.Fatal(err)
+	}
+	if otra, _ := repo.Obtener(ctx, cliente); otra.VencioEn != nil {
+		t.Fatal("después de un cambio ya no tiene que figurar como vencido")
+	}
+}

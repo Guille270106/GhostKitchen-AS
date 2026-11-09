@@ -161,6 +161,22 @@ Cómo no se pierde un aviso (**outbox**, ADR-005):
 | --- | --- |
 | `RABBITMQ_URL` | `amqp://usuario:clave@rabbitmq:5672/`, armada en `docker-compose.yml` con `RABBITMQ_USER` y `RABBITMQ_PASSWORD` del `.env`. Sin ella, los mensajes quedan en el outbox |
 
+## Carrito vencido por aviso de Inventario (L14)
+
+Cuando una reserva cumple sus 10 minutos, Inventario libera los ingredientes y publica `reserva.vencida` (`{"reserva_id", "carrito_id", "cocina_id"}`). Pedidos escucha la cola `pedidos.reservas` y:
+
+1. Vacía el carrito que **todavía tiene esa reserva**, le da otro id y anota `vencio_en`. `GET /api/v1/carrito` lo muestra en `vencioEn`, para que el frontend diga "Tu carrito venció" en vez de mostrar un carrito vacío sin explicación.
+2. Si el carrito ya no tiene esa reserva (el cliente lo vació, lo confirmó o el aviso llega repetido), **no cambia nada**. Por eso el mismo mensaje dos veces no hace daño.
+3. El próximo cambio del cliente borra `vencioEn`.
+
+| Qué pasa con el mensaje | Respuesta a RabbitMQ |
+| --- | --- |
+| Se procesó (o no había nada que hacer) | `ACK`: sale de la cola |
+| Está roto o es de otro tipo | Rechazo sin reencolar: va a `pedidos.reservas.dlq` |
+| Falló algo pasajero (MySQL no contesta) | Espera 5 s y vuelve a la cola; a las 5 entregas RabbitMQ lo manda a la DLQ |
+
+El consumidor lee de a un mensaje (prefetch 1) y, si se corta la conexión con RabbitMQ, vuelve a conectarse a los 5 s. Mientras tanto, el carrito sigue funcionando: si el cliente lo toca con la reserva vencida, recibe `409 CARRITO_VENCIDO` como antes (L7).
+
 ## Probar
 
 Sin Docker, las reglas del pedido y las rutas (con un repositorio en memoria):
@@ -219,7 +235,7 @@ La cocina lo avanza hasta EN_CAMINO y el cliente confirma que lo recibió (ENTRE
 
 | Tabla | Qué guarda |
 | --- | --- |
-| `carrito` / `carrito_item` | El carrito: cocina, reserva, cuándo vence y sus platos |
+| `carrito` / `carrito_item` | El carrito: cocina, reserva, cuándo vence, si venció (`vencio_en`) y sus platos |
 | `pedido` | Cliente, copia de su mail, cocina, estado, total y un número de **versión** |
 | `pedido_item` | Cada plato con su nombre, precio, restaurante y cantidad |
 | `pedido_historial` | Cada cambio de estado, cuándo y quién lo hizo |

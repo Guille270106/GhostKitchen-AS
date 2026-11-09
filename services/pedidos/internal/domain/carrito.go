@@ -54,6 +54,10 @@ type Carrito struct {
 	Total     int64         `json:"total"`
 	Version   int64         `json:"-"`
 
+	// VencioEn es cuándo se vació el carrito porque venció su reserva (L14). Se borra con el
+	// próximo cambio del cliente.
+	VencioEn *time.Time `json:"vencioEn,omitempty"`
+
 	// Se calculan al responder (L7): cuánto le queda a la reserva y si ya venció.
 	SegundosRestantes int64 `json:"segundosRestantes"`
 	Vencido           bool  `json:"vencido"`
@@ -155,6 +159,7 @@ func (c *Carrito) Reiniciar(nuevoID string) {
 	c.CocinaID = ""
 	c.ReservaID = ""
 	c.VenceEn = nil
+	c.VencioEn = nil
 	c.Items = []ItemCarrito{}
 	c.Total = 0
 }

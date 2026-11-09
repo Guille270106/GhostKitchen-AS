@@ -65,6 +65,9 @@ func (m *CarritosMock) Guardar(_ context.Context, c domain.Carrito, _ int64) err
 	m.carritos[c.ClienteID] = c
 	return nil
 }
+func (m *CarritosMock) MarcarVencido(context.Context, string, string) (bool, error) {
+	return false, nil
+}
 
 // CatalogoMock tiene un solo plato.
 type CatalogoMock struct{}

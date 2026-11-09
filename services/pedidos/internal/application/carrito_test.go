@@ -39,6 +39,23 @@ func (r *CarritosMock) Guardar(_ context.Context, c domain.Carrito, versionAnter
 	return nil
 }
 
+// MarcarVencido vacía el carrito que tiene esa reserva, igual que MySQL: si ya no la tiene, no hace nada.
+func (r *CarritosMock) MarcarVencido(_ context.Context, carritoID, reservaID string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for cliente, c := range r.carritos {
+		if c.ID == carritoID && c.ReservaID == reservaID {
+			ahora := time.Now()
+			c.Reiniciar("car-vencido")
+			c.VencioEn = &ahora
+			c.Version++
+			r.carritos[cliente] = c
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // vaciar deja vacío el carrito del cliente (lo usa el mock de confirmaciones).
 func (r *CarritosMock) vaciar(clienteID string) {
 	r.mu.Lock()
@@ -293,5 +310,43 @@ func TestVerMuestraElTiempoQueQueda(t *testing.T) {
 	c, _ = svc.Ver(context.Background(), clienteCarrito)
 	if !c.Vencido || c.SegundosRestantes != 0 || len(c.Items) != 1 {
 		t.Fatal("tiene que avisar que venció sin borrar nada:", c.Vencido, c.SegundosRestantes, len(c.Items))
+	}
+}
+
+// Inventario avisa que la reserva venció: el carrito queda vacío y marcado como vencido. El
+// mismo aviso otra vez (o uno de una reserva vieja) no cambia nada.
+func TestReservaVencidaVaciaElCarritoYLoMarca(t *testing.T) {
+	svc, repo, _ := carritoEntorno()
+	c, err := svc.AgregarPlato(context.Background(), clienteConfirma, "p17", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Llega el aviso de esa reserva.
+	if err := svc.ReservaVencida(context.Background(), c.ReservaID, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	visto, _ := svc.Ver(context.Background(), clienteConfirma)
+	if len(visto.Items) != 0 || visto.ReservaID != "" || visto.VencioEn == nil || visto.ID == c.ID {
+		t.Fatalf("tiene que quedar vacío, con otro id y marcado: %+v", visto)
+	}
+
+	// 2. El mismo aviso otra vez no cambia nada.
+	version := repo.carritos[clienteConfirma.UsuarioID].Version
+	if err := svc.ReservaVencida(context.Background(), c.ReservaID, c.ID); err != nil || repo.carritos[clienteConfirma.UsuarioID].Version != version {
+		t.Fatal("un aviso repetido no tiene que tocar el carrito:", err)
+	}
+
+	// 3. Cuando el cliente vuelve a agregar, la marca de vencido desaparece.
+	nuevo, err := svc.AgregarPlato(context.Background(), clienteConfirma, "p17", 1)
+	if err != nil || nuevo.VencioEn != nil {
+		t.Fatal("al cambiar el carrito ya no se avisa que el anterior venció:", err, nuevo.VencioEn)
+	}
+}
+
+func TestReservaVencidaConDatosRotos(t *testing.T) {
+	svc, _, _ := carritoEntorno()
+	if err := svc.ReservaVencida(context.Background(), "", "car-1"); !errors.Is(err, domain.ErrDatosInvalidos) {
+		t.Fatal(err)
 	}
 }
