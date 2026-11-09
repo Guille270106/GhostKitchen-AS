@@ -18,6 +18,7 @@ import (
 	httpadapter "ghostkitchen/pedidos/internal/adapters/http"
 	"ghostkitchen/pedidos/internal/adapters/inventario"
 	mysqladapter "ghostkitchen/pedidos/internal/adapters/mysql"
+	"ghostkitchen/pedidos/internal/adapters/proveedor"
 	"ghostkitchen/pedidos/internal/adapters/rabbitmq"
 	"ghostkitchen/pedidos/internal/application"
 	"ghostkitchen/pedidos/internal/ports"
@@ -123,7 +124,29 @@ func main() {
 		}
 	}()
 
-	// 7. Y otro: cada 1 s publica en RabbitMQ los mensajes del outbox (pedido.estado_cambiado).
+	// 7. Y otro: cada 10 s le pide al grupo proveedor (Grupo 4) las facturas pendientes (L15).
+	//    El pedido no espera a la factura: si el proveedor está caído, quedan pendientes.
+	if url := os.Getenv("PROVIDER_BASE_URL"); url != "" {
+		comprobanteService := application.ComprobanteService{
+			Repo:      mysqladapter.ComprobantesMySQL{DB: db},
+			Pedidos:   pedidosRepo,
+			Proveedor: proveedor.Nuevo(url, os.Getenv("PROVIDER_API_KEY")),
+		}
+		go func() {
+			for range time.Tick(10 * time.Second) {
+				emitidos, err := comprobanteService.EmitirPendientes(context.Background())
+				if err != nil {
+					logger.Error("no se pudieron pedir las facturas", "error", err.Error())
+				} else if emitidos > 0 {
+					logger.Info("facturas emitidas por el proveedor", "cantidad", emitidos)
+				}
+			}
+		}()
+	} else {
+		logger.Warn("falta PROVIDER_BASE_URL: las facturas quedan pendientes")
+	}
+
+	// 8. Y otro: cada 1 s publica en RabbitMQ los mensajes del outbox (pedido.estado_cambiado).
 	//    Si RabbitMQ está caído, los mensajes esperan en MySQL y Pedidos sigue atendiendo.
 	if url := os.Getenv("RABBITMQ_URL"); url != "" {
 		publicador := &rabbitmq.PublicadorRabbit{URL: url}
@@ -137,7 +160,7 @@ func main() {
 			}
 		}()
 
-		// 8. Y escucha la cola pedidos.reservas: cuando Inventario avisa que una reserva venció
+		// 9. Y escucha la cola pedidos.reservas: cuando Inventario avisa que una reserva venció
 		//    (reserva.vencida), el carrito se vacía y queda marcado como vencido (L14).
 		consumidor := &rabbitmq.Consumidor{
 			URL:         url,
@@ -151,7 +174,7 @@ func main() {
 		logger.Warn("falta RABBITMQ_URL: los mensajes quedan en el outbox sin publicar y no se escuchan vencimientos")
 	}
 
-	// 9. Servidor, con tiempos máximos para no quedar colgado con clientes lentos.
+	// 10. Servidor, con tiempos máximos para no quedar colgado con clientes lentos.
 	puerto := valor("PORT", "8085")
 	servidor := &http.Server{
 		Addr:              ":" + puerto,
