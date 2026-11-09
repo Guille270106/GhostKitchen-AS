@@ -37,7 +37,7 @@ func conectar(t *testing.T) *sql.DB {
 	return db
 }
 
-func crearPedido(t *testing.T, db *sql.DB, repo *adapter.Repositorio) domain.Pedido {
+func crearPedido(t *testing.T, db *sql.DB, repo adapter.PedidosMySQL) domain.Pedido {
 	t.Helper()
 	cliente := domain.Actor{UsuarioID: "u-" + uuid.NewString()[:8], Rol: domain.RolCliente}
 	p, err := domain.NuevoPedido(uuid.NewString(), cliente, "cliente@ejemplo.com", "cerro", []domain.Item{
@@ -60,7 +60,7 @@ func crearPedido(t *testing.T, db *sql.DB, repo *adapter.Repositorio) domain.Ped
 
 func TestMySQLCrearYObtener(t *testing.T) {
 	db := conectar(t)
-	repo := adapter.Nuevo(db)
+	repo := adapter.PedidosMySQL{DB: db}
 	if err := repo.Ready(context.Background()); err != nil {
 		t.Fatal("las migraciones no están aplicadas:", err)
 	}
@@ -82,8 +82,8 @@ func TestMySQLCrearYObtener(t *testing.T) {
 // pasar solo un cambio.
 func TestMySQLCambiosSimultaneosGanaUnoSolo(t *testing.T) {
 	db := conectar(t)
-	repo := adapter.Nuevo(db)
-	svc := application.Nuevo(repo)
+	repo := adapter.PedidosMySQL{DB: db}
+	svc := application.PedidosService{Repo: repo}
 	for i := 0; i < 20; i++ {
 		p := crearPedido(t, db, repo)
 		cliente := domain.Actor{UsuarioID: p.ClienteID, Rol: domain.RolCliente}

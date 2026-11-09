@@ -109,6 +109,8 @@ services:
       DB_PASSWORD: ${PEDIDOS_DB_PASSWORD:?Completá PEDIDOS_DB_PASSWORD en .env}
       DB_NAME: pedidos_db
       PORT: "8085"
+      CATALOGO_URL: http://catalogo:8082        # precio y cocina del plato
+      INVENTARIO_URL: http://inventario:8084    # reservas internas (no pasan por el gateway)
     expose:
       - "8085"
     depends_on:

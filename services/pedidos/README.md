@@ -2,11 +2,52 @@
 
 **Responsable:** Lucía Rucci.
 
-> **L5:** servicio base hexagonal con MySQL y el **agregado Pedido** con sus estados. Aplica sus migraciones al arrancar (`mysql-startup`) y atiende en el puerto interno 8085, sin publicarse fuera de Docker. Ya funcionan las transiciones con sus permisos, el historial, el control de versión (si dos cambios llegan a la vez, gana el primero) y `GET /pedidos/{id}`. El carrito llega en L6 y la confirmación en L8.
+> **L5:** servicio base hexagonal con MySQL y el **agregado Pedido** con sus estados. Aplica sus migraciones al arrancar (`mysql-startup`) y atiende en el puerto interno 8085, sin publicarse fuera de Docker. Ya funcionan las transiciones con sus permisos, el historial, el control de versión (si dos cambios llegan a la vez, gana el primero) y `GET /pedidos/{id}`.
+>
+> **L6:** el **carrito**. El cliente agrega, cambia y saca platos de una sola cocina; el precio sale de Catálogo y se guarda al agregar, y cada cambio deja la reserva de Inventario igual al carrito. Entra por el gateway en `/api/v1/carrito` (con login). La confirmación llega en L8.
 
 Maneja **el pedido de principio a fin**. Puerto interno **8085**. Es uno de los dos servicios donde no se puede equivocar nada.
 
-## Probar L5
+## Cómo está organizado (hexagonal, como en la Clase 8)
+
+| Pieza | Rol en hexagonal | Archivo |
+| --- | --- | --- |
+| `PedidosController`, `CarritoController` | Adaptador de entrada (Gin) | `internal/adapters/http/controllers.go` |
+| `PedidosService`, `CarritoService` | Casos de uso (núcleo) | `internal/application/` |
+| `Pedido`, `Carrito` y sus reglas | Dominio (núcleo) | `internal/domain/` |
+| `PedidosRepo`, `CarritosRepo`, `Catalogo`, `Inventario` | Puertos de salida (interfaces) | `internal/ports/` |
+| `PedidosMySQL`, `CarritosMySQL` | Adaptadores de salida a MySQL | `internal/adapters/mysql/` |
+| `CatalogoHTTP`, `InventarioHTTP` | Adaptadores de salida a los otros servicios | `internal/adapters/catalogo/`, `internal/adapters/inventario/` |
+
+Las piezas se arman a mano en `cmd/api/main.go` (`PedidosService{Repo: pedidosRepo}`), igual que en las demos de clase. En los tests, los puertos se reemplazan por mocks en memoria (`PedidosMock`, `CarritosMock`, `CatalogoMock`, `InventarioMock`).
+
+## El carrito (L6)
+
+| Ruta en el gateway | Para qué |
+| --- | --- |
+| `GET /api/v1/carrito` | Ver el carrito (vacío si no tiene platos) |
+| `POST /api/v1/carrito/items` | Agregar un plato: `{"platoId": "p1", "cantidad": 2}` |
+| `PATCH /api/v1/carrito/items/{platoId}` | Dejar una cantidad final: `{"cantidad": 3}` |
+| `DELETE /api/v1/carrito/items/{platoId}` | Sacar un plato (si era el último, se libera la reserva) |
+| `DELETE /api/v1/carrito` | Vaciar y liberar la reserva |
+
+Cada cambio sigue los mismos pasos: (1) Catálogo dice si el plato existe, su precio y su cocina (500 ms, un reintento); (2) el dominio aplica las reglas (una sola cocina, de 1 a 50 unidades, el precio se copia al agregar); (3) Inventario deja la reserva igual al carrito (800 ms, un reintento con la **misma** `Idempotency-Key`); (4) se guarda el carrito con control de versión.
+
+La `Idempotency-Key` es carrito + número de cambio + una huella de los platos: reintentar el mismo cambio no reserva dos veces, y después de un intento fallido (por ejemplo, sin stock) el cambio siguiente usa otra clave.
+
+| Respuesta | Cuándo |
+| --- | --- |
+| `409 SIN_STOCK` | No alcanzan los ingredientes; el carrito queda como estaba |
+| `409 OTRA_COCINA` | El carrito ya tiene platos de otra cocina |
+| `409 PLATO_NO_DISPONIBLE` | El plato no tiene receta cargada en Inventario |
+| `409 CARRITO_VENCIDO` | Pasaron los 10 minutos: Inventario liberó todo y el carrito queda vacío |
+| `409 CARRITO_MODIFICADO` | Otro cambio del mismo carrito llegó a la vez |
+| `404 PLATO_NO_ENCONTRADO` | El plato no existe o está desactivado en Catálogo |
+| `400 CANTIDAD_INVALIDA` | La cantidad no está entre 1 y 50 |
+| `403 SIN_PERMISO` | No es un cliente (por ejemplo, una cuenta Cocina) |
+| `503 SERVICIO_NO_DISPONIBLE` | Catálogo o Inventario no responden: el carrito no cambia, nunca se inventa un resultado |
+
+## Probar
 
 Sin Docker, las reglas del pedido y las rutas (con un repositorio en memoria):
 
@@ -18,9 +59,9 @@ go test ./...
 Contra MySQL real, en una base descartable que no usa el `.env` ni los datos de desarrollo:
 
 ```powershell
-docker compose -p gk-l5-check -f services/pedidos/testdata/compose.yml up -d --build --wait pedidos
-docker compose -p gk-l5-check -f services/pedidos/testdata/compose.yml run --rm --build pruebas
-docker compose -p gk-l5-check -f services/pedidos/testdata/compose.yml down -v
+docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml up -d --build --wait pedidos
+docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml run --rm --build pruebas
+docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml down -v
 ```
 
 El test `TestMySQLCambiosSimultaneosGanaUnoSolo` manda 20 veces "cancelar" (cliente) y "aceptar" (cocina) al mismo pedido a la vez: en cada vuelta gana uno solo, la versión queda en 2 y el historial tiene dos entradas.

@@ -1,5 +1,5 @@
-// Package application tiene las acciones de Pedidos. Coordina el agregado con los puertos:
-// carga el pedido, le pide la acción y guarda el resultado. Las reglas están en domain.
+// Package application tiene los casos de uso de Pedidos. Coordina el dominio con los puertos:
+// busca los datos, le pide la acción al dominio y guarda el resultado. Las reglas están en domain.
 package application
 
 import (
@@ -10,7 +10,7 @@ import (
 	"ghostkitchen/pedidos/internal/ports"
 )
 
-// Accion es lo que se le pide al pedido.
+// Accion es lo que se le pide a un pedido.
 type Accion string
 
 const (
@@ -21,64 +21,67 @@ const (
 	ConfirmarEntrega Accion = "entregado"
 )
 
-// Pedidos reúne las acciones sobre pedidos ya creados.
-type Pedidos struct {
-	repo  ports.Pedidos
-	reloj func() time.Time
+// PedidosService tiene los casos de uso sobre pedidos ya creados.
+type PedidosService struct {
+	// Inyectamos la interfaz, no la base de datos real.
+	Repo ports.PedidosRepo
 }
-
-// Nuevo crea el servicio con el reloj real.
-func Nuevo(repo ports.Pedidos) *Pedidos { return &Pedidos{repo: repo, reloj: time.Now} }
 
 // Obtener devuelve un pedido que el actor puede ver. Si no puede, responde como si no
 // existiera (404), para no revelar pedidos ajenos.
-func (s *Pedidos) Obtener(ctx context.Context, a domain.Actor, id string) (domain.Pedido, error) {
-	if err := a.Validar(); err != nil {
+func (s PedidosService) Obtener(ctx context.Context, actor domain.Actor, id string) (domain.Pedido, error) {
+	if err := actor.Validar(); err != nil {
 		return domain.Pedido{}, err
 	}
-	p, err := s.repo.Obtener(ctx, id)
+	pedido, err := s.Repo.Obtener(ctx, id)
 	if err != nil {
 		return domain.Pedido{}, err
 	}
-	if !p.PuedeVer(a) {
+	if !pedido.PuedeVer(actor) {
 		return domain.Pedido{}, domain.ErrNoEncontrado
 	}
-	return p, nil
+	return pedido, nil
 }
 
 // CambiarEstado aplica una acción y la guarda con control de versión. Si dos acciones llegan
-// a la vez (por ejemplo, el cliente cancela mientras la cocina acepta), la base guarda solo la
-// primera y la otra recibe domain.ErrConflictoVersion. No se reintenta sola: con el pedido ya
-// cambiado, la acción puede no tener sentido.
-func (s *Pedidos) CambiarEstado(ctx context.Context, a domain.Actor, id string, accion Accion) (domain.Pedido, error) {
-	if err := a.Validar(); err != nil {
+// a la vez (el cliente cancela mientras la cocina acepta), la base guarda solo la primera y la
+// otra recibe domain.ErrConflictoVersion. No se reintenta sola: con el pedido ya cambiado, la
+// acción puede no tener sentido.
+func (s PedidosService) CambiarEstado(ctx context.Context, actor domain.Actor, id string, accion Accion) (domain.Pedido, error) {
+	if err := actor.Validar(); err != nil {
 		return domain.Pedido{}, err
 	}
-	p, err := s.repo.Obtener(ctx, id)
+
+	// 1. Buscamos el pedido.
+	pedido, err := s.Repo.Obtener(ctx, id)
 	if err != nil {
 		return domain.Pedido{}, err
 	}
-	var c domain.CambioEstado
-	ahora := s.reloj()
+
+	// 2. Le pedimos la acción: el pedido decide si es válida.
+	var cambio domain.CambioEstado
+	ahora := time.Now()
 	switch accion {
 	case Aceptar:
-		c, err = p.Aceptar(a, ahora)
+		cambio, err = pedido.Aceptar(actor, ahora)
 	case Rechazar:
-		c, err = p.Rechazar(a, ahora)
+		cambio, err = pedido.Rechazar(actor, ahora)
 	case Avanzar:
-		c, err = p.Avanzar(a, ahora)
+		cambio, err = pedido.Avanzar(actor, ahora)
 	case Cancelar:
-		c, err = p.Cancelar(a, ahora)
+		cambio, err = pedido.Cancelar(actor, ahora)
 	case ConfirmarEntrega:
-		c, err = p.ConfirmarEntrega(a, ahora)
+		cambio, err = pedido.ConfirmarEntrega(actor, ahora)
 	default:
 		return domain.Pedido{}, domain.ErrDatosInvalidos
 	}
 	if err != nil {
 		return domain.Pedido{}, err
 	}
-	if err := s.repo.GuardarCambio(ctx, p, c); err != nil {
+
+	// 3. Guardamos solo si nadie lo cambió mientras tanto.
+	if err := s.Repo.GuardarCambio(ctx, pedido, cambio); err != nil {
 		return domain.Pedido{}, err
 	}
-	return p, nil
+	return pedido, nil
 }
