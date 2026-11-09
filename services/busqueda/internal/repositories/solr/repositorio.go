@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
@@ -451,7 +452,10 @@ func decodificarPlato(raw json.RawMessage) (domain.Plato, error) {
 	if err := json.Unmarshal(raw, &d); err != nil {
 		return domain.Plato{}, fmt.Errorf("%w: plato inválido: %v", domain.ErrNoDisponible, err)
 	}
-	act, _ := time.Parse(time.RFC3339, d.ActualizadoEn)
+	act, err := time.Parse(time.RFC3339, d.ActualizadoEn)
+	if err != nil {
+		slog.Warn("fecha de actualización de plato inválida en Solr", "plato_id", d.ID)
+	}
 	propio := d.Activo // documento de antes de G15
 	if d.PlatoActivo != nil {
 		propio = *d.PlatoActivo

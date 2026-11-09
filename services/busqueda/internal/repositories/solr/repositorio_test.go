@@ -155,6 +155,13 @@ func TestFiltroEscapaComillas(t *testing.T) {
 	}
 }
 
+func TestTextoTrataOperadoresComoPalabras(t *testing.T) {
+	p := ParametrosBusqueda(domain.FiltroPlatos{SedeID: "cerro", Texto: "AND OR NOT", Pagina: 1, TamPagina: 10})
+	if got, want := p.Get("q"), "+and +or +(not OR not*)"; got != want {
+		t.Fatalf("q = %q, esperado %q", got, want)
+	}
+}
+
 func TestPrepararEsquemaSoloAgregaLoQueFalta(t *testing.T) {
 	repo, sf := nuevoSolrFalso(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {

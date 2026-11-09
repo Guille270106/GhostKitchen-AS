@@ -6,12 +6,14 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"ghostkitchen/busqueda/internal/domain"
 	"ghostkitchen/busqueda/internal/middleware"
+	"ghostkitchen/busqueda/internal/services"
 )
 
 // Códigos estables del contrato (docs/contracts/v1/openapi.yaml). El consumidor decide por
@@ -93,7 +95,7 @@ func responderError(c *gin.Context, err error, detalle404 string) {
 		responderProblema(c, http.StatusNotFound, CodigoPlatoNoEncontrado, detalle404)
 	case errors.Is(err, domain.ErrSinCobertura):
 		responderProblema(c, http.StatusNotFound, CodigoSinCobertura,
-			"No hay sedes activas a menos de 25 km de esa ubicación.")
+			fmt.Sprintf("No hay sedes activas a menos de %g km de esa ubicación.", services.CoberturaKm))
 	default:
 		_ = c.Error(err) // queda en el log de la solicitud
 		responderProblema(c, http.StatusServiceUnavailable, CodigoNoDisponible,
