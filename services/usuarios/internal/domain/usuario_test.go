@@ -16,6 +16,12 @@ func TestNormalizarEmail(t *testing.T) {
 		"Ana <ana@mail.com>":                "", // con nombre no es solo un correo
 		"":                                  "",
 		strings.Repeat("a", 250) + "@x.com": "",
+		"ana@gmail":                         "", // sin punto en el dominio
+		"ana@gmail.c":                       "", // terminación de una letra
+		"ana@gmail..com":                    "",
+		"ana@.com":                          "",
+		"cocina.nc@ghostkitchen.dev":        "cocina.nc@ghostkitchen.dev",
+		"ana@mail.com.ar":                   "ana@mail.com.ar",
 	}
 	for entrada, esperado := range casos {
 		if got := NormalizarEmail(entrada); got != esperado {
