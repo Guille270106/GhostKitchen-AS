@@ -435,7 +435,7 @@ El enunciado pide definir qué pasa cuando cada dependencia se cae o responde le
 | **Grupo proveedor** | No se marca como hecho un paso cuyo resultado no conocemos; se reintenta o se compensa según su contrato | Mensaje claro; el pedido no se pierde |
 | **Usuarios** | El gateway no puede verificar tokens | No se puede iniciar sesión ni usar funciones privadas (ver la sección 14) |
 
-Las caídas de Inventario, RabbitMQ y el correo son las que vamos a provocar en la jornada de fallas y documentar en `POSTMORTEM.md`.
+Las caídas de Inventario, RabbitMQ, el correo y el proveedor se provocaron en la jornada de fallas (2026-11-10): el sistema se comportó como dice esta tabla en los cuatro casos. Tiempos, evidencia y mejoras en el [POSTMORTEM](../POSTMORTEM.md).
 
 ## 11. Despliegue
 
