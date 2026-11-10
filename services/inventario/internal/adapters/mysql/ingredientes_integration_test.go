@@ -50,13 +50,20 @@ func TestMySQLIngredientes(t *testing.T) {
 	if _, err := repo.Obtener(ctx, "villa-allende", i.ID); !errors.Is(err, domain.ErrNoEncontrado) {
 		t.Fatal("acceso cruzado", err)
 	}
+	// La base trae los ingredientes de ejemplo (migración 000009): se busca el creado acá y se
+	// controla que cada listado tenga solo los de su cocina.
 	items, err := repo.Listar(ctx, "cerro")
-	if err != nil || len(items) != 1 {
+	if err != nil || !contiene(items, i.ID) {
 		t.Fatal(items, err)
 	}
+	for _, it := range items {
+		if it.CocinaID != "cerro" {
+			t.Fatal("listado con ingredientes de otra cocina", it)
+		}
+	}
 	ajenos, err := repo.Listar(ctx, "villa-allende")
-	if err != nil || len(ajenos) != 0 {
-		t.Fatal("listado cruzado", ajenos, err)
+	if err != nil || contiene(ajenos, i.ID) {
+		t.Fatal("listado cruzado", err)
 	}
 	for _, cocina := range []string{"desconocida", "inactiva"} {
 		if cocina == "inactiva" {
@@ -99,4 +106,13 @@ func TestMySQLIngredientes(t *testing.T) {
 	if err != nil || movimientos != 2 || neto != 6 {
 		t.Fatal(movimientos, neto, err)
 	}
+}
+
+func contiene(items []domain.Ingrediente, id string) bool {
+	for _, it := range items {
+		if it.ID == id {
+			return true
+		}
+	}
+	return false
 }

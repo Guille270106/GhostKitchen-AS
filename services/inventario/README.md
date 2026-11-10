@@ -72,6 +72,8 @@ La base solo suma si alcanza. Por eso, si dos personas quieren el último plato 
 | `disponibilidad_estado` / `disponibilidad_bloqueo` | Si cada plato se puede pedir, para avisar solo cuando cambia |
 | `idempotencia` · `outbox` · `mensaje_procesado` | Para no repetir operaciones, no perder mensajes y no procesar dos veces el mismo mensaje |
 
+**Datos de ejemplo.** La migración `000009_datos_demo` carga los ingredientes de cada cocina, con stock, y la receta de los 64 platos del seed de Catálogo. Así se puede pedir apenas se levanta el sistema. Solo arma la receta de los platos que todavía no tienen una, y recalcula la disponibilidad igual que el servicio: actualiza `disponibilidad_estado` y deja `disponibilidad.cambiada` en el outbox, para que Búsqueda se entere sin reconstruir el índice. El "Medallón de lentejas" de Nueva Córdoba arranca con 3 unidades, para mostrar la Veggie burger (`p3`) sin stock y la prueba del último plato. La Licuado de banana (`p64`) tiene receta pero sigue sin poder pedirse, porque está desactivada en Catálogo.
+
 ## Rutas
 
 El frontend entra por `/api/v1` a través del gateway; las rutas que usa Pedidos son internas y no se publican.

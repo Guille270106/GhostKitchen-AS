@@ -1,0 +1,301 @@
+-- Datos de ejemplo para la demo: ingredientes con stock y la receta de cada uno de los 64 platos
+-- del seed de Catálogo. Sin esto, todos los platos figuran sin stock (no tienen receta) y no se
+-- puede pedir nada hasta cargarlos a mano.
+--
+-- Se puede correr sobre una base con datos: los ingredientes tienen ids fijos (INSERT IGNORE) y
+-- solo se arma la receta de los platos que todavía no tienen una. Al final se recalcula la
+-- disponibilidad igual que en el servicio (disponibilidad_estado + disponibilidad.cambiada en el
+-- outbox), así Búsqueda se entera por mensajes sin reconstruir el índice.
+--
+-- El "Medallón de lentejas" de Nueva Córdoba arranca con 3 unidades: la Veggie burger (p3) sirve
+-- para mostrar "sin stock" y la concurrencia sobre el último plato.
+
+INSERT IGNORE INTO ingrediente (id,cocina_id,nombre,unidad,total) VALUES
+ ('a11cb9a8-f16a-5492-9b89-f57f273ae684','barrio-jardin','Alga nori','unidad',200),
+ ('20dbb46f-543e-57b5-b1cc-d5a623add177','barrio-jardin','Arroz de sushi','g',20000),
+ ('d5b7c85c-c117-53ba-b05d-2eb67234e93d','barrio-jardin','Banana','unidad',200),
+ ('d53d6d9b-8a55-5cfc-a632-318ff74e4877','barrio-jardin','Bife de chorizo','g',20000),
+ ('e7779770-b01c-58dc-a0e2-4af32b2b89fc','barrio-jardin','Café en grano','g',20000),
+ ('2115b13d-9f9a-59fb-a254-fdfce539fc66','barrio-jardin','Cheesecake de frutos rojos','porción',60),
+ ('5c7f00d1-c86e-50cf-966e-57f4c8e8a5c9','barrio-jardin','Flan casero','porción',60),
+ ('e7470148-7ced-54d9-8549-8654b1de5513','barrio-jardin','Helado de vainilla','g',20000),
+ ('f9b115d4-740f-5ea0-83b1-16b797b3cf26','barrio-jardin','Jamón cocido','g',20000),
+ ('cb98dfc3-278a-5583-b2e6-a91cc758a547','barrio-jardin','Leche','ml',20000),
+ ('1a0966ef-bcf1-559e-aa50-f21797311e24','barrio-jardin','Limones','unidad',200),
+ ('76cdf482-b54e-5db8-9697-cae5ecaa538c','barrio-jardin','Medallón de carne','unidad',200),
+ ('fea20a2f-f633-5468-9843-0a259234e9ef','barrio-jardin','Ojo de bife','g',20000),
+ ('d80afd67-86ae-56f5-ae13-199e5ea686b4','barrio-jardin','Pan de hamburguesa','unidad',200),
+ ('4b2230bc-d5df-5829-9ec5-7fc9a8e77480','barrio-jardin','Pan de miga','unidad',200),
+ ('b4e4e481-3fef-58df-b1b7-af220830da9b','barrio-jardin','Pan rallado','g',20000),
+ ('cf0de7f6-e90f-5c53-ac02-2a79c747445c','barrio-jardin','Panceta','g',20000),
+ ('4f388e9b-8be7-56b4-afdf-9c9bcd576aa2','barrio-jardin','Papas','g',20000),
+ ('26c179f3-2c25-529c-b9fb-b499f0523463','barrio-jardin','Pescado blanco','g',20000),
+ ('4727ae7e-d40a-5e91-9334-2c6d39c0fe74','barrio-jardin','Queso cheddar','feta',300),
+ ('ee9edcb0-ce61-5854-8454-4cb791efcb9b','barrio-jardin','Queso crema','g',20000),
+ ('ef4024b9-1c16-505d-b5e1-c2c8e9d86576','barrio-jardin','Queso de máquina','g',20000),
+ ('c8e7ffb7-2d59-53d2-8e00-9f2471b220f3','barrio-jardin','Queso provolone','unidad',200),
+ ('a64a824c-b662-5a46-bd24-6cb77c14d859','barrio-jardin','Salmón','g',20000),
+ ('c2a0d099-dc68-51be-9b8e-ea88d21616d9','barrio-jardin','Salsa de soja','ml',20000),
+ ('2c8b40af-8cc5-5117-ad41-f3bfc68fdc55','barrio-jardin','Verduras de estación','g',20000),
+ ('9928847d-c00a-5a93-b63b-a5510c70be45','cerro','Alfajores de chocolate','unidad',200),
+ ('48449f92-bdb9-5e27-85a3-7317c0ad345b','cerro','Brownie','porción',60),
+ ('7da538bb-7138-550e-9380-ded8ab0b8acb','cerro','Café en grano','g',20000),
+ ('ecb44715-7864-5405-93c7-b3de033b54b0','cerro','Costillas de cerdo','g',20000),
+ ('77c066d2-d300-5c09-a4e1-f15120102596','cerro','Falafel','unidad',200),
+ ('1963cf88-6627-5598-883a-76aa0426a677','cerro','Frutas y verduras para jugo','g',20000),
+ ('8492a671-e0eb-5fd3-bf23-f69ce90cf6c6','cerro','Havannets','unidad',200),
+ ('8e8de603-7328-554e-afac-373663d33b30','cerro','Helado','g',20000),
+ ('e58abe4e-bb9f-5cf8-8e2c-617515e7334c','cerro','Jalapeños','g',20000),
+ ('befaab9c-a6ad-598e-b643-50031f8701eb','cerro','Lasaña de verduras','porción',60),
+ ('647f8a31-9037-5216-aa1a-26ba3726cbfc','cerro','Leche','ml',20000),
+ ('eed4dce3-96f0-5540-8137-1e1023fbe34d','cerro','Lechuga','g',20000),
+ ('81e1ea99-45ac-5363-89e4-b4d3676c193f','cerro','Medallón de carne','unidad',200),
+ ('c263b2e7-4fb8-5236-bf6c-8c8f66ffd2a8','cerro','Medialunas','unidad',200),
+ ('a504d2cb-889c-50f3-ac41-486faff0d0f2','cerro','Nachos','g',20000),
+ ('497b23e2-e474-5358-a822-af93aafd1f4d','cerro','Pan de hamburguesa','unidad',200),
+ ('7e8809f4-c484-5609-b9c3-923dcd279b6c','cerro','Pechuga de pollo','g',20000),
+ ('d8bb98d5-19b6-5b52-81ca-230fb59859bb','cerro','Queso cheddar','feta',300),
+ ('34951a05-2326-5cd2-a290-8924bbbcaa94','cerro','Queso parmesano','g',20000),
+ ('a9b23bfa-7fbd-535d-aa68-12955ea3aee9','cerro','Quinoa','g',20000),
+ ('2cf9f3b6-1e78-5ef7-8954-ea523e971604','cerro','Salsa barbacoa','g',20000),
+ ('daee8636-0864-5051-b5c5-09a94247197c','cerro','Salsa cheddar','g',20000),
+ ('21910e61-7a58-5cad-a0ab-8747c357e137','cerro','Salsa de tomate','g',20000),
+ ('e161a882-325e-5b13-97e6-642929ab92d5','cerro','Sorrentinos de jamón y queso','unidad',200),
+ ('c412c77d-3796-5916-910d-28d22c48666d','cerro','Tiramisú','porción',60),
+ ('bc5e1f09-611a-5b19-9159-e34d637bc0db','cerro','Torta de ricota','porción',60),
+ ('0d4a5026-f24f-5707-976d-682e6afcc752','cerro','Tortilla de trigo','unidad',200),
+ ('44793ef2-66ed-5a87-b807-a6ce0a9b6567','cerro','Verduras de estación','g',20000),
+ ('a679e16a-e197-5bb7-b059-2e565ad5bf44','cerro','Ñoquis de papa','g',20000),
+ ('4b453eaf-9323-51b6-8712-eb0b4928a4fe','nueva-cordoba','Alga nori','unidad',200),
+ ('6cb798c2-92f3-50ef-b243-5a88bc45f2ad','nueva-cordoba','Arroz de sushi','g',20000),
+ ('9098a48d-212b-5bf4-9e93-be75914e1645','nueva-cordoba','Carne de cerdo','g',20000),
+ ('cc27d547-19e4-5a60-bc8a-c9b870c88c60','nueva-cordoba','Dulce de leche','g',20000),
+ ('ec2b726a-2b15-5ce6-b727-73562e5b62fa','nueva-cordoba','Helado','g',20000),
+ ('ea79e9c2-79aa-58c5-a5ad-d92dc18dd41f','nueva-cordoba','Longaniza calabresa','g',20000),
+ ('cbb6c4ab-dc5e-590f-97de-fb5ff2b8760c','nueva-cordoba','Masa de gyoza','unidad',200),
+ ('012277a6-676e-504d-b10e-502693dba016','nueva-cordoba','Masa de pizza','unidad',200),
+ ('b3da8f87-7c66-5e4d-939b-2d33d4c076b8','nueva-cordoba','Medallón de carne','unidad',200),
+ ('7f48684d-980c-5961-abdd-f30ec9ee4156','nueva-cordoba','Medallón de lentejas','unidad',3),
+ ('872bd677-df14-52ca-8821-3798d18255c7','nueva-cordoba','Muzzarella','g',20000),
+ ('ab4b807f-9532-5cd2-af05-7abd12ca7814','nueva-cordoba','Palito bombón','unidad',200),
+ ('dc4b1cba-1497-5b66-b104-f4a23a203ecc','nueva-cordoba','Palta','g',20000),
+ ('2c4570a1-4c90-58f6-a88d-43074d35b426','nueva-cordoba','Pan de hamburguesa','unidad',200),
+ ('b1416552-57d0-513b-80ec-eaf5f6f68251','nueva-cordoba','Panceta','g',20000),
+ ('fc4baf9b-4620-557e-9b96-1fa973cbbadb','nueva-cordoba','Papas','g',20000),
+ ('e9bb8ec3-02e2-521b-bb43-a1b2060c8fb0','nueva-cordoba','Queso cheddar','feta',300),
+ ('f47a838a-869d-53da-9cd8-ceec906ff118','nueva-cordoba','Queso crema','g',20000),
+ ('f205f444-0ac7-5f66-802f-af8297130a54','nueva-cordoba','Relleno de carne','g',20000),
+ ('6bd51c99-7fe6-5e97-8b23-fd9d6c81335f','nueva-cordoba','Salmón','g',20000),
+ ('efc1f94a-4f5b-514a-bacc-07a6eb6bcb82','nueva-cordoba','Salsa de tomate','g',20000),
+ ('8b775828-ea39-5ab9-937c-7f62c36dc05e','nueva-cordoba','Tapas de empanada','unidad',200),
+ ('8eae2e12-86ce-5f67-a18d-294bdaf62d4e','nueva-cordoba','Tomate','unidad',200),
+ ('66432655-f65b-5b90-9da2-d9ca2506191a','villa-allende','Berenjena','g',20000),
+ ('c9b76b58-b721-50e5-a462-a83f5413025c','villa-allende','Café en grano','g',20000),
+ ('a03bf49b-21f4-5cf0-8214-0f458d999810','villa-allende','Cebolla','g',20000),
+ ('95d6974d-447b-5557-b905-fb9b9df81d6e','villa-allende','Donas de chocolate','unidad',200),
+ ('4b458db2-f32d-5ea4-80de-91269e543e18','villa-allende','Donas glaseadas','unidad',200),
+ ('ee90ed7d-6481-5596-b09e-bc4e13889dfc','villa-allende','Filete de pollo','g',20000),
+ ('95215b1f-da4c-5729-a9ed-ee98d6ce888e','villa-allende','Hielo','g',20000),
+ ('2614d518-6fea-51c6-a157-3dac9522913a','villa-allende','Huevos','unidad',200),
+ ('010af987-7cd5-547e-ba0b-fb843462d685','villa-allende','Leche','ml',20000),
+ ('c88109fc-2ee7-53ac-a44a-be907c2a603c','villa-allende','Medallón de carne','unidad',200),
+ ('ef500b88-a4ae-5d6c-b718-f83deefce1fe','villa-allende','Milanesa de carne','unidad',200),
+ ('860d2de7-5cd7-5fb5-a567-1a66e4a85f16','villa-allende','Milanesa de pollo','unidad',200),
+ ('dc1e709d-dbae-5d11-b888-e9059416aa6d','villa-allende','Munchkins','unidad',200),
+ ('81258a7d-37bd-5e14-81fe-1bc144792538','villa-allende','Muzzarella','g',20000),
+ ('c62bf8bd-49a6-53e6-9ebe-f324c6cf960c','villa-allende','Pan de hamburguesa','unidad',200),
+ ('bcdc6c2c-3c86-52e9-857d-5c864c02885c','villa-allende','Panceta','g',20000),
+ ('d39e912e-67ed-5d63-9908-aa4a68d8a969','villa-allende','Papas','g',20000),
+ ('438a3b21-4ac5-594a-8528-3864f6751d0d','villa-allende','Presas de pollo','unidad',200),
+ ('aaa1c7b4-875f-520e-9399-08593ba31772','villa-allende','Queso cheddar','feta',300),
+ ('cbf486e2-c5f1-5fcd-a136-c580f19a9e5d','villa-allende','Repollo','g',20000),
+ ('e4d62360-6ead-56f1-9136-6aea1b211e9a','villa-allende','Salsa cheddar','g',20000),
+ ('82f0c1ce-de60-52a2-a5b7-40dee378e6dc','villa-allende','Salsa de tomate','g',20000),
+ ('c28f9f4b-2227-5f41-aee8-8029c9889a6b','villa-allende','Tiras de pollo','unidad',200),
+ ('1a5222a0-5f2c-5890-899c-572f07cfe2d7','villa-allende','Tortilla de trigo','unidad',200);
+
+CREATE TEMPORARY TABLE demo_receta_item (
+ plato_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ cocina_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ ingrediente_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ cantidad BIGINT NOT NULL
+) ENGINE=InnoDB;
+
+INSERT INTO demo_receta_item (plato_id,cocina_id,ingrediente_id,cantidad) VALUES
+ ('p1','nueva-cordoba','2c4570a1-4c90-58f6-a88d-43074d35b426',1),
+ ('p1','nueva-cordoba','b3da8f87-7c66-5e4d-939b-2d33d4c076b8',2),
+ ('p1','nueva-cordoba','e9bb8ec3-02e2-521b-bb43-a1b2060c8fb0',2),
+ ('p2','nueva-cordoba','2c4570a1-4c90-58f6-a88d-43074d35b426',1),
+ ('p2','nueva-cordoba','b3da8f87-7c66-5e4d-939b-2d33d4c076b8',1),
+ ('p2','nueva-cordoba','e9bb8ec3-02e2-521b-bb43-a1b2060c8fb0',2),
+ ('p2','nueva-cordoba','b1416552-57d0-513b-80ec-eaf5f6f68251',40),
+ ('p3','nueva-cordoba','2c4570a1-4c90-58f6-a88d-43074d35b426',1),
+ ('p3','nueva-cordoba','7f48684d-980c-5961-abdd-f30ec9ee4156',1),
+ ('p4','nueva-cordoba','fc4baf9b-4620-557e-9b96-1fa973cbbadb',250),
+ ('p5','nueva-cordoba','6cb798c2-92f3-50ef-b243-5a88bc45f2ad',200),
+ ('p5','nueva-cordoba','6bd51c99-7fe6-5e97-8b23-fd9d6c81335f',80),
+ ('p5','nueva-cordoba','4b453eaf-9323-51b6-8712-eb0b4928a4fe',1),
+ ('p6','nueva-cordoba','6cb798c2-92f3-50ef-b243-5a88bc45f2ad',200),
+ ('p6','nueva-cordoba','6bd51c99-7fe6-5e97-8b23-fd9d6c81335f',60),
+ ('p6','nueva-cordoba','f47a838a-869d-53da-9cd8-ceec906ff118',40),
+ ('p6','nueva-cordoba','4b453eaf-9323-51b6-8712-eb0b4928a4fe',1),
+ ('p7','nueva-cordoba','6cb798c2-92f3-50ef-b243-5a88bc45f2ad',200),
+ ('p7','nueva-cordoba','dc4b1cba-1497-5b66-b104-f4a23a203ecc',60),
+ ('p7','nueva-cordoba','4b453eaf-9323-51b6-8712-eb0b4928a4fe',1),
+ ('p8','nueva-cordoba','cbb6c4ab-dc5e-590f-97de-fb5ff2b8760c',6),
+ ('p8','nueva-cordoba','9098a48d-212b-5bf4-9e93-be75914e1645',120),
+ ('p9','nueva-cordoba','012277a6-676e-504d-b10e-502693dba016',1),
+ ('p9','nueva-cordoba','872bd677-df14-52ca-8821-3798d18255c7',250),
+ ('p9','nueva-cordoba','efc1f94a-4f5b-514a-bacc-07a6eb6bcb82',120),
+ ('p10','nueva-cordoba','012277a6-676e-504d-b10e-502693dba016',1),
+ ('p10','nueva-cordoba','872bd677-df14-52ca-8821-3798d18255c7',200),
+ ('p10','nueva-cordoba','8eae2e12-86ce-5f67-a18d-294bdaf62d4e',2),
+ ('p10','nueva-cordoba','efc1f94a-4f5b-514a-bacc-07a6eb6bcb82',100),
+ ('p11','nueva-cordoba','012277a6-676e-504d-b10e-502693dba016',1),
+ ('p11','nueva-cordoba','872bd677-df14-52ca-8821-3798d18255c7',200),
+ ('p11','nueva-cordoba','efc1f94a-4f5b-514a-bacc-07a6eb6bcb82',100),
+ ('p11','nueva-cordoba','ea79e9c2-79aa-58c5-a5ad-d92dc18dd41f',100),
+ ('p12','nueva-cordoba','8b775828-ea39-5ab9-937c-7f62c36dc05e',6),
+ ('p12','nueva-cordoba','f205f444-0ac7-5f66-802f-af8297130a54',300),
+ ('p13','nueva-cordoba','ec2b726a-2b15-5ce6-b727-73562e5b62fa',1000),
+ ('p14','nueva-cordoba','ec2b726a-2b15-5ce6-b727-73562e5b62fa',500),
+ ('p15','nueva-cordoba','ec2b726a-2b15-5ce6-b727-73562e5b62fa',200),
+ ('p15','nueva-cordoba','cc27d547-19e4-5a60-bc8a-c9b870c88c60',60),
+ ('p16','nueva-cordoba','ab4b807f-9532-5cd2-af05-7abd12ca7814',6),
+ ('p17','cerro','497b23e2-e474-5358-a822-af93aafd1f4d',1),
+ ('p17','cerro','81e1ea99-45ac-5363-89e4-b4d3676c193f',1),
+ ('p17','cerro','d8bb98d5-19b6-5b52-81ca-230fb59859bb',1),
+ ('p18','cerro','ecb44715-7864-5405-93c7-b3de033b54b0',500),
+ ('p18','cerro','2cf9f3b6-1e78-5ef7-8954-ea523e971604',60),
+ ('p19','cerro','a504d2cb-889c-50f3-ac41-486faff0d0f2',150),
+ ('p19','cerro','daee8636-0864-5051-b5c5-09a94247197c',80),
+ ('p19','cerro','e58abe4e-bb9f-5cf8-8e2c-617515e7334c',20),
+ ('p20','cerro','48449f92-bdb9-5e27-85a3-7317c0ad345b',1),
+ ('p20','cerro','8e8de603-7328-554e-afac-373663d33b30',100),
+ ('p21','cerro','e161a882-325e-5b13-97e6-642929ab92d5',12),
+ ('p21','cerro','21910e61-7a58-5cad-a0ab-8747c357e137',150),
+ ('p22','cerro','a679e16a-e197-5bb7-b059-2e565ad5bf44',350),
+ ('p22','cerro','21910e61-7a58-5cad-a0ab-8747c357e137',150),
+ ('p23','cerro','befaab9c-a6ad-598e-b643-50031f8701eb',1),
+ ('p24','cerro','c412c77d-3796-5916-910d-28d22c48666d',1),
+ ('p25','cerro','a9b23bfa-7fbd-535d-aa68-12955ea3aee9',150),
+ ('p25','cerro','44793ef2-66ed-5a87-b807-a6ce0a9b6567',150),
+ ('p26','cerro','eed4dce3-96f0-5540-8137-1e1023fbe34d',150),
+ ('p26','cerro','7e8809f4-c484-5609-b9c3-923dcd279b6c',150),
+ ('p26','cerro','34951a05-2326-5cd2-a290-8924bbbcaa94',20),
+ ('p27','cerro','0d4a5026-f24f-5707-976d-682e6afcc752',1),
+ ('p27','cerro','77c066d2-d300-5c09-a4e1-f15120102596',4),
+ ('p28','cerro','1963cf88-6627-5598-883a-76aa0426a677',300),
+ ('p29','cerro','9928847d-c00a-5a93-b63b-a5510c70be45',6),
+ ('p30','cerro','7da538bb-7138-550e-9380-ded8ab0b8acb',18),
+ ('p30','cerro','647f8a31-9037-5216-aa1a-26ba3726cbfc',200),
+ ('p30','cerro','c263b2e7-4fb8-5236-bf6c-8c8f66ffd2a8',3),
+ ('p31','cerro','8492a671-e0eb-5fd3-bf23-f69ce90cf6c6',6),
+ ('p32','cerro','bc5e1f09-611a-5b19-9159-e34d637bc0db',1),
+ ('p33','villa-allende','c62bf8bd-49a6-53e6-9ebe-f324c6cf960c',1),
+ ('p33','villa-allende','c88109fc-2ee7-53ac-a44a-be907c2a603c',2),
+ ('p33','villa-allende','aaa1c7b4-875f-520e-9399-08593ba31772',2),
+ ('p34','villa-allende','c62bf8bd-49a6-53e6-9ebe-f324c6cf960c',1),
+ ('p34','villa-allende','ee90ed7d-6481-5596-b09e-bc4e13889dfc',150),
+ ('p35','villa-allende','d39e912e-67ed-5d63-9908-aa4a68d8a969',250),
+ ('p35','villa-allende','e4d62360-6ead-56f1-9136-6aea1b211e9a',60),
+ ('p35','villa-allende','bcdc6c2c-3c86-52e9-857d-5c864c02885c',30),
+ ('p36','villa-allende','a03bf49b-21f4-5cf0-8214-0f458d999810',150),
+ ('p37','villa-allende','438a3b21-4ac5-594a-8528-3864f6751d0d',8),
+ ('p38','villa-allende','c28f9f4b-2227-5f41-aee8-8029c9889a6b',6),
+ ('p39','villa-allende','1a5222a0-5f2c-5890-899c-572f07cfe2d7',1),
+ ('p39','villa-allende','c28f9f4b-2227-5f41-aee8-8029c9889a6b',3),
+ ('p40','villa-allende','cbf486e2-c5f1-5fcd-a136-c580f19a9e5d',150),
+ ('p41','villa-allende','ef500b88-a4ae-5d6c-b718-f83deefce1fe',1),
+ ('p41','villa-allende','81258a7d-37bd-5e14-81fe-1bc144792538',80),
+ ('p41','villa-allende','82f0c1ce-de60-52a2-a5b7-40dee378e6dc',60),
+ ('p42','villa-allende','ef500b88-a4ae-5d6c-b718-f83deefce1fe',1),
+ ('p42','villa-allende','2614d518-6fea-51c6-a157-3dac9522913a',2),
+ ('p43','villa-allende','860d2de7-5cd7-5fb5-a567-1a66e4a85f16',1),
+ ('p44','villa-allende','66432655-f65b-5b90-9da2-d9ca2506191a',200),
+ ('p45','villa-allende','4b458db2-f32d-5ea4-80de-91269e543e18',6),
+ ('p46','villa-allende','95d6974d-447b-5557-b905-fb9b9df81d6e',1),
+ ('p47','villa-allende','c9b76b58-b721-50e5-a462-a83f5413025c',18),
+ ('p47','villa-allende','010af987-7cd5-547e-ba0b-fb843462d685',200),
+ ('p47','villa-allende','95215b1f-da4c-5729-a9ed-ee98d6ce888e',150),
+ ('p48','villa-allende','dc1e709d-dbae-5d11-b888-e9059416aa6d',12),
+ ('p49','barrio-jardin','d80afd67-86ae-56f5-ae13-199e5ea686b4',1),
+ ('p49','barrio-jardin','76cdf482-b54e-5db8-9697-cae5ecaa538c',2),
+ ('p49','barrio-jardin','4727ae7e-d40a-5e91-9334-2c6d39c0fe74',4),
+ ('p50','barrio-jardin','d80afd67-86ae-56f5-ae13-199e5ea686b4',1),
+ ('p50','barrio-jardin','76cdf482-b54e-5db8-9697-cae5ecaa538c',3),
+ ('p50','barrio-jardin','4727ae7e-d40a-5e91-9334-2c6d39c0fe74',3),
+ ('p50','barrio-jardin','cf0de7f6-e90f-5c53-ac02-2a79c747445c',60),
+ ('p51','barrio-jardin','4f388e9b-8be7-56b4-afdf-9c9bcd576aa2',300),
+ ('p52','barrio-jardin','e7470148-7ced-54d9-8549-8654b1de5513',200),
+ ('p52','barrio-jardin','cb98dfc3-278a-5583-b2e6-a91cc758a547',200),
+ ('p53','barrio-jardin','20dbb46f-543e-57b5-b1cc-d5a623add177',300),
+ ('p53','barrio-jardin','a64a824c-b662-5a46-bd24-6cb77c14d859',120),
+ ('p53','barrio-jardin','a11cb9a8-f16a-5492-9b89-f57f273ae684',2),
+ ('p54','barrio-jardin','20dbb46f-543e-57b5-b1cc-d5a623add177',200),
+ ('p54','barrio-jardin','a64a824c-b662-5a46-bd24-6cb77c14d859',60),
+ ('p54','barrio-jardin','ee9edcb0-ce61-5854-8454-4cb791efcb9b',40),
+ ('p54','barrio-jardin','b4e4e481-3fef-58df-b1b7-af220830da9b',30),
+ ('p55','barrio-jardin','26c179f3-2c25-529c-b9fb-b499f0523463',180),
+ ('p55','barrio-jardin','1a0966ef-bcf1-559e-aa50-f21797311e24',2),
+ ('p56','barrio-jardin','2c8b40af-8cc5-5117-ad41-f3bfc68fdc55',300),
+ ('p56','barrio-jardin','c2a0d099-dc68-51be-9b8e-ea88d21616d9',20),
+ ('p57','barrio-jardin','fea20a2f-f633-5468-9843-0a259234e9ef',400),
+ ('p58','barrio-jardin','d53d6d9b-8a55-5cfc-a632-318ff74e4877',400),
+ ('p59','barrio-jardin','c8e7ffb7-2d59-53d2-8e00-9f2471b220f3',1),
+ ('p60','barrio-jardin','5c7f00d1-c86e-50cf-966e-57f4c8e8a5c9',1),
+ ('p61','barrio-jardin','4b2230bc-d5df-5829-9ec5-7fc9a8e77480',4),
+ ('p61','barrio-jardin','f9b115d4-740f-5ea0-83b1-16b797b3cf26',60),
+ ('p61','barrio-jardin','ef4024b9-1c16-505d-b5e1-c2c8e9d86576',60),
+ ('p62','barrio-jardin','e7779770-b01c-58dc-a0e2-4af32b2b89fc',250),
+ ('p63','barrio-jardin','2115b13d-9f9a-59fb-a254-fdfce539fc66',1),
+ ('p64','barrio-jardin','d5b7c85c-c117-53ba-b05d-2eb67234e93d',1),
+ ('p64','barrio-jardin','cb98dfc3-278a-5583-b2e6-a91cc758a547',250);
+
+-- Solo los platos que existen y todavía no tienen receta.
+DELETE d FROM demo_receta_item d
+ LEFT JOIN plato_ref p ON p.id=d.plato_id AND p.cocina_id=d.cocina_id
+ LEFT JOIN receta r ON r.plato_id=d.plato_id
+ WHERE p.id IS NULL OR r.plato_id IS NOT NULL;
+
+INSERT INTO receta (plato_id,cocina_id)
+SELECT DISTINCT plato_id,cocina_id FROM demo_receta_item;
+
+INSERT INTO receta_item (plato_id,ingrediente_id,cocina_id,cantidad)
+SELECT plato_id,ingrediente_id,cocina_id,cantidad FROM demo_receta_item;
+
+DROP TEMPORARY TABLE demo_receta_item;
+
+-- Disponibilidad: lo mismo que actualizarDisponibilidad en el servicio, para todos los platos que
+-- cambiaron. Cada cambio sube la secuencia del plato y deja un evento en el outbox.
+CREATE TEMPORARY TABLE demo_cambio (
+ evento_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ plato_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ cocina_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ disponible BOOLEAN NOT NULL,
+ tiene_receta BOOLEAN NOT NULL,
+ secuencia BIGINT UNSIGNED NOT NULL
+) ENGINE=InnoDB;
+
+INSERT INTO demo_cambio (evento_id,plato_id,cocina_id,disponible,tiene_receta,secuencia)
+SELECT UUID(),a.plato_id,a.cocina_id,a.disponible,a.tiene_receta,COALESCE(e.secuencia,0)+1
+FROM disponibilidad_actual a LEFT JOIN disponibilidad_estado e ON e.plato_id=a.plato_id
+WHERE e.plato_id IS NULL OR a.disponible<>e.disponible OR a.tiene_receta<>e.tiene_receta;
+
+INSERT INTO disponibilidad_estado (plato_id,tiene_receta,disponible,secuencia)
+SELECT dc.plato_id,dc.tiene_receta,dc.disponible,dc.secuencia FROM demo_cambio dc
+ON DUPLICATE KEY UPDATE tiene_receta=dc.tiene_receta,disponible=dc.disponible,secuencia=dc.secuencia;
+
+-- El mismo sobre que guardarEvento (docs/contracts/eventos). Los booleanos van como true/false
+-- de JSON, no como 1/0, porque Búsqueda los lee como bool.
+INSERT INTO outbox (id,tipo,cuerpo)
+SELECT evento_id,'disponibilidad.cambiada',JSON_OBJECT(
+ 'evento_id',evento_id,'tipo','disponibilidad.cambiada','version',1,
+ 'ocurrido_en',DATE_FORMAT(UTC_TIMESTAMP(6),'%Y-%m-%dT%H:%i:%s.%fZ'),
+ 'correlation_id','migracion-datos-demo','agregado_id',plato_id,'secuencia',secuencia,
+ 'datos',JSON_OBJECT('plato_id',plato_id,'cocina_id',cocina_id,
+  'disponible',IF(disponible,CAST('true' AS JSON),CAST('false' AS JSON)),
+  'tiene_receta',IF(tiene_receta,CAST('true' AS JSON),CAST('false' AS JSON))))
+FROM demo_cambio ORDER BY plato_id;
+
+DROP TEMPORARY TABLE demo_cambio;
