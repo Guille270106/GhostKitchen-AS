@@ -147,7 +147,7 @@ func (s CarritoService) Vaciar(ctx context.Context, actor domain.Actor) (domain.
 // reservarYGuardar pide a Inventario que la reserva quede igual al carrito y después lo guarda.
 func (s CarritoService) reservarYGuardar(ctx context.Context, carrito domain.Carrito, versionAnterior int64) (domain.Carrito, error) {
 	items := itemsParaReserva(carrito)
-	clave := claveDeCambio(carrito.ID, versionAnterior+1, items)
+	clave := claveDeCambio(carrito.ID, versionAnterior+1, nuevoIntento(), items)
 
 	var err error
 	if carrito.ReservaID == "" {
@@ -213,7 +213,7 @@ func (s CarritoService) reconciliar(ctx context.Context, intento domain.Carrito)
 		return
 	}
 	items := itemsParaReserva(guardado)
-	clave := "reconciliar-" + claveDeCambio(guardado.ID, guardado.Version, items)
+	clave := "reconciliar-" + claveDeCambio(guardado.ID, guardado.Version, nuevoIntento(), items)
 	_ = s.Inventario.Ajustar(ctx, clave, intento.ReservaID, items)
 }
 
@@ -236,19 +236,25 @@ func (s CarritoService) vaciarYGuardar(ctx context.Context, carrito domain.Carri
 	return carrito, nil
 }
 
-// claveDeCambio arma la Idempotency-Key: carrito + número de cambio + una huella de los platos.
-//   - Si reintentamos el MISMO cambio (por ejemplo, después de un timeout), sale la misma clave
-//     e Inventario no reserva dos veces (ADR-005).
-//   - Si el intento anterior falló (por ejemplo, sin stock), el número de cambio no avanzó; la
-//     huella hace que el siguiente cambio, con otros platos, use otra clave.
-func claveDeCambio(carritoID string, numeroDeCambio int64, items []ports.ItemReserva) string {
+// claveDeCambio arma la Idempotency-Key hacia Inventario: carrito + número de cambio + intento +
+// una huella de los platos.
+//   - Dentro de una misma solicitud, el adaptador de Inventario reintenta con la MISMA clave
+//     (por ejemplo, después de un timeout), así Inventario no aplica el cambio dos veces (ADR-005).
+//   - Cada solicitud nueva usa otro intento, y por eso otra clave. Si una solicitud anterior
+//     ajustó la reserva y después se corrigió (reconciliar), repetir su clave haría que Inventario
+//     devuelva el resultado viejo sin volver a aplicarlo, y el carrito y la reserva quedarían
+//     distintos. Que el cliente no sume dos veces lo cuida su propia clave (AgregarPlatoConClave).
+func claveDeCambio(carritoID string, numeroDeCambio int64, intento string, items []ports.ItemReserva) string {
 	texto := ""
 	for _, it := range items {
 		texto += fmt.Sprintf("%s:%d;", it.PlatoID, it.Cantidad)
 	}
 	huella := sha256.Sum256([]byte(texto))
-	return fmt.Sprintf("%s-%d-%x", carritoID, numeroDeCambio, huella[:6])
+	return fmt.Sprintf("%s-%d-%s-%x", carritoID, numeroDeCambio, intento, huella[:6])
 }
+
+// nuevoIntento identifica una solicitud: 8 caracteres al azar.
+func nuevoIntento() string { return uuid.NewString()[:8] }
 
 func itemsParaReserva(c domain.Carrito) []ports.ItemReserva {
 	items := []ports.ItemReserva{}

@@ -86,6 +86,8 @@ Confirmar toca Pedidos e Inventario, así que no entra en una sola transacción:
 
 **Descuento real en Inventario:** `docker-compose.yml` usa `CONSUMO_INVENTARIO: real`, así que confirmar descuenta el stock de verdad (`POST /reservas/{id}/consumir`). Con `simulado` Pedidos no llama a Inventario: siempre sale bien y no descuenta nada (sirve para probar Pedidos solo; los tests de `testdata/` lo usan así).
 
+**El envío se guarda al confirmar.** Antes de empezar la saga, Pedidos lee la tarifa de envío de la cocina en Catálogo (`/internal/cocinas/{id}`, sin caché) y la guarda en la confirmación y en el pedido (`costo_envio`, migración 000010). El pedido responde `total` (los platos), `costoEnvio` y `totalConEnvio`. Si después el admin cambia la tarifa, los pedidos ya confirmados no cambian. Los pedidos anteriores a esta migración tienen el envío en `null`: no se inventa con la tarifa de hoy, y las pantallas los muestran como "sin envío registrado". Si Catálogo no contesta al confirmar, no se hace nada (ni se descuenta stock) y se responde `503`.
+
 ## Mis pedidos y confirmar que lo recibí
 
 | Ruta (por el gateway) | Qué hace |

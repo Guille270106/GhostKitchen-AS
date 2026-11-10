@@ -123,7 +123,13 @@ type Pedido struct {
 	CocinaID      string         `json:"cocinaId"`
 	Estado        Estado         `json:"estado"`
 	Items         []Item         `json:"items"`
-	Total         int64          `json:"total"`
+	Total         int64          `json:"total"` // suma de los platos, sin envío
+	// CostoEnvio es el envío que se cobró, copiado de la cocina al confirmar. Si después la cocina
+	// cambia su tarifa, el pedido no cambia. Es nil en los pedidos anteriores a guardarlo: ese dato
+	// no se inventa con la tarifa de hoy.
+	CostoEnvio *int64 `json:"costoEnvio"`
+	// TotalConEnvio es lo que pagó el cliente: platos + envío (nil si no se guardó el envío).
+	TotalConEnvio *int64 `json:"totalConEnvio"`
 	Moneda        string         `json:"moneda"`
 	Version       int64          `json:"version"`
 	CreadoEn      time.Time      `json:"creadoEn"`
@@ -178,6 +184,17 @@ func NuevoPedido(id string, cliente Actor, clienteEmail, cocinaID string, items 
 	}
 	p.Historial = []CambioEstado{{EstadoNuevo: EstadoRecibido, ActorID: cliente.UsuarioID, ActorRol: RolCliente, Version: 1, OcurridoEn: ahora}}
 	return p, nil
+}
+
+// FijarEnvio anota el envío cobrado y el total con envío. Con nil, el envío queda sin registrar.
+func (p *Pedido) FijarEnvio(envio *int64) {
+	if envio == nil {
+		p.CostoEnvio, p.TotalConEnvio = nil, nil
+		return
+	}
+	e := *envio
+	total := p.Total + e
+	p.CostoEnvio, p.TotalConEnvio = &e, &total
 }
 
 // PuedeVer dice si el actor puede ver este pedido: el cliente los suyos y la cocina los de su cocina.

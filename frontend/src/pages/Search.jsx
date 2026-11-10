@@ -34,7 +34,7 @@ function Search() {
     page: Number(params.get("page")) || 1,
   };
 
-  const { data, loading } = useLiveQuery(() => searchPlatos({ ...filtros, localidadId }), [params.toString(), localidadId]);
+  const { data, loading, error, reload } = useLiveQuery(() => searchPlatos({ ...filtros, localidadId }), [params.toString(), localidadId]);
 
   const update = (changes) => {
     const next = new URLSearchParams(params);
@@ -66,7 +66,13 @@ function Search() {
             ← Volver
           </button>
           <h1>{titulo}</h1>
-          <p>{data ? `${data.total} resultado${data.total === 1 ? "" : "s"} en tu sede` : "Buscando…"}</p>
+          <p>
+            {error && !data
+              ? "La búsqueda no está disponible"
+              : data
+                ? `${data.total} resultado${data.total === 1 ? "" : "s"} en tu sede`
+                : "Buscando…"}
+          </p>
         </div>
         <SearchBox key={filtros.q} initialValue={filtros.q} onSearch={(q) => update({ q })} />
       </div>
@@ -166,7 +172,22 @@ function Search() {
             />
           </div>
 
-          {loading && !data && <Loader />}
+          {loading && !data && !error && <Loader />}
+          {error && !data && (
+            <EmptyState title="La búsqueda no está disponible" text={`${error.message} Probá de nuevo en unos segundos.`}>
+              <button className="text-link" onClick={reload}>
+                Reintentar
+              </button>
+            </EmptyState>
+          )}
+          {error && data && (
+            <p className="search-aviso" role="alert">
+              No pudimos actualizar la búsqueda: estos son los resultados anteriores.{" "}
+              <button className="text-link" onClick={reload}>
+                Reintentar
+              </button>
+            </p>
+          )}
           {data && !data.items.length && (
             <EmptyState title="No encontramos platos con esos filtros" text="Probá con otra palabra o sacá algún filtro.">
               <button className="text-link" onClick={() => setParams({})}>

@@ -33,7 +33,10 @@ function OrderCard({ pedido, onCancel, onConfirmDelivery, busy }) {
         </div>
         <div className="eta">
           <small>Total</small>
-          <strong>{formatPrice(pedido.total)}</strong>
+          <strong>
+            {formatPrice(pedido.total)}
+            {!pedido.envioRegistrado && <small title="Pedido anterior a guardar el envío: el total es solo de los platos"> (sin envío registrado)</small>}
+          </strong>
         </div>
       </div>
 

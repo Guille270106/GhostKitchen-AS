@@ -147,6 +147,10 @@ func (m *InventarioMock) Reservar(_ context.Context, clave, carritoID, _ string,
 }
 
 func (m *InventarioMock) Ajustar(_ context.Context, clave, reservaID string, items []ports.ItemReserva) error {
+	if _, repetida := m.usadas[clave]; repetida && !m.caido {
+		// Como Inventario real: la clave ya se usó, devuelve el resultado guardado y no reaplica.
+		return m.alcanza(clave, items)
+	}
 	if err := m.alcanza(clave, items); err != nil {
 		return err
 	}
@@ -230,12 +234,15 @@ func TestDespuesDeSinStockSePuedeSeguirUsandoElCarrito(t *testing.T) {
 
 func TestReintentarElMismoCambioUsaLaMismaClave(t *testing.T) {
 	items := []ports.ItemReserva{{PlatoID: "p17", Cantidad: 2}}
-	if claveDeCambio("car-1", 3, items) != claveDeCambio("car-1", 3, items) {
-		t.Fatal("el mismo cambio tiene que dar la misma clave")
+	if claveDeCambio("car-1", 3, "a", items) != claveDeCambio("car-1", 3, "a", items) {
+		t.Fatal("el mismo intento del mismo cambio tiene que dar la misma clave")
 	}
 	otros := []ports.ItemReserva{{PlatoID: "p17", Cantidad: 3}}
-	if claveDeCambio("car-1", 3, items) == claveDeCambio("car-1", 3, otros) {
+	if claveDeCambio("car-1", 3, "a", items) == claveDeCambio("car-1", 3, "a", otros) {
 		t.Fatal("otros platos tienen que dar otra clave")
+	}
+	if claveDeCambio("car-1", 3, "a", items) == claveDeCambio("car-1", 3, "b", items) {
+		t.Fatal("otra solicitud tiene que dar otra clave")
 	}
 }
 
@@ -424,5 +431,32 @@ func TestReenviarElMismoAgregarNoSumaDosVeces(t *testing.T) {
 	}
 	if _, err := svc.AgregarPlatoConClave(context.Background(), clienteCarrito, "p17", 1, "con espacio"); !errors.Is(err, domain.ErrClaveInvalida) {
 		t.Fatal("una clave inválida tenía que rechazarse:", err)
+	}
+}
+
+// El caso de la revisión: reservar 1 → agregar otro (Inventario ajusta a 2) → falla guardar →
+// la reserva se corrige a 1 → el cliente reintenta. El reintento tiene que volver a ajustar a 2
+// (otra clave), no recibir la respuesta vieja de Inventario y dejar carrito 2 / reserva 1.
+func TestReintentarDespuesDeCorregirLaReservaVuelveAAplicarla(t *testing.T) {
+	svc, repo, inv := carritoEntorno()
+	c, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.fallarGuardar = true
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1); err == nil {
+		t.Fatal("tenía que fallar")
+	}
+	if r := inv.reservas[c.ReservaID]; r[0].Cantidad != 1 {
+		t.Fatal("la reserva no volvió a 1:", r)
+	}
+
+	repo.fallarGuardar = false
+	c, err = svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Items[0].Cantidad != 2 || inv.reservas[c.ReservaID][0].Cantidad != 2 {
+		t.Fatalf("carrito %d / reserva %d: tienen que coincidir en 2", c.Items[0].Cantidad, inv.reservas[c.ReservaID][0].Cantidad)
 	}
 }

@@ -55,7 +55,9 @@ func (repo MetricasMySQL) MetricasDeCocina(ctx context.Context, cocinaID string,
 	var m domain.MetricasCocina
 	d := desde.UTC()
 
-	// 1. Totales. La facturación es la suma de los totales de los pedidos no cancelados.
+	// 1. Totales. La facturación es la suma de los PLATOS de los pedidos no cancelados (p.total,
+	//    sin envío): así la cuenta es la misma para todos los pedidos, también los anteriores a
+	//    guardar el envío. La pantalla lo dice: "Ventas de platos, sin envíos".
 	if err := repo.DB.QueryRowContext(ctx, `SELECT
  COALESCE(SUM(p.estado <> 'CANCELADO'),0),
  COALESCE(SUM(p.estado = 'CANCELADO'),0),

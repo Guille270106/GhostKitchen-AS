@@ -36,3 +36,9 @@ type Consumo interface {
 	// (no sabemos si se hizo).
 	Consumir(ctx context.Context, clave, reservaID, pedidoID string) error
 }
+
+// Envios da la tarifa de envío actual de una cocina (Catálogo, sin caché). Se lee una sola vez,
+// al confirmar, y queda guardada en la confirmación y en el pedido.
+type Envios interface {
+	CostoEnvio(ctx context.Context, cocinaID string) (int64, error)
+}

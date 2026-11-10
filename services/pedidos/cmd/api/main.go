@@ -97,6 +97,7 @@ func main() {
 		Carritos: carritosRepo,
 		Pedidos:  pedidosRepo,
 		Consumo:  consumo,
+		Envios:   catalogoCliente,
 	}
 	devolucionService := application.DevolucionService{Repo: devolucionesRepo, Inventario: devolucion}
 

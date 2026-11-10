@@ -13,6 +13,7 @@ export default function useLiveQuery(query, deps = []) {
   });
 
   const run = useCallback(async () => {
+    setState((prev) => ({ ...prev, loading: true }));
     try {
       const data = await queryRef.current();
       setState({ data, loading: false, error: null });
@@ -24,6 +25,8 @@ export default function useLiveQuery(query, deps = []) {
   useEffect(() => {
     let active = true;
     const execute = async () => {
+      // Avisa que se está consultando de nuevo (los datos anteriores se siguen mostrando).
+      if (active) setState((prev) => ({ ...prev, loading: true }));
       try {
         const data = await queryRef.current();
         if (active) setState({ data, loading: false, error: null });
