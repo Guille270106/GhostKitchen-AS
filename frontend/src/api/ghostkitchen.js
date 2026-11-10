@@ -413,8 +413,13 @@ export async function getCart() {
 }
 
 // Suma una unidad del plato. El primer plato reserva los ingredientes por 10 minutos.
+// Cada clic lleva su Idempotency-Key: si la misma solicitud llega dos veces, Pedidos suma una sola.
 export async function addToCart(platoId) {
-  const carrito = await pedir("POST", "/carrito/items", { cuerpo: { platoId, cantidad: 1 } });
+  const clave = crypto.randomUUID();
+  const carrito = await pedir("POST", "/carrito/items", {
+    cuerpo: { platoId, cantidad: 1 },
+    headers: { "Idempotency-Key": clave },
+  });
   avisarCambio();
   return carritoParaPantallas(carrito);
 }
@@ -664,6 +669,30 @@ export async function crearCuentaCocina({ cocinaId, nombre, email, password }) {
 // Pausa o reactiva una cocina: pausada, deja de aparecer para los clientes (RN19).
 export async function toggleCocina(cocina) {
   const res = await pedir("PATCH", `/admin/cocinas/${encodeURIComponent(cocina.id)}`, { cuerpo: { activa: !cocina.activa } });
+  avisarCambio();
+  return res;
+}
+
+// Cambia los datos de una cocina de su localidad: nombre, dirección, tiempos y costo de envío.
+export async function editarCocina(cocinaId, { nombre, direccion, tiempoMin, tiempoMax, envio }) {
+  const res = await pedir("PATCH", `/admin/cocinas/${encodeURIComponent(cocinaId)}`, {
+    cuerpo: {
+      nombre: nombre.trim(),
+      direccion: direccion.trim(),
+      tiempoEntregaMin: Number(tiempoMin),
+      tiempoEntregaMax: Number(tiempoMax),
+      costoEnvio: Number(envio) || 0,
+    },
+  });
+  avisarCambio();
+  return res;
+}
+
+// Cambia el nombre de un restaurante (Catálogo controla que no se repita en la cocina).
+export async function editarRestaurante(cocinaId, restauranteId, nombre) {
+  const res = await pedir("PATCH", `/admin/cocinas/${encodeURIComponent(cocinaId)}/restaurantes/${encodeURIComponent(restauranteId)}`, {
+    cuerpo: { nombre: nombre.trim() },
+  });
   avisarCambio();
   return res;
 }

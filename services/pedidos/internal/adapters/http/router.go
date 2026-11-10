@@ -3,6 +3,7 @@
 package http
 
 import (
+	"ghostkitchen/pedidos/internal/trazas"
 	"log/slog"
 
 	"github.com/gin-gonic/gin"
@@ -17,7 +18,8 @@ func Rutas(log *slog.Logger, salud SaludController, pedidos PedidosController, c
 	router := gin.New()
 
 	// Middlewares: recuperarse de un panic, correlation id, log JSON y plazo de 3 s.
-	router.Use(metricas.Middleware()) // G19: cuenta y mide cada solicitud, antes de Recovery
+	router.Use(metricas.Middleware()) // cuenta y mide cada solicitud, antes de Recovery
+	router.Use(trazas.Middleware())   // un span por solicitud (continúa la traza del gateway)
 	router.Use(gin.Recovery())
 	router.Use(Correlacion)
 	router.Use(Logs(log))

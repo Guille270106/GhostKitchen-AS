@@ -171,7 +171,7 @@ Con los seis servicios funcionando:
 | Cada servicio usa solo su base | Usuarios, Inventario y Pedidos tienen cada uno su base MySQL con un usuario que no puede entrar a las otras; Catálogo y Notificaciones, su base MongoDB | ✅ |
 | Búsqueda se mantiene al día por mensajes | Recibe los cambios de Catálogo e Inventario por RabbitMQ, con alerta si el atraso supera los 5 s ([ADR-006](ADR-006-busqueda.md)) | ✅ |
 | Nunca se vende de más | 200 clientes por el último plato: 1 ganador y 199 rechazos; en la prueba de carga, 20 aceptados con stock para 20 ([ADR-004](ADR-004-consistencia-y-concurrencia.md)) | ✅ |
-| Si se cae algo secundario, se sigue pidiendo | En la jornada de fallas, con RabbitMQ o el correo caídos los pedidos se siguieron confirmando ([POSTMORTEM](../../POSTMORTEM.md)) | ✅ |
+| Si se cae algo secundario, se sigue pidiendo | En la jornada de fallas, con RabbitMQ o el correo caídos los pedidos se siguieron confirmando ([POSTMORTEM](../POSTMORTEM.md)) | ✅ |
 
 Las **zonas** no se cargaron en Solr: la cocina más cercana se calcula sobre la ubicación de las cocinas, que es lo que pide el contrato.
 

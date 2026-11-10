@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"ghostkitchen/pedidos/internal/trazas"
 	"log"
 	"log/slog"
 	"net"
@@ -35,6 +36,13 @@ func valor(nombre, defecto string) string {
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	// Trazas (ADR-011): cada solicitud se ve en Jaeger, junto con las llamadas a otros servicios.
+	cerrarTrazas, err := trazas.Iniciar(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer cerrarTrazas(context.Background())
 
 	// 1. Infraestructura: la conexión a MySQL (pedidos_db, con su propio usuario).
 	cfg := mysql.NewConfig()

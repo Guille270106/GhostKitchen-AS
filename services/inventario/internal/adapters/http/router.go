@@ -1,6 +1,7 @@
 package http
 
 import (
+	"ghostkitchen/inventario/internal/trazas"
 	"context"
 	"encoding/json"
 	"errors"
@@ -28,7 +29,7 @@ func identidad(c *gin.Context) domain.Identidad {
 
 func Nuevo(svc *application.Ingredientes, ready func(context.Context) error, log *slog.Logger) *gin.Engine {
 	r := gin.New()
-	r.Use(metricas.Middleware(), gin.Recovery())
+	r.Use(metricas.Middleware(), trazas.Middleware(), gin.Recovery())
 	r.GET(metricas.Ruta, metricas.Handler()) // G19: Prometheus
 	r.Use(func(c *gin.Context) {
 		cid := c.GetHeader("X-Correlation-Id")

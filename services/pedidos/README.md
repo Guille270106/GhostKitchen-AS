@@ -24,14 +24,18 @@ Las piezas se arman a mano en `cmd/api/main.go` (`PedidosService{Repo: pedidosRe
 | Ruta en el gateway | Para qué |
 | --- | --- |
 | `GET /api/v1/carrito` | Ver el carrito (vacío si no tiene platos) |
-| `POST /api/v1/carrito/items` | Agregar un plato: `{"platoId": "p1", "cantidad": 2}` |
+| `POST /api/v1/carrito/items` | Agregar un plato: `{"platoId": "p1", "cantidad": 2}`, con un `Idempotency-Key` opcional por clic |
 | `PATCH /api/v1/carrito/items/{platoId}` | Dejar una cantidad final: `{"cantidad": 3}` |
 | `DELETE /api/v1/carrito/items/{platoId}` | Sacar un plato (si era el último, se libera la reserva) |
 | `DELETE /api/v1/carrito` | Vaciar y liberar la reserva |
 
-Cada cambio sigue los mismos pasos: (1) Catálogo dice si el plato existe, su precio y su cocina (500 ms, un reintento); (2) el dominio aplica las reglas (una sola cocina, de 1 a 50 unidades, el precio se copia al agregar); (3) Inventario deja la reserva igual al carrito (800 ms, un reintento con la **misma** `Idempotency-Key`); (4) se guarda el carrito con control de versión.
+Cada cambio sigue los mismos pasos: (1) Catálogo dice si el plato existe, su precio y su cocina, leídos de la base sin caché (`/internal/platos/{id}`, 500 ms, un reintento); (2) el dominio aplica las reglas (una sola cocina, de 1 a 50 unidades, el precio se copia al agregar); (3) Inventario deja la reserva igual al carrito (800 ms, un reintento con la **misma** `Idempotency-Key`); (4) se guarda el carrito con control de versión.
 
 La `Idempotency-Key` es carrito + número de cambio + una huella de los platos: reintentar el mismo cambio no reserva dos veces, y después de un intento fallido (por ejemplo, sin stock) el cambio siguiente usa otra clave.
+
+**Reenviar "agregar" no suma dos veces.** "Agregar" suma, así que si la misma solicitud llega dos veces (por ejemplo, porque se cortó la respuesta) se sumaría de más. El frontend manda un `Idempotency-Key` por clic; Pedidos lo anota en la tabla `carrito_operacion` **en la misma transacción** que guarda el carrito. Si la clave ya se aplicó, devuelve el carrito como está, sin reservar de nuevo. Dos clics distintos llevan claves distintas, así que se suman los dos.
+
+**Si se reserva pero no se guarda, la reserva se corrige.** Inventario cambia la reserva antes de que Pedidos guarde el carrito. Si guardar falla (se cayó la base, u otro cambio del mismo carrito se guardó antes), Pedidos lee el carrito que quedó guardado y deja la reserva igual: si el carrito no tiene esa reserva, la libera; si la tiene, la ajusta a sus platos. Si ni siquiera puede leer la base, la reserva vence sola a los 10 minutos.
 
 | Respuesta | Cuándo |
 | --- | --- |

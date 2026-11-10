@@ -13,7 +13,7 @@ const MENUS = {
   ],
   COCINA: [
     { to: "/cocina", icon: "receipt", label: "Pedidos", end: true },
-    { to: "/cocina/menu", icon: "utensils", label: "Ver menú" },
+    { to: "/cocina/menu", icon: "utensils", label: "Menú" },
     { to: "/cocina/platos", icon: "utensils", label: "Platos y recetas" },
     { to: "/cocina/inventario", icon: "box", label: "Inventario" },
   ],

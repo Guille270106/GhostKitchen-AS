@@ -14,7 +14,11 @@ type CarritosRepo interface {
 	Obtener(ctx context.Context, clienteID string) (domain.Carrito, error)
 	// Guardar escribe el carrito solo si sigue en versionAnterior. Si otro cambio se guardó
 	// antes, devuelve domain.ErrCarritoModificado.
+	// Si c.Operacion no está vacía, la anota en la misma transacción; si esa clave ya estaba,
+	// no guarda nada y devuelve domain.ErrOperacionRepetida.
 	Guardar(ctx context.Context, c domain.Carrito, versionAnterior int64) error
+	// OperacionAplicada dice si esa Idempotency-Key ya se aplicó al carrito del cliente.
+	OperacionAplicada(ctx context.Context, clienteID, clave string) (bool, error)
 	// MarcarVencido vacía el carrito que tiene esa reserva y anota que venció. Si el carrito ya no
 	// tiene esa reserva (ya se vació, se confirmó o es otro), no hace nada y devuelve false: por
 	// eso procesar el mismo aviso dos veces no cambia nada.

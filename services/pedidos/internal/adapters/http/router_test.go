@@ -457,3 +457,7 @@ func TestConfirmarConInventarioLentoPorHTTP(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
+
+func (r *CarritosMock) OperacionAplicada(context.Context, string, string) (bool, error) {
+	return false, nil
+}

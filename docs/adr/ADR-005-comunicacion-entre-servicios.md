@@ -202,7 +202,7 @@ Con todos los servicios implementados se validó lo que en la Entrega 2 no se po
 | Una cola por consumidor, ACK después del efecto, DLQ | Búsqueda, Inventario, Pedidos y Notificaciones leen su cola de a un mensaje, confirman después de guardar, mandan a la DLQ lo roto y reintentan lo pasajero | ✅ |
 | Un mensaje repetido no hace dos veces lo mismo | Notificaciones: el mismo evento dos veces manda **un solo mail** (`services/notificaciones/prueba-v15.ps1`, con RabbitMQ y Mailpit reales). Pedidos: el mismo `reserva.vencida` dos veces no cambia nada | ✅ |
 | `correlation_id` de punta a punta | Pedidos lo recibe del gateway, lo registra, lo pasa a Catálogo, Inventario y el proveedor en `X-Correlation-Id`, y lo copia en el sobre de cada mensaje | ✅ |
-| Con RabbitMQ caído no se pierde nada | Jornada de fallas: los pedidos siguieron funcionando, los avisos esperaron en el outbox y salieron solos al volver ([POSTMORTEM](../../POSTMORTEM.md)) | ✅ |
+| Con RabbitMQ caído no se pierde nada | Jornada de fallas: los pedidos siguieron funcionando, los avisos esperaron en el outbox y salieron solos al volver ([POSTMORTEM](../POSTMORTEM.md)) | ✅ |
 | Con Inventario caído, Pedidos responde rápido | Jornada de fallas: agregar al carrito → `503` en 1,6 s; confirmar → "Estamos confirmando tu pedido" en 2,1 s, y se completó solo al volver | ✅ |
 
 **Lo que aprendimos:** un mail que cae en la DLQ queda guardado pero no se reenvía solo; anotamos como mejora un comando para reprocesarla (ver el POSTMORTEM).

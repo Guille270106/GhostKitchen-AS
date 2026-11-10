@@ -110,3 +110,42 @@ func TestMySQLMarcarVencido(t *testing.T) {
 		t.Fatal("después de un cambio ya no tiene que figurar como vencido")
 	}
 }
+
+// La Idempotency-Key de "agregar" se guarda en la misma transacción que el carrito: si vuelve a
+// llegar, no se guarda nada y el carrito queda como estaba.
+func TestMySQLLaMismaClaveNoSeAplicaDosVeces(t *testing.T) {
+	db := conectar(t)
+	repo := adapter.CarritosMySQL{DB: db}
+	ctx := context.Background()
+	cliente := "u-" + uuid.NewString()[:8]
+	t.Cleanup(func() {
+		db.Exec("DELETE FROM carrito_operacion WHERE cliente_id=?", cliente)
+		db.Exec("DELETE FROM carrito_item WHERE cliente_id=?", cliente)
+		db.Exec("DELETE FROM carrito WHERE cliente_id=?", cliente)
+	})
+
+	c, _ := repo.Obtener(ctx, cliente)
+	c.ID = uuid.NewString()
+	_ = c.Agregar(domain.PlatoCatalogo{ID: "p17", CocinaID: "cerro", RestauranteID: "r5", Nombre: "Burger", Precio: 12000, Activo: true}, 1)
+	c.Version, c.Operacion = 1, "clic-1"
+	if err := repo.Guardar(ctx, c, 0); err != nil {
+		t.Fatal(err)
+	}
+	if aplicada, err := repo.OperacionAplicada(ctx, cliente, "clic-1"); err != nil || !aplicada {
+		t.Fatal("la clave no quedó anotada:", aplicada, err)
+	}
+
+	// El reenvío llega con el carrito ya sumado otra vez: no se tiene que guardar.
+	c.Items[0].Cantidad = 2
+	c.Version = 2
+	if err := repo.Guardar(ctx, c, 1); !errors.Is(err, domain.ErrOperacionRepetida) {
+		t.Fatal("tenía que avisar que la clave ya se aplicó:", err)
+	}
+	leido, _ := repo.Obtener(ctx, cliente)
+	if leido.Version != 1 || leido.Items[0].Cantidad != 1 {
+		t.Fatal("el reenvío cambió el carrito:", leido)
+	}
+	if aplicada, _ := repo.OperacionAplicada(ctx, cliente, "otra"); aplicada {
+		t.Fatal("una clave nueva no puede figurar como aplicada")
+	}
+}

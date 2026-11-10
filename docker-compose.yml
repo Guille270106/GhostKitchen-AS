@@ -7,7 +7,7 @@
 #   - mongo:         MongoDB, base catalogo_db con su propio usuario.
 #   - busqueda:      servicio Búsqueda (Go + Gin). Arma su índice desde Catálogo y atiende la capacidad publicada.
 #   - solr:          índice de Búsqueda (cores "cocinas" y "platos").
-#   - jaeger:        recibe las trazas (OpenTelemetry) del gateway, Búsqueda y Catálogo. UI en el puerto 16686.
+#   - jaeger:        recibe las trazas (OpenTelemetry) del gateway y de los servicios con API. UI en el puerto 16686.
 #   - contract-mock: mock de la capacidad publicada, servido desde el contrato OpenAPI (puerto 4010).
 #   - rabbitmq:      mensajería entre servicios. Exchange ghostkitchen.events, una cola por consumidor y su DLQ.
 #                    Panel en el puerto 15672 (usuario y contraseña de RABBITMQ_USER / RABBITMQ_PASSWORD).
@@ -49,6 +49,7 @@ services:
       DB_HOST: mysql
       DB_USER: usuarios
       DB_PASSWORD: ${USUARIOS_DB_PASSWORD:?Completá USUARIOS_DB_PASSWORD en .env}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       DB_NAME: usuarios_db
       # G7: clave para firmar los tokens (al menos 32 bytes) y cuánto duran.
       JWT_SECRET: ${JWT_SECRET:?Completá JWT_SECRET en .env (al menos 32 caracteres)}
@@ -81,6 +82,7 @@ services:
       DB_HOST: mysql
       DB_USER: inventario
       DB_PASSWORD: ${INVENTARIO_DB_PASSWORD:?Completá INVENTARIO_DB_PASSWORD en .env}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       DB_NAME: inventario_db
       RABBITMQ_USER: ${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}
@@ -109,6 +111,7 @@ services:
       DB_HOST: mysql
       DB_USER: pedidos
       DB_PASSWORD: ${PEDIDOS_DB_PASSWORD:?Completá PEDIDOS_DB_PASSWORD en .env}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       DB_NAME: pedidos_db
       PORT: "8085"
       CATALOGO_URL: http://catalogo:8082        # precio y cocina del plato
@@ -181,19 +184,17 @@ services:
         condition: service_healthy
     restart: "no"
 
-  # V14: el perfil activa el correo de pruebas sin cambiar el arranque habitual.
+  # Servidor de correo de prueba: guarda los mails en vez de mandarlos (http://localhost:8025).
   mailpit:
-    profiles: ["notificaciones"]
     image: axllent/mailpit@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
     ports:
       - "127.0.0.1:8025:8025"
 
   notificaciones-mongo:
-    profiles: ["notificaciones"]
     image: mongo:7
     environment:
       MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Completá MONGO_ROOT_PASSWORD en .env}
-      NOTIFICACIONES_DB_PASSWORD: ${NOTIFICACIONES_DB_PASSWORD:-}
+      NOTIFICACIONES_DB_PASSWORD: ${NOTIFICACIONES_DB_PASSWORD:?Completá NOTIFICACIONES_DB_PASSWORD en .env}
     entrypoint: ["sh", "-ec"]
     command:
       - |
@@ -213,13 +214,19 @@ services:
         condition: service_healthy
 
   notificaciones:
-    profiles: ["notificaciones"]
     build: ./services/notificaciones
     environment:
-      NOTIFICACIONES_DB_PASSWORD: ${NOTIFICACIONES_DB_PASSWORD:-}
+      NOTIFICACIONES_DB_PASSWORD: ${NOTIFICACIONES_DB_PASSWORD:?Completá NOTIFICACIONES_DB_PASSWORD en .env}
       RABBITMQ_USER: ${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}
       SMTP_ADDR: mailpit:1025
+    expose:
+      - "8086"            # /health, /ready y /metrics, solo dentro de la red de Docker
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8086/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
     depends_on:
       notificaciones-mongo:
         condition: service_completed_successfully

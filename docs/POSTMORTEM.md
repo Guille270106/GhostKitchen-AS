@@ -2,19 +2,19 @@
 
 - **Fecha:** 2026-11-10
 - **Responsable:** Lucía Rucci
-- **Qué se probó:** apagar a propósito, de a una, las dependencias que pueden fallar en el flujo de un pedido —Inventario, RabbitMQ, el correo y el grupo proveedor— y comprobar que el sistema se comporta como prometen el [ADR-010](docs/adr/ADR-010-resiliencia.md) (resiliencia), el [ADR-005](docs/adr/ADR-005-comunicacion-entre-servicios.md) (mensajes y outbox) y el [ADR-009](docs/adr/ADR-009-consumo-del-proveedor.md) (proveedor).
+- **Qué se probó:** apagar a propósito, de a una, las dependencias que pueden fallar en el flujo de un pedido —Inventario, RabbitMQ, el correo y el grupo proveedor— y comprobar que el sistema se comporta como prometen el [ADR-010](adr/ADR-010-resiliencia.md) (resiliencia), el [ADR-005](adr/ADR-005-comunicacion-entre-servicios.md) (mensajes y outbox) y el [ADR-009](adr/ADR-009-consumo-del-proveedor.md) (proveedor).
 - **Resultado:** **el comportamiento fue el esperado en las cuatro fallas.** Ningún pedido se perdió, ningún stock se inventó ni se descontó dos veces, ninguna respuesta tardó más de 3 s y nunca se disparó la alerta de errores 5xx. Quedan tres mejoras anotadas al final.
-- **Evidencia:** la salida completa, con los tiempos de cada paso, está en [`docs/jornada-de-fallas/salida.txt`](docs/jornada-de-fallas/salida.txt).
+- **Evidencia:** la salida completa, con los tiempos de cada paso, está en [`docs/jornada-de-fallas/salida.txt`](jornada-de-fallas/salida.txt).
 
 ## Cómo se hizo
 
-Es una prueba **controlada**: se rompe una pieza a la vez, en un entorno local igual al de desarrollo, se mira qué ve el usuario y se mide cuánto tarda en recuperarse cuando la pieza vuelve. No es una prueba de carga (eso es el [ADR-013](docs/adr/ADR-013-capacidad-y-costos.md)).
+Es una prueba **controlada**: se rompe una pieza a la vez, en un entorno local igual al de desarrollo, se mira qué ve el usuario y se mide cuánto tarda en recuperarse cuando la pieza vuelve. No es una prueba de carga (eso es el [ADR-013](adr/ADR-013-capacidad-y-costos.md)).
 
 | | |
 | --- | --- |
 | Entorno | Todo el sistema en Docker Compose, con Notificaciones (`docker compose --profile notificaciones up -d --build`), desde `develop` |
 | Cómo se rompe | `docker compose stop <servicio>` y, al terminar cada caso, `docker compose start <servicio>` |
-| Quién hace de usuario | El script [`scripts/fallas/jornada.mjs`](scripts/fallas/jornada.mjs): prepara una cocina con un plato (receta de 2 unidades y stock 20) y un cliente, y usa la API por el gateway, igual que el frontend |
+| Quién hace de usuario | El script [`scripts/fallas/jornada.mjs`](../scripts/fallas/jornada.mjs): prepara una cocina con un plato (receta de 2 unidades y stock 20) y un cliente, y usa la API por el gateway, igual que el frontend |
 | Qué se mira | El código y el tiempo de cada respuesta, el stock en Inventario, el outbox de Pedidos (MySQL), las colas de RabbitMQ, los mails en Mailpit y las alertas de Prometheus. En Grafana se ven en vivo los paneles "Servicios arriba", "Mensajes esperando en cada cola", "Mensajes en las DLQ" y "Alertas activas" |
 
 **Para repetirla** (por ejemplo, en la defensa): con todo levantado, `node scripts/fallas/jornada.mjs`. Tarda unos 9 minutos, deja todo prendido al terminar y sale con código 1 si algo no se comportó como se espera.
@@ -78,7 +78,7 @@ Es una prueba **controlada**: se rompe una pieza a la vez, en un entorno local i
 
 ## Al final de la jornada
 
-- **No se disparó `MuchosErrores5xx`.** Las fallas se tradujeron en respuestas claras (`202`, `503` con `Retry-After`), no en errores inesperados.
+- **No se disparó `MuchosErrores5xx`.** Hubo `503` esperados (agregar al carrito con Inventario caído), pero son pocos y cortos para la alerta, que pide más de 5 % de errores durante 5 minutos. Ninguna respuesta fue un error inesperado: las fallas se tradujeron en respuestas claras (`202`, `503` con `Retry-After`).
 - Todo siguió respondiendo y quedó prendido.
 
 ## Qué salió bien
@@ -101,5 +101,5 @@ Es una prueba **controlada**: se rompe una pieza a la vez, en un entorno local i
 ## Qué no se probó en esta jornada
 
 - **Usuarios caído:** por diseño (ADR-010) se rechaza el acceso (falla cerrada); no aporta otro comportamiento de recuperación.
-- **Solr, Catálogo y MongoDB caídos:** ya se probaron en la Entrega 2 (Búsqueda responde `503` y nunca una lista vacía) y en las pruebas de carga de Catálogo con una copia caída ([ADR-012](docs/adr/ADR-012-balanceo-de-carga.md)).
+- **Solr, Catálogo y MongoDB caídos:** ya se probaron en la Entrega 2 (Búsqueda responde `503` y nunca una lista vacía) y en las pruebas de carga de Catálogo con una copia caída ([ADR-012](adr/ADR-012-balanceo-de-carga.md)).
 - **Dependencias lentas** (no caídas): Inventario lento está cubierto por los tests de Pedidos (responde "Estamos confirmando" antes de los 3 s con un Inventario que tarda 1,5 s).

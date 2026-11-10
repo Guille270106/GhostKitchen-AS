@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"ghostkitchen/usuarios/internal/trazas"
 	"context"
 	"log/slog"
 	"net/http"
@@ -26,7 +27,7 @@ var correlacionValida = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
 // Nuevo arma el router: las rutas técnicas y las de cuentas.
 func Nuevo(svc *services.Usuarios, log *slog.Logger) *gin.Engine {
 	r := gin.New()
-	r.Use(metricas.Middleware(), gin.Recovery(), registrar(log))
+	r.Use(metricas.Middleware(), trazas.Middleware(), gin.Recovery(), registrar(log))
 	r.GET(metricas.Ruta, metricas.Handler()) // G19: Prometheus
 
 	// Vivo: el proceso responde. No mira la base, para que Docker no lo reinicie si MySQL cae.

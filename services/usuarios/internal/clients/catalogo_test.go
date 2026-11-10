@@ -23,7 +23,7 @@ func catalogoFalso(t *testing.T, h http.HandlerFunc) (*Catalogo, *atomic.Int32) 
 
 func TestCocinaExiste(t *testing.T) {
 	c, _ := catalogoFalso(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/cocinas/nueva-cordoba" || r.Header.Get("X-Correlation-Id") != "cid-1" {
+		if r.URL.Path != "/internal/cocinas/nueva-cordoba" || r.Header.Get("X-Correlation-Id") != "cid-1" {
 			t.Errorf("solicitud inesperada: %s %v", r.URL.Path, r.Header)
 		}
 		_, _ = w.Write([]byte(`{"id":"nueva-cordoba","localidad":"Nueva Córdoba","activa":true,"restaurantes":[]}`))

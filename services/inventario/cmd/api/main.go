@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"ghostkitchen/inventario/internal/trazas"
 	"log/slog"
 	"net"
 	"net/http"
@@ -27,6 +28,13 @@ func valor(nombre, defecto string) string {
 }
 
 func run(log *slog.Logger) error {
+	// Trazas (ADR-011): cada solicitud se ve en Jaeger, junto con las llamadas a otros servicios.
+	cerrarTrazas, err := trazas.Iniciar(context.Background())
+	if err != nil {
+		return err
+	}
+	defer cerrarTrazas(context.Background())
+
 	cfg := mysql.NewConfig()
 	cfg.Net = "tcp"
 	cfg.Addr = net.JoinHostPort(valor("DB_HOST", "mysql"), valor("DB_PORT", "3306"))

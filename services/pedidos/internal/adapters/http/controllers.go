@@ -146,7 +146,8 @@ func (c CarritoController) Ver(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, carrito)
 }
 
-// Agregar suma un plato: {"platoId": "p17", "cantidad": 2}.
+// Agregar suma un plato: {"platoId": "p17", "cantidad": 2}. El header Idempotency-Key es
+// opcional: si llega dos veces la misma clave (un reenvío), el plato se suma una sola vez.
 func (c CarritoController) Agregar(ctx *gin.Context) {
 	var datos struct {
 		PlatoID  string `json:"platoId"`
@@ -156,7 +157,7 @@ func (c CarritoController) Agregar(ctx *gin.Context) {
 		fallo(ctx, http.StatusBadRequest, "DATOS_INVALIDOS", `Enviá {"platoId": "...", "cantidad": 1}`)
 		return
 	}
-	carrito, err := c.Service.AgregarPlato(ctx.Request.Context(), identidad(ctx), datos.PlatoID, datos.Cantidad)
+	carrito, err := c.Service.AgregarPlatoConClave(ctx.Request.Context(), identidad(ctx), datos.PlatoID, datos.Cantidad, ctx.GetHeader("Idempotency-Key"))
 	if err != nil {
 		responderError(ctx, err)
 		return

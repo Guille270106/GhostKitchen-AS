@@ -149,3 +149,40 @@ func TestSeedNoPisaCambios(t *testing.T) {
 		t.Fatal("volver a cargar los datos iniciales pisó un cambio")
 	}
 }
+
+// Las rutas internas de un plato y una cocina leen de la fuente de verdad, no de la caché: si la
+// caché tiene un dato viejo, Pedidos y Usuarios igual deciden con el dato real.
+func TestRutasInternasLeenDeLaFuenteYNoDeLaCache(t *testing.T) {
+	cacheVieja, real := memoria.Nuevo(), memoria.Nuevo()
+	for _, r := range []*memoria.Repositorio{cacheVieja, real} {
+		if _, _, err := seed.Cargar(context.Background(), r, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// En la fuente se desactivó el restaurante de p1 y la cocina "cerro"; la "caché" no se enteró.
+	c, _, _ := real.ObtenerCocina(context.Background(), "nueva-cordoba")
+	c.Restaurantes[0].Activo = false
+	real.Guardar(&c, nil)
+	cerro, _, _ := real.ObtenerCocina(context.Background(), "cerro")
+	cerro.Activa = false
+	real.Guardar(&cerro, nil)
+
+	log := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	h := router.Nuevo(log, handlers.Nuevo(services.Nuevo(cacheVieja), real.Ping).ConFuente(services.Nuevo(real)))
+
+	if w, _ := get(t, h, "/platos/p1"); w.Code != 200 {
+		t.Fatalf("la ruta pública lee de la caché (vieja): %d", w.Code)
+	}
+	if w, _ := get(t, h, "/internal/platos/p1"); w.Code != 404 {
+		t.Fatalf("la ruta interna tenía que ver el restaurante desactivado: %d", w.Code)
+	}
+	if w, m := get(t, h, "/internal/platos/p5"); w.Code != 200 || m["id"] != "p5" {
+		t.Fatalf("un plato activo por la ruta interna: %d %v", w.Code, m)
+	}
+	if w, _ := get(t, h, "/internal/cocinas/cerro"); w.Code != 404 {
+		t.Fatalf("la cocina desactivada por la ruta interna: %d", w.Code)
+	}
+	if w, _ := get(t, h, "/internal/cocinas/nueva-cordoba"); w.Code != 200 {
+		t.Fatalf("una cocina activa por la ruta interna: %d", w.Code)
+	}
+}

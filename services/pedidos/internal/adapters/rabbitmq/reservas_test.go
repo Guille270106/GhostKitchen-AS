@@ -55,3 +55,7 @@ func TestSiFallaLaBaseElMensajeSeReintenta(t *testing.T) {
 		t.Fatal("tiene que ser un error para reintentar:", err)
 	}
 }
+
+func (r *CarritosMock) OperacionAplicada(context.Context, string, string) (bool, error) {
+	return false, nil
+}

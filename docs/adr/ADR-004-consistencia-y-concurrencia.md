@@ -122,7 +122,7 @@ Se observan antigüedad del outbox, confirmaciones y compensaciones pendientes, 
 
 ## Cómo lo validamos
 
-Con tests contra MySQL real y RabbitMQ (en Docker), la prueba de carga ([ADR-013](ADR-013-capacidad-y-costos.md)) y la jornada de fallas del 2026-11-10 ([POSTMORTEM](../../POSTMORTEM.md)):
+Con tests contra MySQL real y RabbitMQ (en Docker), la prueba de carga ([ADR-013](ADR-013-capacidad-y-costos.md)) y la jornada de fallas del 2026-11-10 ([POSTMORTEM](../POSTMORTEM.md)):
 
 | Escenario | Resultado exigido | Cómo se comprobó |
 | --- | --- | --- |
@@ -137,6 +137,8 @@ Con tests contra MySQL real y RabbitMQ (en Docker), la prueba de carga ([ADR-013
 | Aceptar y cancelar simultáneamente | Un cambio, historial y evento; conflicto del perdedor | ✅ `TestCancelarYAceptarALaVezGanaUnaSola` y `TestMySQLCambiosSimultaneosGanaUnoSolo` (Pedidos) |
 | Cancelar con Inventario caído y reiniciar Pedidos | Cancelación durable y devolución recuperada una vez | ✅ `TestMySQLCancelarAnotaLaDevolucion` y `TestInventarioCaidoLaDevolucionQuedaPendienteYSeReintentaConLaMismaClave` (Pedidos); en la jornada de fallas el stock volvió 3 s después de que volvió Inventario |
 | Caída de RabbitMQ y reentrega al consumidor | Outbox conservado y un efecto transaccional por evento | ✅ `TestSiRabbitMQNoConfirmaParaYReintenta` y `TestSiFallaLaBaseElMensajeSeReintenta` (Pedidos); en la jornada de fallas el outbox se vació 36 s después de que volvió RabbitMQ |
+| Reenviar el mismo "agregar al carrito" | Se suma una sola vez | ✅ `TestReenviarElMismoAgregarNoSumaDosVeces` (Pedidos) y `TestMySQLLaMismaClaveNoSeAplicaDosVeces` (MySQL real): la `Idempotency-Key` del clic se guarda en la misma transacción que el carrito |
+| Inventario reservó pero el carrito no se pudo guardar | La reserva no queda apartando ingredientes que ningún carrito tiene | ✅ `TestSiFallaGuardarElPrimerPlatoSeLiberaLaReserva` y `TestSiFallaGuardarUnCambioLaReservaVuelveALoGuardado` (Pedidos): se libera o se ajusta a lo guardado. Si la base no se puede ni leer, la reserva vence a los 10 minutos |
 
 ### Detalle: 200 clientes por el último plato (2026-11-06)
 
