@@ -15,14 +15,14 @@ El enunciado pide balancear la carga de al menos un servicio y mostrar qué pasa
 ### Qué servicio: Catálogo, con 2 copias
 
 - Es el que **más lecturas** recibe: menú, cocinas y detalle de platos, y además Búsqueda lo usa para reconstruir el índice.
-- **No guarda estado propio:** las dos copias leen la misma MongoDB y la misma Memcached ([ADR-007](ADR-007-cache.md)). Da igual cuál conteste, así que no hacen falta sesiones pegadas a una copia (Clase 6, 2.4).
+- **No guarda estado propio:** las dos copias leen la misma MongoDB y la misma Memcached ([ADR-007](ADR-007-cache.md)). Da igual cuál conteste, así que no hacen falta sesiones pegadas a una copia.
 - Que las dos copias arranquen a la vez no es un problema: la carga inicial de datos inserta sin pisar e ignora los duplicados.
 
 No balanceamos Pedidos ni Inventario todavía: tienen procesos de fondo (vencer reservas, publicar el outbox) que con dos copias hay que coordinar. Con Catálogo mostramos el patrón en el caso más simple y más útil.
 
 ### Cómo se reparte: round-robin
 
-NGINX manda las solicitudes por turnos (`upstream catalogo` con dos `server`). Elegimos round-robin porque las dos copias son iguales y las solicitudes cuestan parecido (lecturas cortas). *Least connections* rinde más cuando las solicitudes tienen costos muy distintos, que no es nuestro caso (Clase 6). Lo revisamos si la prueba de carga muestra lo contrario.
+NGINX manda las solicitudes por turnos (`upstream catalogo` con dos `server`). Elegimos round-robin porque las dos copias son iguales y las solicitudes cuestan parecido (lecturas cortas). *Least connections* rinde más cuando las solicitudes tienen costos muy distintos, que no es nuestro caso. Lo revisamos si la prueba de carga muestra lo contrario.
 
 ### Cómo se detecta una copia caída
 
@@ -40,7 +40,7 @@ proxy_next_upstream_tries 2;
 proxy_next_upstream_timeout 3s;
 ```
 
-- Si una copia falla **3 veces en 10 s**, NGINX deja de mandarle tráfico durante 10 s y después vuelve a probar. Exigir varias fallas evita sacar y meter una copia por una demora pasajera (*flapping*, Clase 6).
+- Si una copia falla **3 veces en 10 s**, NGINX deja de mandarle tráfico durante 10 s y después vuelve a probar. Exigir varias fallas evita sacar y meter una copia por una demora pasajera (*flapping*).
 - Si una solicitud de **lectura** falla por conexión o timeout, NGINX la manda **a la otra copia**, dentro del mismo plazo de 3 s. NGINX no reenvía solicitudes que cambian datos (POST, PATCH) salvo que se lo indiquemos, y no lo vamos a hacer: repetir una escritura puede duplicarla.
 - Además, cada copia tiene `/ready` (MongoDB responde), que usa Docker y que vamos a mostrar en el tablero ([ADR-011](ADR-011-observabilidad.md)).
 
@@ -80,13 +80,10 @@ proxy_next_upstream_timeout 3s;
 - Catálogo sigue atendiendo si se cae una copia, sin que el usuario lo note.
 - Con chequeo pasivo, las primeras solicitudes a una copia caída fallan antes de que NGINX la saque; las de lectura se reintentan en la otra.
 - La caché compartida es necesaria para que las dos copias muestren lo mismo.
-- El gateway sigue siendo **una sola instancia**: si se cae, se cae todo. Lo aceptamos para el trabajo (Clase 6).
+- El gateway sigue siendo **una sola instancia**: si se cae, se cae todo. Lo aceptamos para el trabajo.
 
 ## Cómo lo vamos a validar
 
 - **Prueba de carga** ([ADR-013](ADR-013-capacidad-y-costos.md)): menú de una cocina con 1 y con 2 copias; comparar p95 y solicitudes por segundo.
 - **Caída de una copia:** durante la carga, `docker compose stop catalogo-1`; esperar 0 errores visibles (o muy pocos, en los primeros segundos) y que todo el tráfico pase a `catalogo-2`. Volver a levantarla y ver que NGINX la suma de nuevo.
 
-## Referencias
-
-- Clase 6: balanceo de carga, round-robin y least connections, chequeos de salud, flapping, servicios sin estado y sesiones, el gateway como punto único.

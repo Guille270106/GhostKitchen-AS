@@ -13,7 +13,7 @@ import (
 
 // tipoTexto es el tipo de texto para buscar: separa palabras, pasa a minúsculas, quita
 // acentos y reduce cada palabra a su raíz en español, así "CAFE" encuentra "Café" y
-// "hamburguesa" encuentra "Hamburguesas" (Clase 5: análisis del texto). Se guarda el texto
+// "hamburguesa" encuentra "Hamburguesas" (análisis del texto). Se guarda el texto
 // original para mostrarlo. Los mismos filtros se aplican al indexar y al buscar, por eso
 // los dos lados coinciden. Con preserveOriginal=false solo se indexa la forma sin acento.
 //
@@ -51,7 +51,7 @@ func soloIndexado(c map[string]any) { c["stored"] = false }
 
 // Campos de cada core. El campo "id" ya viene en el esquema por defecto de Solr.
 //
-// Solo se guardan los campos que se buscan, filtran o muestran (Clase 5). "string" es para
+// Solo se guardan los campos que se buscan, filtran o muestran. "string" es para
 // filtros exactos (fq), "text_gk" para buscar por palabras y "location" para geodist().
 // Los restaurantes de una cocina se guardan como texto JSON: solo se muestran, y así no hace
 // falta modelar documentos anidados en Solr. "categoria" es string para filtrar exacto y se

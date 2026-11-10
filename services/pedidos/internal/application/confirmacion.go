@@ -21,8 +21,9 @@ type ResultadoConfirmacion struct {
 //
 //  1. Anota que la confirmación empezó (con una copia del carrito).
 //  2. Le pide a Inventario que descuente lo reservado.
-//  3. (Proveedor: cuando la cátedra lo asigne, L15.)
-//  4. Crea el pedido en RECIBIDO y vacía el carrito, en una sola transacción.
+//  3. Crea el pedido en RECIBIDO y vacía el carrito, en una sola transacción.
+//
+// La factura del proveedor no es un paso de la saga: se pide en segundo plano después (ADR-009).
 //
 // Cada paso queda guardado. Si no se sabe cómo terminó un paso (Inventario no contestó), NO se
 // dice que falló: se responde "Estamos confirmando tu pedido" y un proceso en segundo plano
@@ -156,7 +157,7 @@ func (s ConfirmacionService) avanzar(ctx context.Context, conf domain.Confirmaci
 }
 
 // descontar le pide a Inventario que descuente, reintentando con espera creciente y azar
-// (backoff con jitter, Clase 7) mientras Inventario no conteste. Usa siempre la MISMA clave:
+// (backoff con jitter) mientras Inventario no conteste. Usa siempre la MISMA clave:
 // si un intento anterior sí llegó, Inventario no descuenta dos veces.
 func (s ConfirmacionService) descontar(ctx context.Context, conf domain.Confirmacion) error {
 	// Dejamos 1 s de los 3 s de la solicitud para guardar el pedido después.

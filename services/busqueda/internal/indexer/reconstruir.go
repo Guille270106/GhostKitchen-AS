@@ -8,7 +8,7 @@
 //
 // Es la segunda entrada del servicio, al lado de los handlers HTTP (ADR-002): no atiende a
 // usuarios, sino que copia en Solr datos que son de otros servicios. El índice es una copia
-// que se puede tirar y volver a armar en cualquier momento (ADR-003, Clase 5).
+// que se puede tirar y volver a armar en cualquier momento (ADR-003).
 package indexer
 
 import (

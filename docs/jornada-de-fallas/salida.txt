@@ -1,0 +1,58 @@
+
+== Preparación ==
+[   7 s] todo prendido
+[  11 s] listo: plato con receta (2 unidades por plato) y stock 20
+
+== 1. Inventario caído ==
+[  11 s] OK    con Inventario arriba, el cliente arma el carrito (reserva) en 94 ms
+[  13 s] docker compose stop inventario
+[  15 s] OK    agregar otro plato: 503 SERVICIO_NO_DISPONIBLE en 1625 ms (no se inventa una reserva)
+[  17 s] OK    confirmar: 202 "Estamos confirmando tu pedido" en 2102 ms
+[  17 s] Inventario sigue apagado hasta que Prometheus dispare la alerta...
+[ 104 s] OK    alerta ServicioCaido(inventario) disparada en Prometheus y Grafana 91 s después de la caída
+[ 104 s] OK    mientras tanto la confirmación sigue EN_CURSO (no se dice que falló)
+[ 106 s] docker compose start inventario
+[ 119 s] OK    al volver Inventario, la confirmación se completa sola en 13 s (pedido 96a47f7b)
+[ 119 s] OK    Inventario descontó lo reservado: stock 20 -> 18
+[ 121 s] docker compose stop inventario
+[ 121 s] OK    cancelar con Inventario caído: 200 CANCELADO en 27 ms
+[ 128 s] OK    la devolución queda anotada: PENDIENTE 1 (estado, intentos)
+[ 131 s] docker compose start inventario
+[ 134 s] OK    al volver, los ingredientes vuelven al stock (20) en 3 s
+
+== 2. RabbitMQ caído ==
+[ 137 s] docker compose stop rabbitmq
+[ 138 s] OK    confirmar sin RabbitMQ: 201 RECIBIDO en 107 ms
+[ 138 s] OK    la cocina lo acepta sin RabbitMQ: 200 ACEPTADO en 31 ms
+[ 142 s] OK    los avisos esperan en el outbox de Pedidos: 2 sin publicar
+[ 142 s] OK    todavía no llegó ningún mail de ese pedido
+[ 142 s] RabbitMQ sigue apagado hasta que Prometheus dispare la alerta...
+[ 224 s] OK    alerta ServicioCaido(rabbitmq) disparada 82 s después de los primeros pedidos sin RabbitMQ
+[ 226 s] docker compose start rabbitmq
+[ 261 s] OK    al volver RabbitMQ, el outbox se vacía en 36 s
+[ 264 s] OK    y los 2 mails del pedido (RECIBIDO y ACEPTADO) llegan 3 s después
+
+== 3. Correo caído (Mailpit) ==
+[ 266 s] docker compose stop mailpit
+[ 266 s] OK    con el correo caído, la cocina avanza el pedido: 200 EN_PREPARACION en 70 ms
+[ 288 s] docker compose start mailpit
+[ 312 s] OK    corte de 20 s: el mail de EN_PREPARACION llega 24 s después de volver el correo (reintento)
+[ 314 s] docker compose stop mailpit
+[ 314 s] OK    la cocina lo marca LISTO con el correo caído: 200 LISTO
+[ 314 s] el correo sigue apagado hasta que el aviso llegue a la DLQ (unos 2 min 40 s)...
+[ 492 s] OK    agotados los reintentos, el aviso pasa a notificaciones.mailer.dlq a los 178 s (no se pierde: queda para revisar)
+[ 493 s] docker compose start mailpit
+
+== 4. Proveedor caído (Grupo 4, factura) ==
+[ 495 s] docker compose stop comprobantes-mock
+[ 495 s] OK    confirmar con el proveedor caído: 201 RECIBIDO en 101 ms (no lo espera)
+[ 510 s] OK    la factura queda PENDIENTE
+[ 512 s] docker compose start comprobantes-mock
+[ 519 s] OK    al volver el proveedor, la factura sale sola en 7 s: B-0001-00000042
+
+== Al final ==
+[ 519 s] OK    sin la alerta de muchos errores 5xx (alertas ahora: MensajesEnDLQ(notificaciones.mailer.dlq):pending)
+[ 519 s] OK    todo sigue respondiendo
+
+JORNADA COMPLETA: el sistema se comportó como dicen los ADR (duró 9 min)
+salida=0

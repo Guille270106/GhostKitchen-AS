@@ -1,5 +1,5 @@
 // Package services tiene las reglas de Usuarios. Los handlers lo llaman y él usa el
-// repositorio; no sabe nada de HTTP ni de MySQL (Clase 8: handler, servicio, repositorio).
+// repositorio; no sabe nada de HTTP ni de MySQL (handler, servicio, repositorio).
 package services
 
 import (

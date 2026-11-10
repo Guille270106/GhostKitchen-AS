@@ -8,7 +8,7 @@
 
 ## Contexto
 
-Los seis servicios no tienen la misma cantidad de reglas. Algunos casi solo guardan y leen datos (Usuarios, Catálogo); otros tienen reglas que no se pueden romper y varias formas de entrar (Inventario, Pedidos). La Clase 8 muestra que el estilo interno tiene que responder a eso: más estructura donde el dominio la justifica y menos donde solo agrega pasos.
+Los seis servicios no tienen la misma cantidad de reglas. Algunos casi solo guardan y leen datos (Usuarios, Catálogo); otros tienen reglas que no se pueden romper y varias formas de entrar (Inventario, Pedidos). Por eso no usamos el mismo estilo en todos: más estructura donde hay reglas que cuidar y menos donde solo agregaría pasos.
 
 Además, el enunciado pide tests unitarios de las reglas y tests de integración contra una dependencia real. Para poder hacer los dos, las reglas no pueden depender directamente de MongoDB, Solr o HTTP.
 
@@ -73,7 +73,3 @@ El núcleo (dominio y casos de uso) define **puertos** (interfaces) y no conoce 
 - **Entrega 2 (hecho):** Búsqueda y Catálogo siguen la estructura de capas. Sus tests cubren reglas y handlers sin dependencias reales; la reconstrucción del índice se probó contra un Catálogo simulado.
 - **Entrega final:** Inventario y Pedidos con puertos y adaptadores; tests del agregado `Pedido` (transiciones válidas e inválidas) y de la reserva todo o nada contra MySQL real.
 
-## Referencias
-
-- Clase 8: arquitectura en capas, hexagonal (puertos y adaptadores), DDD y cuándo conviene cada una.
-- Clase 3: la caché como capa que envuelve el acceso a datos.

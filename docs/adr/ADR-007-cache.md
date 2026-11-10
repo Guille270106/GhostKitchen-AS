@@ -10,7 +10,7 @@
 
 Catálogo es el servicio con más lecturas: cada vez que alguien elige una cocina o mira un menú, se consultan las mismas cocinas y los mismos platos, y cambian poco (solo cuando el admin o la cocina los editan). Va a tener **2 copias** detrás de NGINX ([ADR-012](ADR-012-balanceo-de-carga.md)), así que la caché tiene que ser la misma para las dos.
 
-El enunciado pide para la presentación final una caché integrada en un flujo de lectura relevante, **con medición antes y después**. Seguimos las siete preguntas de la Clase 3 (sección 9).
+El enunciado pide para la presentación final una caché integrada en un flujo de lectura relevante, **con medición antes y después**. Para decidir respondimos siete preguntas: qué se guarda, cuánto dura, cómo se invalida, qué pasa si falla, cómo arranca en frío, cómo evitamos que muchos vayan a la base a la vez y cómo medimos si sirve.
 
 ## Decisión
 
@@ -39,7 +39,7 @@ Las lecturas de Catálogo sobre MongoDB (`catalogo_db`), que es la fuente de ver
 ### 4. Cuánto dura y cómo se invalida
 
 - **TTL de 60 s**, con un margen al azar de ±10 % para que no venzan todas las claves juntas.
-- **Invalidación al escribir**, combinada con el TTL como red de seguridad (Clase 3, sección 7). Usamos un **número de generación**: cada cambio en una cocina, un restaurante o un plato hace `incr` sobre `catalogo:v1:gen`. Las claves llevan la generación en el nombre, así que después de un cambio nadie vuelve a leer las viejas, y vencen solas por TTL.
+- **Invalidación al escribir**, combinada con el TTL como red de seguridad. Usamos un **número de generación**: cada cambio en una cocina, un restaurante o un plato hace `incr` sobre `catalogo:v1:gen`. Las claves llevan la generación en el nombre, así que después de un cambio nadie vuelve a leer las viejas, y vencen solas por TTL.
 - **Por qué generación y no borrar la clave:** si una lectura empezó antes del cambio y escribe en la caché después, con "borrar" volvería a dejar el dato viejo. Con generación, esa lectura escribe en una clave que ya nadie consulta. Es la forma de evitar que una lectura concurrente reinserte un dato viejo, que había quedado pendiente en el README de Catálogo.
 - **Atraso máximo aceptado:** 0 s después de una escritura confirmada por el mismo sistema; hasta 60 s si alguien cambia MongoDB por fuera de Catálogo (por ejemplo, a mano en una prueba).
 
@@ -47,7 +47,7 @@ Las lecturas de Catálogo sobre MongoDB (`catalogo_db`), que es la fuente de ver
 
 - **Miss:** se lee de MongoDB y se guarda.
 - **Pico al vencer una clave popular (stampede):** el margen al azar dispersa los vencimientos y, dentro de cada copia, una sola solicitud reconstruye cada clave mientras las demás esperan su resultado (`singleflight`). No coordinamos entre las 2 copias: en el peor caso, dos lecturas a MongoDB por clave.
-- **Memcached caído o lento:** timeout de 50 ms; si falla, se lee de MongoDB, se registra en el log y se cuenta en las métricas. El usuario no ve nada, solo respuestas un poco más lentas. Con 4 cocinas y 64 platos MongoDB aguanta esa carga; si no la aguantara, preferiríamos degradar antes que tirar la base (Clase 3, sección 8.3).
+- **Memcached caído o lento:** timeout de 50 ms; si falla, se lee de MongoDB, se registra en el log y se cuenta en las métricas. El usuario no ve nada, solo respuestas un poco más lentas. Con 4 cocinas y 64 platos MongoDB aguanta esa carga; si no la aguantara, preferiríamos degradar antes que tirar la base.
 - **Arranque en frío:** no precargamos; las primeras lecturas llenan la caché.
 
 ### 6. Cómo la prendemos, apagamos y medimos
@@ -94,6 +94,3 @@ Las lecturas de Catálogo sobre MongoDB (`catalogo_db`), que es la fuente de ver
 - **Tests:** el decorator devuelve lo mismo que el repositorio; después de una escritura no se sirve el dato viejo (incluido el caso de la lectura concurrente); con Memcached caído se lee de MongoDB.
 - **Prueba de carga:** menú de una cocina con y sin caché, con 1 y 2 copias de Catálogo. Los resultados van a [ADR-013](ADR-013-capacidad-y-costos.md).
 
-## Referencias
-
-- Clase 3: fuente de verdad y frescura, caché local vs. distribuida, cache-aside, TTL e invalidación explícita, claves con versión, stampede, arranque en frío, caída de la caché y métricas para decidir.

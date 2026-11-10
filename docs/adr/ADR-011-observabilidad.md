@@ -8,9 +8,9 @@
 
 ## Contexto
 
-Una solicitud a la API publicada pasa por el gateway, Búsqueda y Solr; una reconstrucción del índice, por Búsqueda, Catálogo y MongoDB. Cuando algo falla o tarda, el error puede estar en cualquiera de esas piezas. La Clase 1 lo plantea como el costo de los microservicios: hace falta **trazabilidad distribuida**, propagando un identificador por todos los servicios, y una observabilidad centralizada.
+Una solicitud a la API publicada pasa por el gateway, Búsqueda y Solr; una reconstrucción del índice, por Búsqueda, Catálogo y MongoDB. Cuando algo falla o tarda, el error puede estar en cualquiera de esas piezas. Ese es el costo de usar microservicios: hace falta **trazabilidad distribuida**, propagando un identificador por todos los servicios, y una observabilidad centralizada.
 
-Nuestro objetivo de calidad ([SPEC](../../SPEC.md)) es **encontrar la causa de una falla en menos de 10 minutos**. Además, no podemos guardar datos sensibles: contraseñas, tokens, API keys, ni las coordenadas que mandan otros grupos (Clase 6: no registrar lo que no es necesario para la traza).
+Nuestro objetivo de calidad ([SPEC](../../SPEC.md)) es **encontrar la causa de una falla en menos de 10 minutos**. Además, no podemos guardar datos sensibles: contraseñas, tokens, API keys, ni las coordenadas que mandan otros grupos (no registrar lo que no es necesario para la traza).
 
 ## Decisión
 
@@ -144,7 +144,7 @@ Los umbrales son iniciales: los revisamos después de medir el sistema.
 | **Escribir los logs en archivos dentro del contenedor** | Quedan guardados | Se pierden con el contenedor y no se ven con `docker compose logs` | Salida estándar |
 | **Loki ya en la Entrega 2** | Logs centralizados con búsqueda | Una pieza más; `docker compose logs` alcanza para local | Se decide al desplegar en la nube |
 
-**[Adicional]:** OpenTelemetry y Jaeger no son herramientas de la materia. La Clase 1 pide trazabilidad distribuida propagando un identificador; OpenTelemetry es el estándar para hacerlo y Jaeger, la forma más simple de ver las trazas en local.
+**[Adicional]:** OpenTelemetry y Jaeger los agregamos nosotras. Necesitábamos trazabilidad distribuida propagando un identificador; OpenTelemetry es el estándar para hacerlo y Jaeger, la forma más simple de ver las trazas en local.
 
 ## Consecuencias
 
@@ -165,9 +165,3 @@ Los umbrales son iniciales: los revisamos después de medir el sistema.
 - **Entrega 2 (hecho):** tests que verifican que se continúa la traza recibida, que el log tiene `trace_id`, `span_id` y `correlation_id`, que `/health` no se traza, que los spans de Solr no tienen coordenadas y que la llamada a Catálogo propaga la traza. Probado contra un Jaeger real: una reconstrucción aparece como una sola traza con spans de Búsqueda y de Catálogo.
 - **Presentación final:** tablero de Grafana con los paneles de arriba, una alerta funcionando (DLQ o 5xx) y, en la jornada de fallas, encontrar la causa en menos de 10 minutos usando logs y trazas.
 
-## Referencias
-
-- Clase 1: observabilidad centralizada y trazabilidad distribuida.
-- Clase 4: identificador de correlación en los mensajes.
-- Clase 6: qué registrar y qué no en el borde.
-- Clase 7: señales para verificar la resiliencia.

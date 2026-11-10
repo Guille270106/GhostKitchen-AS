@@ -123,9 +123,3 @@ La guía del despliegue registra un costo aproximado de USD 0,053 por hora encen
 - **Entrega 2:** dejar listo el escenario 1 y correrlo contra la API publicada en local.
 - **Presentación final:** adjuntar una captura del tablero para la corrida que se quiera mostrar y completar el gasto facturado del despliegue cuando esté disponible.
 
-## Referencias
-
-- Clase 6: réplicas y balanceo para atender más tráfico.
-- Clase 3: medir antes y después de una caché.
-- Clase 7: verificar la resiliencia bajo carga.
-- Clase 2: bloqueos y concurrencia en la base relacional.

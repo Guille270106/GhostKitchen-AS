@@ -106,16 +106,6 @@ func (r *Repositorio) PaginaPlatos(_ context.Context, page, pageSize int) ([]dom
 	return todos[desde:hasta], len(todos), nil
 }
 
-// CantidadCocinas cuenta las cocinas guardadas.
-func (r *Repositorio) CantidadCocinas(context.Context) (int, error) {
-	if r.Falla != nil {
-		return 0, r.Falla
-	}
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return len(r.cocinas), nil
-}
-
 // InsertarIniciales agrega solo lo que no existe, igual que la versión de MongoDB.
 func (r *Repositorio) InsertarIniciales(_ context.Context, cocinas []domain.Cocina, platos []domain.Plato) error {
 	if r.Falla != nil {

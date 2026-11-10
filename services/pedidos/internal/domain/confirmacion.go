@@ -25,7 +25,6 @@ const (
 	// PasoDescontar: pedirle a Inventario que descuente lo reservado.
 	PasoDescontar PasoConfirmacion = "DESCONTAR"
 	// PasoCrearPedido: Inventario ya descontó; falta crear el pedido en RECIBIDO.
-	// (Cuando la cátedra asigne el grupo proveedor, su paso va entre estos dos: L15.)
 	PasoCrearPedido PasoConfirmacion = "CREAR_PEDIDO"
 )
 

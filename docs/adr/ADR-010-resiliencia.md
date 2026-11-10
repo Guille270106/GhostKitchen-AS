@@ -8,7 +8,7 @@
 
 ## Contexto
 
-En un sistema distribuido siempre hay algo que falla o se pone lento: una base, Solr, otro servicio, el proveedor. La Clase 7 muestra que **la lentitud puede ser peor que un error**: si nadie corta la espera, los pedidos se acumulan, se agotan las conexiones y la falla de una pieza se propaga a todas (falla en cascada).
+En un sistema distribuido siempre hay algo que falla o se pone lento: una base, Solr, otro servicio, el proveedor. **La lentitud puede ser peor que un error**: si nadie corta la espera, los pedidos se acumulan, se agotan las conexiones y la falla de una pieza se propaga a todas (falla en cascada).
 
 Tenemos dos objetivos que no se pueden negociar ([SPEC](../../SPEC.md), atributos de calidad):
 
@@ -33,7 +33,7 @@ Combinamos cinco mecanismos y una regla de degradación. Lo marcado ✅ está im
 | Pedidos → Inventario | 800 ms por intento; el descuento al confirmar, como mucho 2 s con sus reintentos (deja 1 s para guardar el pedido) | ✅ |
 | Pedidos → proveedor (factura) | 5 s por intento, en segundo plano: fuera del plazo del usuario ([ADR-009](ADR-009-consumo-del-proveedor.md)) | ✅ |
 
-**Cancelar la espera no deshace el efecto** (Clase 7): si una llamada que cambia algo no contesta, el resultado es *desconocido* y se consulta antes de repetir o compensar.
+**Cancelar la espera no deshace el efecto**: si una llamada que cambia algo no contesta, el resultado es *desconocido* y se consulta antes de repetir o compensar.
 
 ### 2. Reintentos: solo si es seguro y útil
 
@@ -41,7 +41,7 @@ Combinamos cinco mecanismos y una regla de degradación. Lo marcado ✅ está im
 - **Reintenta uno solo**: el que llama a la dependencia. Ni el gateway ni el frontend reintentan, para no multiplicar los intentos.
 - Espera creciente con un poco de azar (*jitter*), dentro del plazo que queda.
 - Toda operación que cambia algo lleva **clave de idempotencia** ([ADR-005](ADR-005-comunicacion-entre-servicios.md)).
-- ✅ La reconstrucción del índice reintenta 3 veces (0,5 s, 1 s, 2 s), y desde la L22 no reintenta un `4xx` de Catálogo, que es definitivo. El arranque de Búsqueda y de Catálogo reintenta hasta que Solr, Catálogo y MongoDB responden (1, 2, 4, 8 y 10 s).
+- ✅ La reconstrucción del índice reintenta 3 veces (0,5 s, 1 s, 2 s), y no reintenta un `4xx` de Catálogo, que es definitivo. El arranque de Búsqueda y de Catálogo reintenta hasta que Solr, Catálogo y MongoDB responden (1, 2, 4, 8 y 10 s).
 - ✅ Pedidos: descontar en Inventario reintenta con `cenkalti/backoff` (100 ms, 200 ms, 400 ms… con ±50 % de azar, hasta 2 s) y siempre la misma `Idempotency-Key`. Reservar, ajustar y liberar reintentan una sola vez con la misma clave. Lo que queda pendiente (una confirmación, una devolución, un aviso, una factura) lo retoma un proceso en segundo plano.
 
 ### 3. Circuit breaker por operación
@@ -54,7 +54,7 @@ Si en una ventana de al menos 10 llamadas falla la mitad, el circuito se **abre*
 
 - ✅ Un cliente HTTP **por dependencia** en Pedidos (Catálogo, Inventario y el proveedor), cada uno con su propio tiempo máximo: si el proveedor se pone lento, no frena las llamadas a Inventario. Además la factura va en segundo plano, así que su lentitud nunca llega al usuario.
 - ✅ Una sola reconstrucción del índice a la vez: si ya hay una en curso, `POST /internal/reindexar` responde `409`.
-- ✅ El gateway limita la API publicada a 60 solicitudes por minuto por clave y 64 KiB de cuerpo. No es un bulkhead (Clase 7, 5.1), pero evita que un consumidor externo sature Búsqueda.
+- ✅ El gateway limita la API publicada a 60 solicitudes por minuto por clave y 64 KiB de cuerpo. No es un bulkhead, pero evita que un consumidor externo sature Búsqueda.
 
 ### 5. Degradar con honestidad
 
@@ -80,13 +80,13 @@ La tabla completa por dependencia está en la sección 10 de [ARCHITECTURE](../A
 
 ### Librerías
 
-Para Pedidos usamos `sony/gobreaker` (circuit breaker) y `cenkalti/backoff` (espera creciente con azar). Son **[Adicional]**: no las vimos en clase, pero la cátedra pidió usar librerías en lugar de programar estos mecanismos a mano, y las dos son chicas y muy usadas. En Búsqueda alcanza con el reintento simple de la reconstrucción, que es trabajo de fondo.
+Para Pedidos usamos `sony/gobreaker` (circuit breaker) y `cenkalti/backoff` (espera creciente con azar). Son **[Adicional]**: preferimos usar librerías en lugar de programar estos mecanismos a mano, y las dos son chicas y muy usadas. En Búsqueda alcanza con el reintento simple de la reconstrucción, que es trabajo de fondo.
 
 ## Alternativas que pensamos
 
 | Alternativa | A favor | En contra | Qué decidimos |
 | --- | --- | --- | --- |
-| **Reintentar en todas las capas** (gateway, servicio, cliente) | "Más chances" | Multiplica los intentos y empeora una caída (Clase 7, 3.4) | Reintenta solo el que llama |
+| **Reintentar en todas las capas** (gateway, servicio, cliente) | "Más chances" | Multiplica los intentos y empeora una caída | Reintenta solo el que llama |
 | **Un circuit breaker por servicio** | Menos configuración | Una operación rota abriría el circuito de las que andan | Uno por operación |
 | **Devolver lista vacía si Solr falla** | El frontend no se rompe | Miente: parece que no hay platos | `503` |
 | **Dejar pasar si Usuarios no responde** (falla abierta) | No se corta el servicio | Cualquiera entraría sin login | Falla cerrada |
@@ -104,7 +104,3 @@ Para Pedidos usamos `sony/gobreaker` (circuit breaker) y `cenkalti/backoff` (esp
 - **Entrega final (hecho):** tests de Pedidos con Inventario y el proveedor caídos o lentos (reintentos, circuit breaker y respuesta en menos de 3 s), y la integración con MySQL real.
 - **Jornada de fallas (hecho, 2026-11-10):** con `scripts/fallas/jornada.mjs` apagamos Inventario, RabbitMQ, el correo y el proveedor. Con Inventario caído, agregar al carrito respondió `503` en 1,6 s y confirmar respondió "Estamos confirmando tu pedido" en 2,1 s; el pedido se completó solo 13 s después de que volvió. Con RabbitMQ caído los pedidos siguieron andando y el outbox se vació 36 s después de que volvió. El correo llegó tarde (corte corto) o terminó en la DLQ (corte largo), y la factura salió 7 s después de que volvió el proveedor. Ninguna caída produjo errores 5xx. El detalle está en el [POSTMORTEM](../../POSTMORTEM.md).
 
-## Referencias
-
-- Clase 7: fallas en cascada, plazos y cancelación, reintentos con backoff y jitter, idempotencia, circuit breaker, bulkhead, fallback y degradación, falla abierta y cerrada.
-- Clase 6: chequeos de salud.

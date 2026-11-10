@@ -14,7 +14,7 @@ Tenemos que resolver tres consultas que una base de las operaciones hace mal:
 - **encontrar la cocina más cercana** a un punto, con un límite de cobertura de 25 km (RN24);
 - **atender la capacidad publicada** para otro grupo sin cargar a Catálogo ni a Inventario con tráfico externo.
 
-Los datos no son de Búsqueda: los comerciales son de Catálogo y la disponibilidad es de Inventario ([ADR-001](ADR-001-limites-de-los-servicios.md)). La Clase 5 plantea que el índice es una **vista derivada** para recuperar y ordenar, que nunca es la fuente de verdad y que tiene que poder reconstruirse.
+Los datos no son de Búsqueda: los comerciales son de Catálogo y la disponibilidad es de Inventario ([ADR-001](ADR-001-limites-de-los-servicios.md)). Por eso el índice es una **copia derivada**, armada para buscar y ordenar: nunca es la fuente de verdad y se tiene que poder reconstruir desde cero.
 
 ## Decisión
 
@@ -59,7 +59,7 @@ Guardamos **solo lo necesario para buscar, filtrar y mostrar**. No indexamos rec
 | Disponibilidad | Hasta 5 s (RN21) | Es orientativa; Inventario controla al reservar |
 | Alta o baja de una cocina | Hasta 5 s | Una cocina desactivada no puede recibir pedidos aunque aparezca un momento: Catálogo y Pedidos lo validan |
 
-Si el atraso supera lo aceptado, lo tratamos como incidente aunque Solr siga respondiendo (Clase 5). Lo vamos a medir desde la Entrega final como "tiempo entre el cambio en Catálogo y su llegada a Solr" ([ADR-011](ADR-011-observabilidad.md)).
+Si el atraso supera lo aceptado, lo tratamos como incidente aunque Solr siga respondiendo. Lo vamos a medir desde la Entrega final como "tiempo entre el cambio en Catálogo y su llegada a Solr" ([ADR-011](ADR-011-observabilidad.md)).
 
 ### Si algo falla
 
@@ -71,10 +71,10 @@ Si el atraso supera lo aceptado, lo tratamos como incidente aunque Solr siga res
 | Alternativa | A favor | En contra | Qué decidimos |
 | --- | --- | --- | --- |
 | **Buscar directo en MongoDB** (índice de texto) | Un motor menos | Sin relevancia por campos, sin quitar acentos de forma configurable y sin distancia combinada con filtros; además la carga de búsqueda caería sobre la base que vende | La descartamos |
-| **Elasticsearch / OpenSearch** | Muy usados | Hacen lo mismo que necesitamos; Solr es el de la materia | Elegimos Solr |
+| **Elasticsearch / OpenSearch** | Muy usados | Hacen lo mismo que necesitamos; Solr ya lo conocíamos | Elegimos Solr |
 | **Calcular la cocina más cercana en Go** recorriendo todas | Sin motor geoespacial | Funciona con 4 cocinas, no con muchas; y no aprovecha el índice | Solo para la proximidad externa (dos puntos que no se guardan) |
 | **Que Búsqueda lea las bases de Catálogo e Inventario** | Siempre al día | Rompe "una base por servicio" ([ADR-001](ADR-001-limites-de-los-servicios.md)) | La descartamos: API para reconstruir y mensajes para cambios |
-| **Sinónimos y tolerancia a errores ya en la Entrega 2** | Mejor búsqueda | Mal configurados empeoran la precisión (Clase 5) y requieren pruebas con consultas reales | Los dejamos para el frontend, con pruebas |
+| **Sinónimos y tolerancia a errores ya en la Entrega 2** | Mejor búsqueda | Mal configurados empeoran la precisión y requieren pruebas con consultas reales | Los dejamos para el frontend, con pruebas |
 
 ## Consecuencias
 
@@ -87,7 +87,7 @@ Si el atraso supera lo aceptado, lo tratamos como incidente aunque Solr siga res
 **Lo que aceptamos**
 
 - Hasta que exista RabbitMQ, un cambio en Catálogo solo se ve después de reconstruir.
-- La reconstrucción reescribe sobre el mismo core. No creamos una versión nueva del índice para cambiarla de golpe, como sugiere la Clase 5 para cambios de esquema. Con 64 platos no hace falta; con miles habría que hacerlo.
+- La reconstrucción reescribe sobre el mismo core. No creamos una versión nueva del índice para cambiarla de golpe, que sería lo recomendable para cambios de esquema. Con 64 platos no hace falta; con miles habría que hacerlo.
 - La disponibilidad es provisional hasta que exista Inventario.
 - No hay sinónimos ni corrección de errores de tipeo todavía.
 
@@ -104,7 +104,3 @@ Si el atraso supera lo aceptado, lo tratamos como incidente aunque Solr siga res
 - **Entrega 2 (hecho):** tests del armado de consultas (texto, filtros, orden, páginas, escape), de la cocina más cercana y `SIN_COBERTURA`, de la reconstrucción contra un Catálogo simulado (activos, páginas, falla a mitad de camino) y del esquema idempotente. Las respuestas cumplen el OpenAPI 1.1.0.
 - **Pendiente:** test de integración contra un Solr real en Docker Compose (acentos, relevancia y `geodist()`); medir el atraso de indexación cuando existan los mensajes.
 
-## Referencias
-
-- Clase 5: el índice como vista derivada, analizadores (tokenización, minúsculas, acentos), filtros vs. relevancia, sinónimos con cuidado, consistencia eventual, *freshness* y reindexación.
-- Clase 2: una base por servicio; copias de datos por eventos.

@@ -27,9 +27,6 @@ type Repositorio interface {
 	ObtenerPlato(ctx context.Context, id string) (domain.Plato, bool, error)
 	// PaginaPlatos devuelve todos los platos (activos y no) de a páginas, ordenados por id.
 	PaginaPlatos(ctx context.Context, page, pageSize int) ([]domain.Plato, int, error)
-	// CantidadCocinas cuenta las cocinas guardadas. Hoy no la usa el código del servicio:
-	// la carga inicial ya no la necesita porque InsertarIniciales no pisa lo existente.
-	CantidadCocinas(ctx context.Context) (int, error)
 	// InsertarIniciales guarda cocinas y platos nuevos. No pisa documentos existentes.
 	InsertarIniciales(ctx context.Context, cocinas []domain.Cocina, platos []domain.Plato) error
 	// Ping verifica que la base responde.

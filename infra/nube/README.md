@@ -1,4 +1,4 @@
-# Despliegue en la nube (L19)
+# Despliegue en la nube
 
 La **capacidad publicada** (`/public/v1`, la API que usa el Grupo 5) corre en una máquina virtual de Azure, con HTTPS:
 

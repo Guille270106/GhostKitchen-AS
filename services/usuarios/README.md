@@ -23,7 +23,7 @@ La contraseña **nunca** se guarda tal cual ni se devuelve.
 
 ## Cómo se organiza por dentro: capas
 
-Es un servicio con pocas reglas, así que usamos las capas de siempre: el **handler** recibe el pedido HTTP, el **servicio** aplica las reglas y el **repositorio** habla con la base (Clase 8).
+Es un servicio con pocas reglas, así que usamos las capas de siempre: el **handler** recibe el pedido HTTP, el **servicio** aplica las reglas y el **repositorio** habla con la base.
 
 ```
 cmd/api/                       arranca el servicio (conexión a MySQL, servidor HTTP, apagado ordenado)

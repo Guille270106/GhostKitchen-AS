@@ -5,6 +5,7 @@ package clients
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -68,7 +69,7 @@ type PaginaPlatos struct {
 // y 3 reintentos con espera creciente (ADR-005), separado del plazo de 3 s del usuario.
 //
 // Es el único punto de la cadena Búsqueda → Catálogo → MongoDB que reintenta: "reintenta
-// uno solo, el que llama a la dependencia" (ADR-010, Clase 7). Si también reintentaran
+// uno solo, el que llama a la dependencia" (ADR-010). Si también reintentaran
 // Catálogo o el gateway, cada falla se multiplicaría en muchos intentos.
 type Catalogo struct {
 	lector
@@ -121,13 +122,18 @@ func (c *Catalogo) Platos(ctx context.Context, page, pageSize int) (PaginaPlatos
 	return r, err
 }
 
+// errDefinitivo marca una respuesta 4xx de la otra API: no se reintenta.
+var errDefinitivo = errors.New("respuesta definitiva, no se reintenta")
+
 // obtener hace un GET con reintentos. Repetirlo es seguro porque es una lectura: no cambia
 // nada en el otro servicio, así que no hace falta clave de idempotencia.
 func (c *lector) obtener(ctx context.Context, ruta string, destino any) error {
 	var ultimo error
 	for intento := 0; ; intento++ {
 		ultimo = c.unaVez(ctx, ruta, destino)
-		if ultimo == nil || intento >= len(c.reintento) {
+		// Un 4xx es una respuesta definitiva (la ruta no existe, el pedido está mal): repetirlo da
+		// lo mismo y solo suma carga. Se reintenta solo lo pasajero: sin respuesta, 5xx o 429.
+		if ultimo == nil || errors.Is(ultimo, errDefinitivo) || intento >= len(c.reintento) {
 			break
 		}
 		select {
@@ -162,6 +168,9 @@ func (c *lector) unaVez(ctx context.Context, ruta string, destino any) error {
 	if resp.StatusCode != http.StatusOK {
 		// Se vacía el cuerpo para que la conexión vuelva al pool y el reintento la reuse.
 		_, _ = io.Copy(io.Discard, resp.Body)
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
+			return fmt.Errorf("respondió %d: %w", resp.StatusCode, errDefinitivo)
+		}
 		return fmt.Errorf("respondió %d", resp.StatusCode)
 	}
 	return json.NewDecoder(resp.Body).Decode(destino)
