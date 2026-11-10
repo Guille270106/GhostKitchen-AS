@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"time"
@@ -51,46 +50,48 @@ func (s CarritoService) AgregarPlatoConClave(ctx context.Context, actor domain.A
 	if err := validarCliente(actor); err != nil {
 		return domain.Carrito{}, err
 	}
-	if clave != "" {
-		if !domain.ClaveValida(clave) {
-			return domain.Carrito{}, domain.ErrClaveInvalida
+	return s.cambiar(ctx, actor.UsuarioID, func(ctx context.Context) (domain.Carrito, error) {
+		if clave != "" {
+			if !domain.ClaveValida(clave) {
+				return domain.Carrito{}, domain.ErrClaveInvalida
+			}
+			aplicada, err := s.Repo.OperacionAplicada(ctx, actor.UsuarioID, clave)
+			if err != nil {
+				return domain.Carrito{}, err
+			}
+			if aplicada {
+				return s.Ver(ctx, actor)
+			}
 		}
-		aplicada, err := s.Repo.OperacionAplicada(ctx, actor.UsuarioID, clave)
+
+		// 1. Le preguntamos a Catálogo el plato: si existe, su precio y de qué cocina es.
+		plato, err := s.Catalogo.ObtenerPlato(ctx, platoID)
 		if err != nil {
 			return domain.Carrito{}, err
 		}
-		if aplicada {
+
+		// 2. Buscamos el carrito del cliente y le agregamos el plato (el dominio valida las reglas).
+		carrito, err := s.Repo.Obtener(ctx, actor.UsuarioID)
+		if err != nil {
+			return domain.Carrito{}, err
+		}
+		versionAnterior := carrito.Version
+		if carrito.ReservaID == "" {
+			carrito.ID = uuid.NewString()
+		}
+		if err := carrito.Agregar(plato, cantidad); err != nil {
+			return domain.Carrito{}, err
+		}
+		carrito.Operacion = clave
+
+		// 3. Reservamos en Inventario y guardamos.
+		resultado, err := s.reservarYGuardar(ctx, carrito, versionAnterior)
+		if errors.Is(err, domain.ErrOperacionRepetida) {
+			// La misma clave llegó dos veces a la vez y la otra ganó: ya está sumado una vez.
 			return s.Ver(ctx, actor)
 		}
-	}
-
-	// 1. Le preguntamos a Catálogo el plato: si existe, su precio y de qué cocina es.
-	plato, err := s.Catalogo.ObtenerPlato(ctx, platoID)
-	if err != nil {
-		return domain.Carrito{}, err
-	}
-
-	// 2. Buscamos el carrito del cliente y le agregamos el plato (el dominio valida las reglas).
-	carrito, err := s.Repo.Obtener(ctx, actor.UsuarioID)
-	if err != nil {
-		return domain.Carrito{}, err
-	}
-	versionAnterior := carrito.Version
-	if carrito.ID == "" {
-		carrito.ID = uuid.NewString()
-	}
-	if err := carrito.Agregar(plato, cantidad); err != nil {
-		return domain.Carrito{}, err
-	}
-	carrito.Operacion = clave
-
-	// 3. Reservamos en Inventario y guardamos.
-	resultado, err := s.reservarYGuardar(ctx, carrito, versionAnterior)
-	if errors.Is(err, domain.ErrOperacionRepetida) {
-		// La misma clave llegó dos veces a la vez y la otra ganó: ya está sumado una vez.
-		return s.Ver(ctx, actor)
-	}
-	return resultado, err
+		return resultado, err
+	})
 }
 
 // CambiarCantidad deja una cantidad final para un plato del carrito.
@@ -98,15 +99,17 @@ func (s CarritoService) CambiarCantidad(ctx context.Context, actor domain.Actor,
 	if err := validarCliente(actor); err != nil {
 		return domain.Carrito{}, err
 	}
-	carrito, err := s.Repo.Obtener(ctx, actor.UsuarioID)
-	if err != nil {
-		return domain.Carrito{}, err
-	}
-	versionAnterior := carrito.Version
-	if err := carrito.CambiarCantidad(platoID, cantidad); err != nil {
-		return domain.Carrito{}, err
-	}
-	return s.reservarYGuardar(ctx, carrito, versionAnterior)
+	return s.cambiar(ctx, actor.UsuarioID, func(ctx context.Context) (domain.Carrito, error) {
+		carrito, err := s.Repo.Obtener(ctx, actor.UsuarioID)
+		if err != nil {
+			return domain.Carrito{}, err
+		}
+		versionAnterior := carrito.Version
+		if err := carrito.CambiarCantidad(platoID, cantidad); err != nil {
+			return domain.Carrito{}, err
+		}
+		return s.reservarYGuardar(ctx, carrito, versionAnterior)
+	})
 }
 
 // QuitarPlato saca un plato. Si el carrito queda vacío, se libera toda la reserva.
@@ -114,18 +117,20 @@ func (s CarritoService) QuitarPlato(ctx context.Context, actor domain.Actor, pla
 	if err := validarCliente(actor); err != nil {
 		return domain.Carrito{}, err
 	}
-	carrito, err := s.Repo.Obtener(ctx, actor.UsuarioID)
-	if err != nil {
-		return domain.Carrito{}, err
-	}
-	versionAnterior := carrito.Version
-	if err := carrito.Quitar(platoID); err != nil {
-		return domain.Carrito{}, err
-	}
-	if carrito.Vacio() {
-		return s.vaciarYGuardar(ctx, carrito, versionAnterior)
-	}
-	return s.reservarYGuardar(ctx, carrito, versionAnterior)
+	return s.cambiar(ctx, actor.UsuarioID, func(ctx context.Context) (domain.Carrito, error) {
+		carrito, err := s.Repo.Obtener(ctx, actor.UsuarioID)
+		if err != nil {
+			return domain.Carrito{}, err
+		}
+		versionAnterior := carrito.Version
+		if err := carrito.Quitar(platoID); err != nil {
+			return domain.Carrito{}, err
+		}
+		if carrito.Vacio() {
+			return s.vaciarYGuardar(ctx, carrito, versionAnterior)
+		}
+		return s.reservarYGuardar(ctx, carrito, versionAnterior)
+	})
 }
 
 // Vaciar saca todos los platos y libera la reserva.
@@ -133,128 +138,187 @@ func (s CarritoService) Vaciar(ctx context.Context, actor domain.Actor) (domain.
 	if err := validarCliente(actor); err != nil {
 		return domain.Carrito{}, err
 	}
-	carrito, err := s.Repo.Obtener(ctx, actor.UsuarioID)
-	if err != nil {
-		return domain.Carrito{}, err
-	}
-	if carrito.Vacio() {
-		carrito.ActualizarTiempo(time.Now())
-		return carrito, nil
-	}
-	return s.vaciarYGuardar(ctx, carrito, carrito.Version)
+	return s.cambiar(ctx, actor.UsuarioID, func(ctx context.Context) (domain.Carrito, error) {
+		carrito, err := s.Repo.Obtener(ctx, actor.UsuarioID)
+		if err != nil {
+			return domain.Carrito{}, err
+		}
+		if carrito.Vacio() {
+			carrito.ActualizarTiempo(time.Now())
+			return carrito, nil
+		}
+		return s.vaciarYGuardar(ctx, carrito, carrito.Version)
+	})
 }
 
-// reservarYGuardar pide a Inventario que la reserva quede igual al carrito y después lo guarda.
-func (s CarritoService) reservarYGuardar(ctx context.Context, carrito domain.Carrito, versionAnterior int64) (domain.Carrito, error) {
-	items := itemsParaReserva(carrito)
-	clave := claveDeCambio(carrito.ID, versionAnterior+1, nuevoIntento(), items)
-
-	var err error
-	if carrito.ReservaID == "" {
-		// Primer plato: se crea la reserva. Vence en 10 minutos y agregar más platos no lo renueva.
-		reservaID, venceEn, errReserva := s.Inventario.Reservar(ctx, clave, carrito.ID, carrito.CocinaID, items)
-		err = errReserva
-		if err == nil {
-			carrito.ReservaID = reservaID
-			carrito.VenceEn = &venceEn
+func (s CarritoService) cambiar(ctx context.Context, clienteID string, hacer func(context.Context) (domain.Carrito, error)) (domain.Carrito, error) {
+	var resultado domain.Carrito
+	err := s.Repo.ConBloqueo(ctx, clienteID, func(ctx context.Context) error {
+		if err := s.recuperarCambio(ctx, clienteID); err != nil {
+			return err
 		}
-	} else {
-		// Ya había reserva: se le manda el contenido final del carrito.
-		err = s.Inventario.Ajustar(ctx, clave, carrito.ReservaID, items)
-	}
+		var err error
+		resultado, err = hacer(ctx)
+		return err
+	})
+	return resultado, err
+}
 
-	if errors.Is(err, domain.ErrCarritoVencido) {
-		// La reserva venció: Inventario ya liberó los ingredientes. Dejamos el carrito vacío.
-		carrito.Reiniciar(uuid.NewString())
-		carrito.Version = versionAnterior + 1
-		_ = s.Repo.Guardar(ctx, carrito, versionAnterior)
-		return domain.Carrito{}, domain.ErrCarritoVencido
+func (s CarritoService) reservarYGuardar(ctx context.Context, carrito domain.Carrito, versionAnterior int64) (domain.Carrito, error) {
+	op := ports.CambioCarrito{ID: uuid.NewString(), Estado: ports.CambioIncierto, Destino: carrito}
+	if err := s.Repo.IniciarCambio(ctx, carrito.ClienteID, op); err != nil {
+		return domain.Carrito{}, err
 	}
+	carrito, err := s.aplicarReserva(ctx, op)
 	if err != nil {
-		return domain.Carrito{}, err
+		if !reservaRechazada(err) {
+			return domain.Carrito{}, err
+		}
+		return domain.Carrito{}, errors.Join(err, s.cerrarRechazo(ctx, op, err))
 	}
-
-	carrito.VencioEn = nil // el cliente lo cambió: ya no hace falta avisar que el anterior venció
+	carrito.VencioEn = nil
 	carrito.Version = versionAnterior + 1
+	carrito.CambioID = op.ID
 	if err := s.Repo.Guardar(ctx, carrito, versionAnterior); err != nil {
-		// Inventario ya cambió la reserva pero el carrito no se guardó (se cayó la base, u otro
-		// cambio del mismo carrito se guardó antes). Sin esto, la reserva quedaría apartando
-		// ingredientes que ningún carrito tiene. La dejamos igual a lo que quedó guardado.
-		s.reconciliar(ctx, carrito)
-		return domain.Carrito{}, err
+		// Una respuesta de commit perdida también llega aquí. La recuperación
+		// consulta el diario antes de decidir si corresponde compensar.
+		recuperacion, cancelar := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancelar()
+		return domain.Carrito{}, errors.Join(err, s.recuperarCambio(recuperacion, carrito.ClienteID))
 	}
 	carrito.ActualizarTiempo(time.Now())
 	return carrito, nil
 }
 
-// reconciliar deja la reserva de Inventario igual al carrito que quedó guardado, después de que
-// falló guardar un cambio que Inventario ya aplicó:
-//   - si el carrito guardado no tiene esta reserva (era el primer plato), se libera entera;
-//   - si la tiene, se ajusta a los platos guardados (ajustar manda el contenido final, así que
-//     repetirlo es seguro).
-//
-// Usa un plazo propio (no el de la solicitud, que puede estar por vencer). Si tampoco se puede
-// leer el carrito guardado (la base sigue caída), no hay con qué comparar: la reserva vence sola
-// a los 10 minutos y libera los ingredientes.
-func (s CarritoService) reconciliar(ctx context.Context, intento domain.Carrito) {
-	if intento.ReservaID == "" {
-		return
+func (s CarritoService) aplicarReserva(ctx context.Context, op ports.CambioCarrito) (domain.Carrito, error) {
+	c := op.Destino
+	clave := "carrito-" + op.ID
+	items := itemsParaReserva(c)
+	if c.ReservaID != "" {
+		return c, s.Inventario.Ajustar(ctx, clave, c.ReservaID, items)
 	}
-	ctx, cancelar := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
-	defer cancelar()
-
-	guardado, err := s.Repo.Obtener(ctx, intento.ClienteID)
+	id, vence, err := s.Inventario.Reservar(ctx, clave, c.ID, c.CocinaID, items)
 	if err != nil {
-		return
+		return c, err
 	}
-	if guardado.ReservaID != intento.ReservaID || guardado.Vacio() {
-		clave := fmt.Sprintf("%s-liberar", intento.ReservaID)
-		_ = s.Inventario.Liberar(ctx, clave, intento.ReservaID)
-		return
-	}
-	items := itemsParaReserva(guardado)
-	clave := "reconciliar-" + claveDeCambio(guardado.ID, guardado.Version, nuevoIntento(), items)
-	_ = s.Inventario.Ajustar(ctx, clave, intento.ReservaID, items)
+	c.ReservaID, c.VenceEn = id, &vence
+	return c, nil
 }
 
-// vaciarYGuardar libera la reserva y deja el carrito vacío, con otro id para la próxima.
-func (s CarritoService) vaciarYGuardar(ctx context.Context, carrito domain.Carrito, versionAnterior int64) (domain.Carrito, error) {
-	if carrito.ReservaID != "" {
-		clave := fmt.Sprintf("%s-liberar", carrito.ReservaID)
-		err := s.Inventario.Liberar(ctx, clave, carrito.ReservaID)
-		// Si ya había vencido, los ingredientes ya están libres: seguimos igual.
-		if err != nil && !errors.Is(err, domain.ErrCarritoVencido) {
-			return domain.Carrito{}, err
+func reservaRechazada(err error) bool {
+	return errors.Is(err, domain.ErrCarritoVencido) || errors.Is(err, domain.ErrSinStock) ||
+		errors.Is(err, domain.ErrPlatoNoDisponible) || errors.Is(err, domain.ErrCarritoModificado)
+}
+
+func (s CarritoService) cerrarRechazo(ctx context.Context, op ports.CambioCarrito, rechazo error) error {
+	c := op.Destino
+	if errors.Is(rechazo, domain.ErrCarritoVencido) && c.ReservaID != "" {
+		if _, err := s.Repo.MarcarVencido(ctx, c.ID, c.ReservaID); err != nil {
+			return err
 		}
+	}
+	return s.Repo.TerminarCambio(ctx, c.ClienteID, op.ID, ports.CambioCompensado)
+}
+
+func (s CarritoService) recuperarCambio(ctx context.Context, clienteID string) error {
+	op, err := s.Repo.CambioPendiente(ctx, clienteID)
+	if err != nil || op == nil {
+		return err
+	}
+	if op.Estado == ports.CambioPorLiberar {
+		return s.liberarGuardado(ctx, *op)
+	}
+	if op.Vaciar {
+		// Si el commit no ocurrió, todavía no se pidió liberar.
+		return s.Repo.TerminarCambio(ctx, clienteID, op.ID, ports.CambioCompensado)
+	}
+	return s.reconciliar(ctx, *op)
+}
+
+func (s CarritoService) reconciliar(ctx context.Context, op ports.CambioCarrito) error {
+	// Repetir la petición original resuelve la incertidumbre de un timeout.
+	// Su resultado queda fijado antes de enviar la compensación.
+	intento, err := s.aplicarReserva(ctx, op)
+	if reservaRechazada(err) {
+		return s.cerrarRechazo(ctx, op, err)
+	}
+	if err != nil {
+		return err
+	}
+	guardado, err := s.Repo.Obtener(ctx, intento.ClienteID)
+	if err != nil {
+		return err
+	}
+	clave := fmt.Sprintf("compensar-%s-%d", op.ID, op.Compensacion)
+	if guardado.ReservaID != intento.ReservaID || guardado.Vacio() {
+		err = s.Inventario.Liberar(ctx, clave, intento.ReservaID)
+	} else {
+		err = s.Inventario.Ajustar(ctx, clave, intento.ReservaID, itemsParaReserva(guardado))
+	}
+	if errors.Is(err, domain.ErrCarritoVencido) {
+		return s.cerrarRechazo(ctx, op, err)
+	}
+	if errors.Is(err, domain.ErrSinStock) || errors.Is(err, domain.ErrPlatoNoDisponible) {
+		// Al reducir una reserva, otro carrito puede tomar el stock liberado.
+		// Inventario cachea ese rechazo. Solo después de conocerlo avanzamos
+		// el intento de compensación, que se vuelve a evaluar al recuperar.
+		op.Compensacion++
+		return errors.Join(err, s.Repo.ReintentarCompensacion(ctx, op))
+	}
+	if err != nil {
+		return err
+	}
+	return s.Repo.TerminarCambio(ctx, intento.ClienteID, op.ID, ports.CambioCompensado)
+}
+
+func (s CarritoService) vaciarYGuardar(ctx context.Context, carrito domain.Carrito, versionAnterior int64) (domain.Carrito, error) {
+	op := ports.CambioCarrito{ID: uuid.NewString(), Estado: ports.CambioIncierto, Destino: carrito, Vaciar: true}
+	if err := s.Repo.IniciarCambio(ctx, carrito.ClienteID, op); err != nil {
+		return domain.Carrito{}, err
 	}
 	carrito.Reiniciar(uuid.NewString())
 	carrito.Version = versionAnterior + 1
+	carrito.CambioID = op.ID
+	carrito.LiberacionPendiente = true
 	if err := s.Repo.Guardar(ctx, carrito, versionAnterior); err != nil {
+		return domain.Carrito{}, err
+	}
+	if err := s.liberarGuardado(ctx, op); err != nil {
 		return domain.Carrito{}, err
 	}
 	carrito.ActualizarTiempo(time.Now())
 	return carrito, nil
 }
 
-// claveDeCambio arma la Idempotency-Key hacia Inventario: carrito + número de cambio + intento +
-// una huella de los platos.
-//   - Dentro de una misma solicitud, el adaptador de Inventario reintenta con la MISMA clave
-//     (por ejemplo, después de un timeout), así Inventario no aplica el cambio dos veces (ADR-005).
-//   - Cada solicitud nueva usa otro intento, y por eso otra clave. Si una solicitud anterior
-//     ajustó la reserva y después se corrigió (reconciliar), repetir su clave haría que Inventario
-//     devuelva el resultado viejo sin volver a aplicarlo, y el carrito y la reserva quedarían
-//     distintos. Que el cliente no sume dos veces lo cuida su propia clave (AgregarPlatoConClave).
-func claveDeCambio(carritoID string, numeroDeCambio int64, intento string, items []ports.ItemReserva) string {
-	texto := ""
-	for _, it := range items {
-		texto += fmt.Sprintf("%s:%d;", it.PlatoID, it.Cantidad)
+func (s CarritoService) liberarGuardado(ctx context.Context, op ports.CambioCarrito) error {
+	c := op.Destino
+	if c.ReservaID != "" {
+		err := s.Inventario.Liberar(ctx, "liberar-"+op.ID, c.ReservaID)
+		if err != nil && !errors.Is(err, domain.ErrCarritoVencido) {
+			return err
+		}
 	}
-	huella := sha256.Sum256([]byte(texto))
-	return fmt.Sprintf("%s-%d-%s-%x", carritoID, numeroDeCambio, intento, huella[:6])
+	return s.Repo.TerminarCambio(ctx, c.ClienteID, op.ID, ports.CambioCompletado)
 }
 
-// nuevoIntento identifica una solicitud: 8 caracteres al azar.
-func nuevoIntento() string { return uuid.NewString()[:8] }
+func (s CarritoService) RecuperarCambiosPendientes(ctx context.Context) error {
+	clientes, err := s.Repo.ClientesConCambiosPendientes(ctx)
+	if err != nil {
+		return err
+	}
+	var fallos []error
+	for _, clienteID := range clientes {
+		plazo, cancelar := context.WithTimeout(ctx, 5*time.Second)
+		err := s.Repo.ConBloqueo(plazo, clienteID, func(ctx context.Context) error {
+			return s.recuperarCambio(ctx, clienteID)
+		})
+		cancelar()
+		if err != nil {
+			fallos = append(fallos, fmt.Errorf("recuperar cambio de %s: %w", clienteID, err))
+		}
+	}
+	return errors.Join(fallos...)
+}
 
 func itemsParaReserva(c domain.Carrito) []ports.ItemReserva {
 	items := []ports.ItemReserva{}

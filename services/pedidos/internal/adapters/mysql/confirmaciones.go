@@ -27,7 +27,7 @@ func (repo ConfirmacionesMySQL) Iniciar(ctx context.Context, c domain.Confirmaci
 		return domain.Confirmacion{}, false, err
 	}
 	ahora := time.Now().UTC()
-	_, err = repo.DB.ExecContext(ctx, `INSERT INTO confirmacion
+	_, err = conexionPedidos(ctx, repo.DB).ExecContext(ctx, `INSERT INTO confirmacion
  (id,cliente_id,cliente_email,clave,carrito_id,reserva_id,cocina_id,pedido_id,items,estado,paso,creada_en,actualizada_en,costo_envio)
  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		c.ID, c.ClienteID, c.ClienteEmail, c.Clave, c.CarritoID, c.ReservaID, c.CocinaID, c.PedidoID, items, c.Estado, c.Paso, ahora, ahora, c.CostoEnvio)
@@ -56,7 +56,7 @@ func (repo ConfirmacionesMySQL) BuscarPorClave(ctx context.Context, clienteID, c
 
 // MarcarPaso anota el próximo paso.
 func (repo ConfirmacionesMySQL) MarcarPaso(ctx context.Context, id string, paso domain.PasoConfirmacion) error {
-	_, err := repo.DB.ExecContext(ctx, `UPDATE confirmacion SET paso=?, actualizada_en=? WHERE id=? AND estado='EN_CURSO'`,
+	_, err := conexionPedidos(ctx, repo.DB).ExecContext(ctx, `UPDATE confirmacion SET paso=?, actualizada_en=? WHERE id=? AND estado='EN_CURSO'`,
 		paso, time.Now().UTC(), id)
 	return err
 }
@@ -64,7 +64,7 @@ func (repo ConfirmacionesMySQL) MarcarPaso(ctx context.Context, id string, paso 
 // Completar crea el pedido, marca la confirmación COMPLETADA y vacía el carrito, en UNA sola
 // transacción: o pasan las tres cosas o ninguna.
 func (repo ConfirmacionesMySQL) Completar(ctx context.Context, c domain.Confirmacion, p domain.Pedido) error {
-	tx, err := repo.DB.BeginTx(ctx, nil)
+	tx, err := conexionPedidos(ctx, repo.DB).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func (repo ConfirmacionesMySQL) Completar(ctx context.Context, c domain.Confirma
 
 // Fallar marca la confirmación FALLIDA y vacía el carrito (la reserva ya no sirve).
 func (repo ConfirmacionesMySQL) Fallar(ctx context.Context, c domain.Confirmacion, motivo string) error {
-	tx, err := repo.DB.BeginTx(ctx, nil)
+	tx, err := conexionPedidos(ctx, repo.DB).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func vaciarCarrito(ctx context.Context, tx *sql.Tx, c domain.Confirmacion) error
 
 // leer busca una confirmación con la condición indicada.
 func (repo ConfirmacionesMySQL) leer(ctx context.Context, condicion string, args ...any) (domain.Confirmacion, error) {
-	fila := repo.DB.QueryRowContext(ctx, `SELECT `+columnasConfirmacion+` FROM confirmacion `+condicion+` LIMIT 1`, args...)
+	fila := conexionPedidos(ctx, repo.DB).QueryRowContext(ctx, `SELECT `+columnasConfirmacion+` FROM confirmacion `+condicion+` LIMIT 1`, args...)
 	c, err := escanear(fila)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Confirmacion{}, domain.ErrNoEncontrado

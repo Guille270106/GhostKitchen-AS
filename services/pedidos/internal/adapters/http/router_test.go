@@ -52,7 +52,10 @@ func (m PedidosMock) Listar(_ context.Context, f ports.FiltroPedidos) ([]domain.
 }
 
 // CarritosMock guarda carritos en un mapa.
-type CarritosMock struct{ carritos map[string]domain.Carrito }
+type CarritosMock struct {
+	carritos map[string]domain.Carrito
+	cambio   *ports.CambioCarrito
+}
 
 func (m *CarritosMock) Obtener(_ context.Context, clienteID string) (domain.Carrito, error) {
 	c, ok := m.carritos[clienteID]
@@ -63,6 +66,11 @@ func (m *CarritosMock) Obtener(_ context.Context, clienteID string) (domain.Carr
 }
 func (m *CarritosMock) Guardar(_ context.Context, c domain.Carrito, _ int64) error {
 	m.carritos[c.ClienteID] = c
+	if c.LiberacionPendiente {
+		m.cambio.Estado = ports.CambioPorLiberar
+	} else {
+		m.cambio = nil
+	}
 	return nil
 }
 func (m *CarritosMock) MarcarVencido(context.Context, string, string) (bool, error) {
@@ -460,4 +468,31 @@ func TestConfirmarConInventarioLentoPorHTTP(t *testing.T) {
 
 func (r *CarritosMock) OperacionAplicada(context.Context, string, string) (bool, error) {
 	return false, nil
+}
+
+func (m *CarritosMock) ConBloqueo(ctx context.Context, _ string, hacer func(context.Context) error) error {
+	return hacer(ctx)
+}
+
+func (m *CarritosMock) IniciarCambio(_ context.Context, _ string, op ports.CambioCarrito) error {
+	m.cambio = &op
+	return nil
+}
+
+func (m *CarritosMock) CambioPendiente(context.Context, string) (*ports.CambioCarrito, error) {
+	return m.cambio, nil
+}
+
+func (m *CarritosMock) TerminarCambio(context.Context, string, string, ports.EstadoCambio) error {
+	m.cambio = nil
+	return nil
+}
+
+func (m *CarritosMock) ClientesConCambiosPendientes(context.Context) ([]string, error) {
+	return nil, nil
+}
+
+func (m *CarritosMock) ReintentarCompensacion(_ context.Context, op ports.CambioCarrito) error {
+	m.cambio = &op
+	return nil
 }
