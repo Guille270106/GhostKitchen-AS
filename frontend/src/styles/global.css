@@ -104,13 +104,17 @@ p { margin-top: 0; }
 .empty-state p { color: var(--muted); font-size: 15px; margin-bottom: 16px; }
 .loader { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); padding: 60px 0; font-size: 14px; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.5); display: grid; place-items: center; padding: 20px; }
-.modal { width: min(480px, 100%); background: #fff; border-radius: var(--radius); box-shadow: 0 10px 30px rgba(0,0,0,.25); }
-.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+/* La ventana nunca pasa el alto de la pantalla: el título queda fijo arriba y el contenido se
+   desplaza adentro. Los botones del final (modal-actions) quedan siempre visibles abajo, así
+   un formulario largo (por ejemplo "Agregar cocina") se puede confirmar con cualquier zoom. */
+.modal { width: min(480px, 100%); max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; background: #fff; border-radius: var(--radius); box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.modal-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
 .modal-head h2 { font-size: 19px; margin: 0; }
 .modal-head button { border: 0; background: none; color: var(--muted); }
-.modal-body { padding: 16px 20px 20px; font-size: 15px; }
+.modal-body { padding: 16px 20px 20px; font-size: 15px; overflow-y: auto; overscroll-behavior: contain; border-radius: 0 0 var(--radius) var(--radius); }
 .modal-hint { color: var(--muted); font-size: 14px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+.modal-body .modal-actions { position: sticky; bottom: -20px; z-index: 1; margin: 18px -20px -20px; padding: 12px 20px 20px; background: #fff; border-top: 1px solid var(--line); }
 .modal-form label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 12px; }
 .modal-form input { display: block; width: 100%; height: 42px; margin-top: 6px; border: 1px solid #c9ccd1; border-radius: 4px; padding: 0 12px; background: #fff; font-weight: 400; }
 .toast-stack { position: fixed; right: 20px; bottom: 20px; z-index: 120; display: grid; gap: 8px; width: min(380px, calc(100% - 40px)); }
