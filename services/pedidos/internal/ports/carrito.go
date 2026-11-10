@@ -9,6 +9,13 @@ import (
 
 // CarritosRepo guarda el carrito activo de cada cliente.
 type CarritosRepo interface {
+	// ConBloqueo serializa los cambios del cliente, incluso entre instancias.
+	ConBloqueo(ctx context.Context, clienteID string, hacer func(context.Context) error) error
+	IniciarCambio(ctx context.Context, clienteID string, op CambioCarrito) error
+	CambioPendiente(ctx context.Context, clienteID string) (*CambioCarrito, error)
+	TerminarCambio(ctx context.Context, clienteID, id string, estado EstadoCambio) error
+	ReintentarCompensacion(ctx context.Context, op CambioCarrito) error
+	ClientesConCambiosPendientes(ctx context.Context) ([]string, error)
 	// Obtener devuelve el carrito del cliente. Si todavía no tiene, devuelve uno vacío
 	// con Version 0 (sin error).
 	Obtener(ctx context.Context, clienteID string) (domain.Carrito, error)
@@ -16,6 +23,7 @@ type CarritosRepo interface {
 	// antes, devuelve domain.ErrCarritoModificado.
 	// Si c.Operacion no está vacía, la anota en la misma transacción; si esa clave ya estaba,
 	// no guarda nada y devuelve domain.ErrOperacionRepetida.
+	// Si hay CambioID, el diario avanza en el mismo commit que el carrito.
 	Guardar(ctx context.Context, c domain.Carrito, versionAnterior int64) error
 	// OperacionAplicada dice si esa Idempotency-Key ya se aplicó al carrito del cliente.
 	OperacionAplicada(ctx context.Context, clienteID, clave string) (bool, error)
@@ -23,6 +31,25 @@ type CarritosRepo interface {
 	// tiene esa reserva (ya se vació, se confirmó o es otro), no hace nada y devuelve false: por
 	// eso procesar el mismo aviso dos veces no cambia nada.
 	MarcarVencido(ctx context.Context, carritoID, reservaID string) (bool, error)
+}
+
+type EstadoCambio string
+
+const (
+	CambioIncierto   EstadoCambio = "incierta"
+	CambioPorLiberar EstadoCambio = "por_liberar"
+	CambioCompletado EstadoCambio = "completada"
+	CambioCompensado EstadoCambio = "compensada"
+)
+
+// CambioCarrito conserva el cuerpo exacto de la petición remota. La clave se
+// asigna una sola vez, antes de enviarla a Inventario.
+type CambioCarrito struct {
+	ID           string
+	Estado       EstadoCambio
+	Destino      domain.Carrito
+	Vaciar       bool
+	Compensacion int64
 }
 
 // Catalogo es lo que Pedidos le pregunta a Catálogo.

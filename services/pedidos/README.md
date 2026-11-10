@@ -349,3 +349,31 @@ El cambio de estado, su historial y el evento se guardan en una sola transacció
 - Contrato del proveedor contra su mock (`contrato_test.go`); creación conjunta del cambio de estado, historial y outbox.
 
 Todo esto está cubierto por tests de Go: sin base para las reglas, y contra MySQL y RabbitMQ reales con `testdata/compose.yml`.
+
+### Recuperación de cambios del carrito
+
+La migración 000010 conserva como completadas las claves de cliente registradas
+anteriormente. Las operaciones internas del carrito usan su propio espacio de
+claves en la misma tabla. Cada una se registra como incierta antes de llamar a
+Inventario y conserva el cuerpo exacto y la clave de esa llamada.
+
+Los cambios y el inicio de la confirmación se serializan por cliente con un
+bloqueo de sesión de MySQL. Guardar el carrito confirma la operación y registra
+la clave del cliente en la misma transacción. Si el commit quedó incierto,
+Pedidos consulta el diario antes de compensar. Cuando queda pendiente un cambio
+sin guardar, repite la llamada original con la misma clave y compensa el efecto
+confirmado. Un cambio nuevo recibe su propia clave una vez cerrada la operación
+anterior. Una compensación incierta conserva su clave. Si Inventario confirmó un
+rechazo por stock o receta, Pedidos registra el siguiente intento antes de
+enviarlo.
+
+Vaciar o quitar el último plato guarda primero el carrito vacío y el estado
+por liberar. La liberación se repite con la misma clave hasta que Inventario
+responde. Pedidos recupera pendientes antes del siguiente cambio y en segundo
+plano. Una confirmación de pedido espera a que termine la operación pendiente.
+
+Aplicar 000010 antes de iniciar la versión nueva y evitar que las versiones vieja
+y nueva escriban el carrito al mismo tiempo. El diario cubre operaciones
+iniciadas con la versión nueva. Los desajustes anteriores al despliegue requieren
+verificación aparte. Para revertir la migración, primero drenar los cambios
+pendientes porque la reversión elimina las operaciones internas.

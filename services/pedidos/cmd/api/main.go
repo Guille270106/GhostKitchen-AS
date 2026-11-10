@@ -118,11 +118,21 @@ func main() {
 	// 5. Proceso en segundo plano: cada 10 s sigue las confirmaciones que quedaron a medias.
 	go func() {
 		for range time.Tick(10 * time.Second) {
+
 			revisadas, err := confirmacionService.RecuperarPendientes(context.Background())
 			if err != nil {
 				logger.Error("no se pudieron revisar las confirmaciones pendientes", "error", err.Error())
 			} else if revisadas > 0 {
 				logger.Info("confirmaciones pendientes revisadas", "cantidad", revisadas)
+			}
+		}
+	}()
+
+	// Recupera reservas inciertas y liberaciones pendientes independientemente de las confirmaciones.
+	go func() {
+		for range time.Tick(10 * time.Second) {
+			if err := carritoService.RecuperarCambiosPendientes(context.Background()); err != nil {
+				logger.Error("no se pudieron recuperar cambios del carrito", "error", err)
 			}
 		}
 	}()

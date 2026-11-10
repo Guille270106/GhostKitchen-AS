@@ -6,19 +6,16 @@ import (
 	"testing"
 
 	"ghostkitchen/pedidos/internal/application"
-	"ghostkitchen/pedidos/internal/domain"
+	"ghostkitchen/pedidos/internal/ports"
 )
 
 // CarritosMock anota qué carrito se pidió marcar vencido.
 type CarritosMock struct {
+	ports.CarritosRepo
 	carritoID, reservaID string
 	falla                error
 }
 
-func (m *CarritosMock) Obtener(context.Context, string) (domain.Carrito, error) {
-	return domain.Carrito{}, nil
-}
-func (m *CarritosMock) Guardar(context.Context, domain.Carrito, int64) error { return nil }
 func (m *CarritosMock) MarcarVencido(_ context.Context, carritoID, reservaID string) (bool, error) {
 	m.carritoID, m.reservaID = carritoID, reservaID
 	return true, m.falla

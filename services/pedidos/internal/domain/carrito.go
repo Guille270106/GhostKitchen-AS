@@ -66,7 +66,9 @@ type Carrito struct {
 
 	// Operacion es la Idempotency-Key del cambio que se está guardando (si el cliente la mandó).
 	// Se guarda junto con el carrito, así la misma clave no se aplica dos veces.
-	Operacion string `json:"-"`
+	Operacion           string `json:"-"`
+	CambioID            string `json:"-"`
+	LiberacionPendiente bool   `json:"-"`
 }
 
 // Vacio indica si el carrito no tiene platos.

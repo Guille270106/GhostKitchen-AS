@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,11 +15,14 @@ import (
 
 // CarritosMock guarda los carritos en un mapa, con el mismo control de versión que MySQL.
 type CarritosMock struct {
-	mu         sync.Mutex
-	carritos   map[string]domain.Carrito
+	serial      sync.Mutex
+	cambios     map[string]ports.CambioCarrito
+	mu          sync.Mutex
+	carritos    map[string]domain.Carrito
 	operaciones map[string]bool // cliente + clave ya aplicadas
 	// fallarGuardar simula que la base se cae justo al guardar (después de reservar).
 	fallarGuardar bool
+	perderCommit  bool
 }
 
 func (r *CarritosMock) Obtener(_ context.Context, clienteID string) (domain.Carrito, error) {
@@ -50,7 +54,20 @@ func (r *CarritosMock) Guardar(_ context.Context, c domain.Carrito, versionAnter
 		}
 		r.operaciones[c.ClienteID+"|"+c.Operacion] = true
 	}
+	if c.CambioID != "" {
+		op := r.cambios[c.ClienteID]
+		op.Estado = ports.CambioCompletado
+		if c.LiberacionPendiente {
+			op.Estado = ports.CambioPorLiberar
+		}
+		r.cambios[c.ClienteID] = op
+		c.CambioID = ""
+		c.LiberacionPendiente = false
+	}
 	r.carritos[c.ClienteID] = c
+	if r.perderCommit {
+		return errors.New("se perdió la respuesta del commit")
+	}
 	return nil
 }
 
@@ -105,30 +122,54 @@ func (m CatalogoMock) ObtenerPlato(_ context.Context, id string) (domain.PlatoCa
 	return p, nil
 }
 
-// InventarioMock anota lo que le pidieron y puede simular falta de stock o vencimiento.
-// Como el Inventario real, recuerda cada clave con sus datos (aunque la operación haya
-// fallado): la misma clave con otros datos es un error.
+// InventarioMock cachea el resultado por endpoint y clave, incluso después
+// de un cambio posterior sobre la misma reserva.
 type InventarioMock struct {
-	stock    map[string]int64 // cuántas unidades se pueden reservar de cada plato
-	reservas map[string][]ports.ItemReserva
-	claves   []string
-	usadas   map[string]string // clave -> datos con los que se usó
-	vencida  bool
-	caido    bool
+	stock              map[string]int64
+	reservas           map[string][]ports.ItemReserva
+	porCarrito         map[string]string
+	claves             []string
+	resultados         map[string]resultadoInventario
+	vencida            bool
+	caido              bool
+	fallarCompensacion bool
+	fallarLiberacion   bool
+	perderRespuesta    bool
 }
 
-func (m *InventarioMock) alcanza(clave string, items []ports.ItemReserva) error {
-	if m.caido {
-		return domain.ErrInventarioCaido
+type resultadoInventario struct {
+	datos string
+	id    string
+	vence time.Time
+	err   error
+}
+
+func (m *InventarioMock) ejecutar(op, clave, datos string, efecto func() resultadoInventario) resultadoInventario {
+	llave := op + ":" + clave
+	if r, ok := m.resultados[llave]; ok {
+		if r.datos != datos {
+			return resultadoInventario{err: domain.ErrCarritoModificado}
+		}
+		return r
 	}
-	datos := fmt.Sprint(items)
-	if anteriores, ok := m.usadas[clave]; ok && anteriores != datos {
-		return domain.ErrCarritoModificado
+	if m.caido || (m.fallarCompensacion && strings.HasPrefix(clave, "compensar-")) ||
+		(m.fallarLiberacion && op == "liberar") {
+		return resultadoInventario{err: domain.ErrInventarioCaido}
 	}
-	m.usadas[clave] = datos
-	if m.vencida {
-		return domain.ErrCarritoVencido
+	r := efecto()
+	r.datos = datos
+	m.resultados[llave] = r
+	if r.err == nil {
+		m.claves = append(m.claves, clave)
+		if m.perderRespuesta {
+			m.perderRespuesta = false
+			return resultadoInventario{err: domain.ErrInventarioCaido}
+		}
 	}
+	return r
+}
+
+func (m *InventarioMock) alcanza(items []ports.ItemReserva) error {
 	for _, it := range items {
 		if it.Cantidad > m.stock[it.PlatoID] {
 			return domain.ErrSinStock
@@ -137,38 +178,51 @@ func (m *InventarioMock) alcanza(clave string, items []ports.ItemReserva) error 
 	return nil
 }
 
-func (m *InventarioMock) Reservar(_ context.Context, clave, carritoID, _ string, items []ports.ItemReserva) (string, time.Time, error) {
-	if err := m.alcanza(clave, items); err != nil {
-		return "", time.Time{}, err
-	}
-	m.claves = append(m.claves, clave)
-	m.reservas["res-"+carritoID] = items
-	return "res-" + carritoID, time.Now().Add(10 * time.Minute), nil
+func (m *InventarioMock) Reservar(_ context.Context, clave, carritoID, cocinaID string, items []ports.ItemReserva) (string, time.Time, error) {
+	r := m.ejecutar("reservar", clave, fmt.Sprintf("%s %s %v", carritoID, cocinaID, items), func() resultadoInventario {
+		if m.porCarrito[carritoID] != "" {
+			return resultadoInventario{err: domain.ErrCarritoModificado}
+		}
+		if err := m.alcanza(items); err != nil {
+			return resultadoInventario{err: err}
+		}
+		id := "res-" + carritoID
+		m.porCarrito[carritoID] = id
+		m.reservas[id] = append([]ports.ItemReserva(nil), items...)
+		return resultadoInventario{id: id, vence: time.Now().Add(10 * time.Minute)}
+	})
+	return r.id, r.vence, r.err
 }
 
 func (m *InventarioMock) Ajustar(_ context.Context, clave, reservaID string, items []ports.ItemReserva) error {
-	if err := m.alcanza(clave, items); err != nil {
-		return err
-	}
-	m.claves = append(m.claves, clave)
-	m.reservas[reservaID] = items
-	return nil
+	return m.ejecutar("ajustar", clave, fmt.Sprintf("%s %v", reservaID, items), func() resultadoInventario {
+		if m.vencida {
+			delete(m.reservas, reservaID)
+			return resultadoInventario{err: domain.ErrCarritoVencido}
+		}
+		if _, activa := m.reservas[reservaID]; !activa {
+			return resultadoInventario{err: domain.ErrCarritoModificado}
+		}
+		if err := m.alcanza(items); err != nil {
+			return resultadoInventario{err: err}
+		}
+		m.reservas[reservaID] = append([]ports.ItemReserva(nil), items...)
+		return resultadoInventario{}
+	}).err
 }
 
 func (m *InventarioMock) Liberar(_ context.Context, clave, reservaID string) error {
-	if m.caido {
-		return domain.ErrInventarioCaido
-	}
-	m.claves = append(m.claves, clave)
-	delete(m.reservas, reservaID)
-	return nil
+	return m.ejecutar("liberar", clave, reservaID, func() resultadoInventario {
+		delete(m.reservas, reservaID)
+		return resultadoInventario{}
+	}).err
 }
 
 var clienteCarrito = domain.Actor{UsuarioID: "u-cliente", Rol: domain.RolCliente}
 
 func carritoEntorno() (CarritoService, *CarritosMock, *InventarioMock) {
 	repo := &CarritosMock{carritos: map[string]domain.Carrito{}}
-	inv := &InventarioMock{stock: map[string]int64{"p17": 5, "p21": 5, "p5": 5}, reservas: map[string][]ports.ItemReserva{}, usadas: map[string]string{}}
+	inv := &InventarioMock{stock: map[string]int64{"p17": 5, "p21": 5, "p5": 5}, reservas: map[string][]ports.ItemReserva{}, porCarrito: map[string]string{}, resultados: map[string]resultadoInventario{}}
 	return CarritoService{Repo: repo, Catalogo: CatalogoMock{}, Inventario: inv}, repo, inv
 }
 
@@ -193,7 +247,7 @@ func TestAgregarPlatoReservaYGuardaElPrecio(t *testing.T) {
 	if repo.carritos["u-cliente"].Total != 24000+9500 {
 		t.Fatal("no se guardó el carrito")
 	}
-	// Cada cambio usa una clave distinta: carrito + número de cambio.
+	// Cada cambio confirmado tiene su propia clave de Inventario.
 	if len(inv.claves) != 2 || inv.claves[0] == inv.claves[1] {
 		t.Fatal("claves de idempotencia:", inv.claves)
 	}
@@ -225,17 +279,6 @@ func TestDespuesDeSinStockSePuedeSeguirUsandoElCarrito(t *testing.T) {
 	}
 	if _, err := svc.CambiarCantidad(context.Background(), clienteCarrito, "p17", 3); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestReintentarElMismoCambioUsaLaMismaClave(t *testing.T) {
-	items := []ports.ItemReserva{{PlatoID: "p17", Cantidad: 2}}
-	if claveDeCambio("car-1", 3, items) != claveDeCambio("car-1", 3, items) {
-		t.Fatal("el mismo cambio tiene que dar la misma clave")
-	}
-	otros := []ports.ItemReserva{{PlatoID: "p17", Cantidad: 3}}
-	if claveDeCambio("car-1", 3, items) == claveDeCambio("car-1", 3, otros) {
-		t.Fatal("otros platos tienen que dar otra clave")
 	}
 }
 
@@ -424,5 +467,224 @@ func TestReenviarElMismoAgregarNoSumaDosVeces(t *testing.T) {
 	}
 	if _, err := svc.AgregarPlatoConClave(context.Background(), clienteCarrito, "p17", 1, "con espacio"); !errors.Is(err, domain.ErrClaveInvalida) {
 		t.Fatal("una clave inválida tenía que rechazarse:", err)
+	}
+}
+
+func TestReintentarCambioCompensado(t *testing.T) {
+	svc, repo, inv := carritoEntorno()
+	ctx := context.Background()
+	c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.fallarGuardar = true
+	if _, err := svc.CambiarCantidad(ctx, clienteCarrito, "p17", 2); err == nil {
+		t.Fatal("faltó el fallo de guardado")
+	}
+	repo.fallarGuardar = false
+	resultado, err := svc.CambiarCantidad(ctx, clienteCarrito, "p17", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resultado.Items[0].Cantidad != 2 || inv.reservas[c.ReservaID][0].Cantidad != 2 {
+		t.Fatalf("carrito=%v reserva=%v", resultado.Items, inv.reservas[c.ReservaID])
+	}
+}
+
+func (r *CarritosMock) ConBloqueo(ctx context.Context, _ string, hacer func(context.Context) error) error {
+	r.serial.Lock()
+	defer r.serial.Unlock()
+	return hacer(ctx)
+}
+
+func (r *CarritosMock) IniciarCambio(_ context.Context, clienteID string, op ports.CambioCarrito) error {
+	if r.cambios == nil {
+		r.cambios = make(map[string]ports.CambioCarrito)
+	}
+	r.cambios[clienteID] = op
+	return nil
+}
+
+func (r *CarritosMock) CambioPendiente(_ context.Context, clienteID string) (*ports.CambioCarrito, error) {
+	op := r.cambios[clienteID]
+	if op.Estado == ports.CambioIncierto || op.Estado == ports.CambioPorLiberar {
+		return &op, nil
+	}
+	return nil, nil
+}
+
+func (r *CarritosMock) TerminarCambio(_ context.Context, clienteID, id string, estado ports.EstadoCambio) error {
+	op := r.cambios[clienteID]
+	if op.ID != id {
+		return domain.ErrCarritoModificado
+	}
+	op.Estado = estado
+	r.cambios[clienteID] = op
+	return nil
+}
+
+func (r *CarritosMock) ClientesConCambiosPendientes(context.Context) ([]string, error) {
+	r.serial.Lock()
+	defer r.serial.Unlock()
+	var clientes []string
+	for clienteID, op := range r.cambios {
+		if op.Estado == ports.CambioIncierto || op.Estado == ports.CambioPorLiberar {
+			clientes = append(clientes, clienteID)
+		}
+	}
+	return clientes, nil
+}
+
+func (r *CarritosMock) ReintentarCompensacion(_ context.Context, op ports.CambioCarrito) error {
+	r.cambios[op.Destino.ClienteID] = op
+	return nil
+}
+
+func TestRecuperarCompensacionFallida(t *testing.T) {
+	ctx := context.Background()
+	svc, repo, inv := carritoEntorno()
+	c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.fallarGuardar, inv.fallarCompensacion = true, true
+	if _, err := svc.CambiarCantidad(ctx, clienteCarrito, "p17", 2); !errors.Is(err, domain.ErrInventarioCaido) {
+		t.Fatalf("se perdió el error de compensación: %v", err)
+	}
+	repo.fallarGuardar = false
+	if _, err := svc.CambiarCantidad(ctx, clienteCarrito, "p17", 3); !errors.Is(err, domain.ErrInventarioCaido) {
+		t.Fatalf("se permitió otro cambio mientras la compensación seguía pendiente: %v", err)
+	}
+	inv.fallarCompensacion = false
+	// Otra instancia recupera la operación desde el repositorio.
+	recuperador := CarritoService{Repo: repo, Inventario: inv}
+	if err := recuperador.RecuperarCambiosPendientes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if inv.reservas[c.ReservaID][0].Cantidad != 1 {
+		t.Fatal("la compensación no restauró la cantidad original")
+	}
+	if _, err := svc.CambiarCantidad(ctx, clienteCarrito, "p17", 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := recuperador.RecuperarCambiosPendientes(ctx); err != nil || inv.reservas[c.ReservaID][0].Cantidad != 3 {
+		t.Fatalf("una compensación atrasada pisó el cambio posterior: %v", err)
+	}
+}
+
+func TestReenvioTrasRespuestaPerdidaDeInventario(t *testing.T) {
+	svc, _, inv := carritoEntorno()
+	ctx := context.Background()
+	inv.perderRespuesta = true
+	if _, err := svc.AgregarPlatoConClave(ctx, clienteCarrito, "p17", 1, "clic"); !errors.Is(err, domain.ErrInventarioCaido) {
+		t.Fatal(err)
+	}
+	c, err := svc.AgregarPlatoConClave(ctx, clienteCarrito, "p17", 1, "clic")
+	if err != nil || len(c.Items) != 1 || c.Items[0].Cantidad != 1 {
+		t.Fatal(c, err)
+	}
+	if len(inv.reservas) != 1 || inv.reservas[c.ReservaID][0].Cantidad != 1 || len(inv.claves) != 3 {
+		t.Fatalf("se esperaba reservar, compensar y volver a reservar una vez cada uno: %v", inv.claves)
+	}
+}
+
+func TestDosCambiosConcurrentesDelMismoCarrito(t *testing.T) {
+	svc, _, inv := carritoEntorno()
+	ctx := context.Background()
+	inicio := make(chan struct{})
+	errs := make(chan error, 2)
+	for _, clave := range []string{"primero", "segundo"} {
+		go func(clave string) {
+			<-inicio
+			_, err := svc.AgregarPlatoConClave(ctx, clienteCarrito, "p17", 1, clave)
+			errs <- err
+		}(clave)
+	}
+	close(inicio)
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	c, err := svc.Ver(ctx, clienteCarrito)
+	if err != nil || c.Version != 2 || c.Items[0].Cantidad != 2 || inv.reservas[c.ReservaID][0].Cantidad != 2 {
+		t.Fatal(c, inv.reservas, err)
+	}
+}
+
+func TestVaciarYQuitarUltimoConFalloAlGuardar(t *testing.T) {
+	for _, nombre := range []string{"vaciar", "quitar"} {
+		t.Run(nombre, func(t *testing.T) {
+			ctx := context.Background()
+			svc, repo, inv := carritoEntorno()
+			c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			vaciar := svc.Vaciar
+			if nombre == "quitar" {
+				vaciar = func(ctx context.Context, actor domain.Actor) (domain.Carrito, error) {
+					return svc.QuitarPlato(ctx, actor, "p17")
+				}
+			}
+			repo.fallarGuardar = true
+			if _, err := vaciar(ctx, clienteCarrito); err == nil {
+				t.Fatal("faltó el fallo de persistencia")
+			}
+			if len(inv.claves) != 1 || inv.reservas[c.ReservaID][0].Cantidad != 1 {
+				t.Fatal("se liberó una reserva que sigue en el carrito")
+			}
+			repo.fallarGuardar = false
+			inv.fallarLiberacion = true
+			if _, err := vaciar(ctx, clienteCarrito); !errors.Is(err, domain.ErrInventarioCaido) {
+				t.Fatal(err)
+			}
+			guardado, err := svc.Ver(ctx, clienteCarrito)
+			if err != nil || !guardado.Vacio() {
+				t.Fatal(guardado, err)
+			}
+			inv.fallarLiberacion = false
+			if err := svc.RecuperarCambiosPendientes(ctx); err != nil || len(inv.reservas) != 0 {
+				t.Fatal(inv.reservas, err)
+			}
+		})
+	}
+}
+
+func TestCommitConRespuestaPerdidaNoSeCompensa(t *testing.T) {
+	svc, repo, inv := carritoEntorno()
+	ctx := context.Background()
+	repo.perderCommit = true
+	if _, err := svc.AgregarPlatoConClave(ctx, clienteCarrito, "p17", 1, "clic"); err == nil {
+		t.Fatal("faltó el fallo en la respuesta del commit")
+	}
+	repo.perderCommit = false
+	c, err := svc.AgregarPlatoConClave(ctx, clienteCarrito, "p17", 1, "clic")
+	if err != nil || c.Items[0].Cantidad != 1 || len(inv.claves) != 1 || inv.reservas[c.ReservaID][0].Cantidad != 1 {
+		t.Fatal(c, inv.reservas, inv.claves, err)
+	}
+}
+
+func TestQuitarSinVaciarConFalloAlGuardar(t *testing.T) {
+	svc, repo, inv := carritoEntorno()
+	ctx := context.Background()
+	c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AgregarPlato(ctx, clienteCarrito, "p21", 2); err != nil {
+		t.Fatal(err)
+	}
+	repo.fallarGuardar = true
+	if _, err := svc.QuitarPlato(ctx, clienteCarrito, "p21"); err == nil {
+		t.Fatal("faltó el fallo de persistencia")
+	}
+	if r := inv.reservas[c.ReservaID]; len(r) != 2 || r[1].Cantidad != 2 {
+		t.Fatal("la compensación no restauró el plato quitado:", r)
+	}
+	repo.fallarGuardar = false
+	c, err = svc.QuitarPlato(ctx, clienteCarrito, "p21")
+	if err != nil || len(c.Items) != 1 || len(inv.reservas[c.ReservaID]) != 1 {
+		t.Fatal(c, inv.reservas, err)
 	}
 }

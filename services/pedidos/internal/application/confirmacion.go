@@ -44,35 +44,53 @@ func (s ConfirmacionService) Confirmar(ctx context.Context, actor domain.Actor, 
 		return ResultadoConfirmacion{}, domain.ErrClaveInvalida
 	}
 
+	var conf domain.Confirmacion
+	err := s.Carritos.ConBloqueo(ctx, actor.UsuarioID, func(ctx context.Context) error {
+		pendiente, err := s.Carritos.CambioPendiente(ctx, actor.UsuarioID)
+		if err != nil {
+			return err
+		}
+		if pendiente != nil {
+			return domain.ErrCarritoModificado
+		}
+		conf, err = s.iniciarConfirmacion(ctx, actor, clave)
+		return err
+	})
+	if err != nil {
+		return ResultadoConfirmacion{}, err
+	}
+	return s.avanzar(ctx, conf)
+}
+
+func (s ConfirmacionService) iniciarConfirmacion(ctx context.Context, actor domain.Actor, clave string) (domain.Confirmacion, error) {
 	// 1. ¿Ya usó esta clave? (doble clic o reintento del navegador): devolvemos esa misma
 	//    confirmación y no creamos otro pedido.
 	existente, err := s.Repo.BuscarPorClave(ctx, actor.UsuarioID, clave)
 	if err == nil {
-		return s.avanzar(ctx, existente)
+		return existente, nil
 	}
 	if !errors.Is(err, domain.ErrNoEncontrado) {
-		return ResultadoConfirmacion{}, err
+		return domain.Confirmacion{}, err
 	}
 
 	// 2. Armamos la confirmación con una copia del carrito (el dominio valida que se pueda).
 	carrito, err := s.Carritos.Obtener(ctx, actor.UsuarioID)
 	if err != nil {
-		return ResultadoConfirmacion{}, err
+		return domain.Confirmacion{}, err
 	}
 	nueva, err := domain.NuevaConfirmacion(uuid.NewString(), uuid.NewString(), actor, clave, carrito, time.Now())
 	if err != nil {
-		return ResultadoConfirmacion{}, err
+		return domain.Confirmacion{}, err
 	}
 
 	// 3. La guardamos. Si dos solicitudes llegan a la vez para el mismo carrito, la base deja
 	//    guardar una sola y las dos siguen con la misma confirmación.
 	conf, _, err := s.Repo.Iniciar(ctx, nueva)
 	if err != nil {
-		return ResultadoConfirmacion{}, err
+		return domain.Confirmacion{}, err
 	}
 
-	// 4. Hacemos los pasos que falten.
-	return s.avanzar(ctx, conf)
+	return conf, nil
 }
 
 // Ver devuelve cómo va una confirmación (para cuando se respondió "Estamos confirmando").

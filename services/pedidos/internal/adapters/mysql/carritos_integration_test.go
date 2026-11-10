@@ -8,6 +8,7 @@ import (
 
 	adapter "ghostkitchen/pedidos/internal/adapters/mysql"
 	"ghostkitchen/pedidos/internal/domain"
+	"ghostkitchen/pedidos/internal/ports"
 	"github.com/google/uuid"
 )
 
@@ -147,5 +148,64 @@ func TestMySQLLaMismaClaveNoSeAplicaDosVeces(t *testing.T) {
 	}
 	if aplicada, _ := repo.OperacionAplicada(ctx, cliente, "otra"); aplicada {
 		t.Fatal("una clave nueva no puede figurar como aplicada")
+	}
+}
+
+func TestMySQLDiarioCarritoEsAtomicoYComparteBloqueo(t *testing.T) {
+	db := conectar(t)
+	otraDB := conectar(t)
+	repo := adapter.CarritosMySQL{DB: db}
+	otraInstancia := adapter.CarritosMySQL{DB: otraDB}
+	ctx := context.Background()
+	cliente := "u-" + uuid.NewString()
+	t.Cleanup(func() {
+		db.Exec("DELETE FROM carrito_item WHERE cliente_id=?", cliente)
+		db.Exec("DELETE FROM carrito WHERE cliente_id=?", cliente)
+		db.Exec("DELETE FROM carrito_operacion WHERE cliente_id=?", cliente)
+	})
+	c := domain.Carrito{ID: uuid.NewString(), ClienteID: cliente, Version: 1, Operacion: "clic"}
+	op := ports.CambioCarrito{ID: uuid.NewString(), Estado: ports.CambioIncierto, Destino: c}
+	c.CambioID = op.ID
+
+	err := repo.ConBloqueo(ctx, cliente, func(ctx context.Context) error {
+		corto, cancelar := context.WithTimeout(ctx, 200*time.Millisecond)
+		defer cancelar()
+		if err := otraInstancia.ConBloqueo(corto, cliente, func(context.Context) error {
+			t.Error("dos conexiones tomaron el mismo bloqueo")
+			return nil
+		}); !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("la segunda conexión debía esperar el bloqueo: %v", err)
+		}
+		if err := repo.IniciarCambio(ctx, cliente, op); err != nil {
+			return err
+		}
+		pendiente, err := otraInstancia.CambioPendiente(context.Background(), cliente)
+		if err != nil || pendiente == nil || pendiente.ID != op.ID || pendiente.Destino.ClienteID != cliente {
+			t.Fatalf("operación sin persistir: %+v, %v", pendiente, err)
+		}
+		if err := repo.Guardar(ctx, c, 7); !errors.Is(err, domain.ErrCarritoModificado) {
+			t.Fatalf("guardar con otra versión debía fallar: %v", err)
+		}
+		if pendiente, err := repo.CambioPendiente(ctx, cliente); err != nil || pendiente == nil {
+			t.Fatalf("el fallo de guardado perdió la operación: %+v, %v", pendiente, err)
+		}
+		if aplicado, err := repo.OperacionAplicada(ctx, cliente, "clic"); err != nil || aplicado {
+			t.Fatalf("el guardado fallido consumió la clave del cliente: %v, %v", aplicado, err)
+		}
+		return repo.Guardar(ctx, c, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := otraInstancia.ConBloqueo(ctx, cliente, func(ctx context.Context) error {
+		if pendiente, err := otraInstancia.CambioPendiente(ctx, cliente); err != nil || pendiente != nil {
+			t.Fatalf("se confirmó el carrito sin cerrar el cambio: %+v, %v", pendiente, err)
+		}
+		if aplicado, err := otraInstancia.OperacionAplicada(ctx, cliente, "clic"); err != nil || !aplicado {
+			t.Fatalf("faltó la clave del cliente en el commit: %v, %v", aplicado, err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
