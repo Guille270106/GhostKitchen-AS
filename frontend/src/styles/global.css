@@ -154,3 +154,11 @@ p { margin-top: 0; }
 
 /* Aviso de datos sin actualizar o sin confirmar (búsqueda caída, stock sin confirmar). */
 .search-aviso { background: var(--amber-soft); border-radius: var(--radius); color: var(--ink); font-size: 14px; margin: 0 0 20px; padding: 12px 16px; }
+
+/* Mensajes de validación de los formularios (utils/validacion.js): el campo con error se marca en
+   rojo y el mensaje aparece debajo, con el estilo de la página en vez del cartel del navegador. */
+.campo-invalido, .campo-invalido:focus { border-color: var(--red) !important; box-shadow: 0 0 0 3px rgba(225, 29, 72, .14); }
+.campo-error { display: flex; align-items: flex-start; gap: 6px; margin-top: 6px; color: var(--red-dark, var(--red)); font-size: 13px; font-weight: 600; line-height: 1.35; animation: campo-error-entra .15s ease-out; }
+.campo-error::before { content: "!"; flex: 0 0 auto; width: 16px; height: 16px; margin-top: 1px; border-radius: 50%; background: var(--red); color: #fff; font-size: 11px; font-weight: 800; line-height: 16px; text-align: center; }
+@keyframes campo-error-entra { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .campo-error { animation: none; } }

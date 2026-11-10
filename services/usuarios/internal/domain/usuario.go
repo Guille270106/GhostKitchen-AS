@@ -74,6 +74,13 @@ func NormalizarEmail(email string) string {
 	if err != nil || dir.Address != e || dir.Name != "" {
 		return ""
 	}
+	// ParseAddress acepta "ana@gmail" (sin ".com"); un mail de verdad tiene un dominio con punto
+	// y una terminación de al menos 2 letras. Es la misma regla que usa el frontend.
+	dominio := e[strings.LastIndex(e, "@")+1:]
+	punto := strings.LastIndex(dominio, ".")
+	if punto <= 0 || len(dominio)-punto-1 < 2 || strings.Contains(dominio, "..") {
+		return ""
+	}
 	return e
 }
 
