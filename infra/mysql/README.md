@@ -1,90 +1,87 @@
-# MySQL y migraciones — ronda 1
+# MySQL y migraciones
 
-Una instancia MySQL 8.4, tres bases y tres usuarios. Cada usuario tiene permisos únicamente sobre su base; los servicios no reciben la contraseña root. El puerto 3306 permanece dentro de Docker y `mysql-data` conserva los datos.
+Usamos **una sola instancia de MySQL 8.4** con tres bases, una por servicio, y un usuario por base. Cada usuario solo puede entrar a la suya, y ningún servicio conoce la contraseña de root. El puerto 3306 queda adentro de Docker y los datos se guardan en el volumen `mysql-data`.
 
-| Servicio | Base | Usuario | Contraseña en `.env` |
+| Servicio | Base | Usuario | Contraseña en el `.env` |
 | --- | --- | --- | --- |
-| Usuarios | usuarios_db | usuarios | USUARIOS_DB_PASSWORD |
-| Inventario | inventario_db | inventario | INVENTARIO_DB_PASSWORD |
-| Pedidos | pedidos_db | pedidos | PEDIDOS_DB_PASSWORD |
+| Usuarios | `usuarios_db` | `usuarios` | `USUARIOS_DB_PASSWORD` |
+| Inventario | `inventario_db` | `inventario` | `INVENTARIO_DB_PASSWORD` |
+| Pedidos | `pedidos_db` | `pedidos` | `PEDIDOS_DB_PASSWORD` |
 
-Completar en el `.env` las cuatro contraseñas MySQL, además de las de MongoDB que ya requiere el proyecto (ver [Variables del `.env`](../../README.md#variables-del-env)). No sobrescribir un `.env` existente ni versionarlo.
+Las contraseñas (y la de root, `MYSQL_ROOT_PASSWORD`) van en el `.env`; `infra/nube/crear-env.sh` las genera al azar (ver [Variables del `.env`](../../README.md#variables-del-env)).
 
-```powershell
+```bash
 docker compose up -d mysql
 docker compose up -d --build usuarios inventario pedidos
 docker compose logs mysql usuarios inventario pedidos
 ```
 
-Desde V5 (Inventario), G5 (Usuarios) y L5 (Pedidos), cada servicio ejecuta el runner en su propio entrypoint y después queda atendiendo HTTP; reemplazan a los trabajos `inventario-migrations`, `usuarios-migrations` y `pedidos-migrations`. Repetir el arranque comprueba las versiones sin aplicar nuevamente las ya ejecutadas. El `docker compose up --build` general también los incluye.
+El `docker compose up --build` general también los levanta.
 
-## Inicialización y persistencia
+## Cómo se crean las bases
 
-`01-bases.sh` solo se ejecuta cuando MySQL inicializa un volumen vacío. Crea bases y usuarios, no tablas del negocio. Los secretos se convierten a literales hexadecimales antes de construir SQL; no se concatenan como código ni se pasan por argumentos de línea de comandos.
+`01-bases.sh` corre **solo la primera vez**, cuando el volumen de MySQL está vacío. Crea las bases y los usuarios, no las tablas. Las contraseñas se pasan a MySQL como texto hexadecimal, así una contraseña con comillas no rompe el SQL.
 
-Cambiar contraseñas en `.env` no cambia usuarios de un volumen ya inicializado: se debe realizar una rotación explícita en MySQL. No borrar el volumen para actualizar esquemas. Las actualizaciones se hacen mediante migraciones; la eliminación de volúmenes pierde datos.
+Cambiar una contraseña en el `.env` no cambia la del usuario en un volumen que ya existe: hay que cambiarla también en MySQL. Para cambiar las tablas no se borra el volumen (se pierden los datos): se agrega una migración.
 
-## Plantilla de migración para los tres servicios
+## Migraciones
 
-Cada servicio tiene su propio directorio `services/<servicio>/migrations` y su tabla `schema_migrations`. La versión 000001 crea únicamente una fila de identificación para comprobar la plantilla. Las tablas de Usuarios, Inventario y Pedidos empiezan desde 000002 en la ronda 2.
+Cada servicio tiene sus migraciones en `services/<servicio>/migrations` y su propia tabla `schema_migrations`:
 
-Usamos `golang-migrate` v4.18.3, con su bloqueo MySQL y marca `dirty`. Se aplica en orden ascendente; sin cambios es éxito. Si una migración falla, el proceso termina con error y no arranca el comando del servicio. MySQL puede confirmar DDL parcialmente: el estado dirty exige inspección y reparación manual antes de ajustar la versión; no se fuerza ni se reintenta a ciegas.
+| Servicio | Migraciones |
+| --- | --- |
+| Usuarios | 000001 a 000002 |
+| Inventario | 000001 a 000008 |
+| Pedidos | 000001 a 000008 |
 
-Para una nueva migración, agregar ambos archivos a la carpeta de su servicio:
+Usamos `golang-migrate` v4.18.3. Cada migración tiene un archivo `up` y uno `down`:
 
 ```text
-000002_descripcion.up.sql
-000002_descripcion.down.sql
+000009_descripcion.up.sql
+000009_descripcion.down.sql
 ```
 
-No editar una migración ya aplicada: agregar otra versión. Los archivos down permiten describir una reversión manual revisada; el arranque solo ejecuta up, nunca borra datos automáticamente. El formato y el bloqueo siguen la [documentación de golang-migrate](https://github.com/golang-migrate/migrate/tree/v4.18.3).
+- Una migración ya aplicada **no se edita**: se agrega otra.
+- Al arrancar solo se aplican las `up`; las `down` sirven para revertir a mano, después de revisarlas.
+- Si una migración falla, el servicio no arranca. MySQL puede dejar la migración a medias (estado `dirty`): hay que revisar qué se aplicó antes de arreglarla. Nunca se fuerza ni se reintenta a ciegas.
 
-## Conexión al arranque real en la ronda 2
+## Cómo se aplican al arrancar
 
-`tools/mysql-startup` genera un ejecutable reutilizable. Primero aplica las migraciones y después reemplaza su proceso por el comando recibido, manteniendo señales y código de salida en Linux. No conecta un servicio que aún no está implementado.
-
-En el Dockerfile de cada servicio, con contexto de build en la raíz del repositorio, agregar una etapa que construya `tools/mysql-startup`, copiar el ejecutable y el directorio de migraciones a la imagen final:
+`tools/mysql-startup` es un programa chico que **primero aplica las migraciones y después arranca el servicio**. Cada Dockerfile (Usuarios, Inventario y Pedidos) lo compila en una etapa aparte, copia el programa y la carpeta `migrations` a la imagen final, y lo usa como `ENTRYPOINT`:
 
 ```dockerfile
-# Etapa adicional; la etapa de compilación del servicio se define en la ronda 2.
 FROM golang:1.24-alpine AS migraciones
 WORKDIR /src
 COPY tools/mysql-startup/go.mod tools/mysql-startup/go.sum ./
 RUN go mod download
 COPY tools/mysql-startup/ ./
-RUN CGO_ENABLED=0 go build -o /mysql-startup .
+RUN CGO_ENABLED=0 go build -trimpath -o /mysql-startup .
 
-# En la imagen final del servicio, después de su propio FROM:
-# COPY --from=migraciones /mysql-startup /usr/local/bin/mysql-startup
-# COPY services/inventario/migrations /migrations
-# ENTRYPOINT ["/usr/local/bin/mysql-startup"]
-# CMD ["/app/inventario"]
+# En la imagen final del servicio:
+COPY --from=migraciones /mysql-startup /usr/local/bin/mysql-startup
+COPY services/pedidos/migrations /migrations
+ENTRYPOINT ["/usr/local/bin/mysql-startup"]
+CMD ["/app/pedidos"]
 ```
 
-Reemplazar inventario por usuarios o pedidos. Proveer `DB_HOST=mysql`, `DB_PORT=3306`, `DB_USER`, `DB_PASSWORD` y `DB_NAME` propios; `MIGRATIONS_DIR` vale `/migrations` por defecto. Depender de `mysql: service_healthy`. Una vez integrado el entrypoint, se pueden retirar los trabajos separados de ese servicio; no depender únicamente de un trabajo que terminó en un arranque antiguo.
+Lee `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` y `DB_NAME`; `MIGRATIONS_DIR` vale `/migrations` si no se dice otra cosa. Espera la conexión hasta 30 s, corta cada sentencia a los 20 s y espera el bloqueo de migraciones hasta 10 s. No escribe contraseñas ni SQL en los logs. Si se arranca dos veces, no vuelve a aplicar lo que ya está.
 
-El runner espera conexión hasta 30 s, limita sentencias a 20 s y espera el bloqueo de migración hasta 10 s. No registra contraseñas, DSN ni SQL del driver. Si falla, revisar conectividad, nombres de archivos y `schema_migrations` con las credenciales de desarrollo. Una marca dirty requiere revisar el SQL aplicado antes de cualquier reparación.
+## Cómo lo probamos
 
-## Comprobaciones con Docker encendido
+`tools/mysql-startup/testdata/verify.py` levanta un MySQL descartable en un proyecto de Docker aparte (`gk-ronda1-check`), con contraseñas de prueba, y lo borra al terminar. No usa el `.env`. No hay que correr dos a la vez:
 
-La verificación automática usa Python estándar y Docker en un proyecto separado, `gk-ronda1-check`, con contraseñas de prueba y un volumen descartable. Lo elimina al terminar y no usa `.env`. No ejecutar dos copias al mismo tiempo:
-
-```powershell
+```bash
 python tools/mysql-startup/testdata/verify.py
 ```
 
-Incluye primer arranque, contraseña con comilla y barra invertida, migraciones repetidas, arranques concurrentes, permisos cruzados, persistencia, SQL inválido y estado dirty, bloqueo del comando si falla la migración, y respuestas 401/429 por IP y 200/429 por clave del gateway. El backend HTTP de esa prueba es un doble de Búsqueda: no prueba el negocio de búsqueda ni Solr.
+Prueba el primer arranque, una contraseña con comilla y barra invertida, migraciones repetidas y al mismo tiempo, que un usuario no pueda leer la base de otro, que los datos sigan después de reiniciar, una migración con SQL inválido (estado `dirty`) y que el servicio no arranque si la migración falla. También prueba los límites del gateway (`401`/`429` por IP y `200`/`429` por clave), con un servicio falso en lugar de Búsqueda.
 
-1. Ejecutar las migraciones dos veces: los trabajos de Usuarios y Pedidos terminan en 0; Inventario queda listo después de migrar.
-2. Consultar con cada usuario sus tablas `servicio_metadata` y `schema_migrations`: nombre correcto, versión 1 para Usuarios/Pedidos y 4 para Inventario (V7), sin dirty.
-3. Con el usuario de Usuarios, intentar `SELECT * FROM inventario_db.servicio_metadata`: debe denegarse. Repetir las otras combinaciones.
-4. Reiniciar MySQL sin eliminar volúmenes: se conservan versiones y metadatos.
-5. En una base **descartable**, ejecutar la prueba de integración del runner con `MYSQL_STARTUP_INTEGRATION=1` y sus variables DB. Verifica repetición y bloqueo tras SQL inválido. Deja la base dirty deliberadamente; nunca usar una base del proyecto para esa prueba.
+El test de integración del propio runner (`MYSQL_STARTUP_INTEGRATION=1` y sus variables `DB_*`) deja la base en `dirty` a propósito: correrlo **solo en una base descartable**, nunca en la del proyecto.
 
-Para entrar al cliente sin exponer la contraseña en argumentos:
+Para entrar a una base sin poner la contraseña en el comando:
 
-```powershell
+```bash
 docker compose exec mysql mysql -uusuarios -p usuarios_db
 ```
 
-El cliente pide la contraseña. Dentro se puede ejecutar `SELECT * FROM schema_migrations;` y `SELECT * FROM servicio_metadata;`.
+El cliente pide la contraseña. Adentro, `SELECT * FROM schema_migrations;` muestra la versión aplicada.

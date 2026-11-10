@@ -13,7 +13,7 @@ src/
 ├── api/ghostkitchen.js   única capa de datos: las pantallas solo llaman a sus funciones
 ├── pages/                una pantalla por ruta
 ├── components/<tema>/    piezas de cada pantalla (common y layout las usan todas)
-├── context/              sesión, avisos (toast) y, desde L17, el carrito
+├── context/              sesión, avisos (toast) y el carrito
 ├── hooks/useLiveQuery.js vuelve a pedir los datos cuando algo cambia
 ├── styles/<tema>.css     estilos, con las variables de variables.css
 └── utils/                formato de precios y fechas, lectura del token
@@ -42,7 +42,7 @@ npm run dev      # http://localhost:5173, reenvía /api a http://localhost:8080
 npm run lint
 ```
 
-## De dónde sale cada dato (G18)
+## De dónde sale cada dato
 
 | Pantalla | Función de `ghostkitchen.js` | Backend |
 | --- | --- | --- |
@@ -51,31 +51,34 @@ npm run lint
 | Inicio: platos destacados | `getPlatosDestacados` | Búsqueda `GET /api/v1/busqueda/sedes/{sede}/platos` |
 | Buscar platos y filtros | `searchPlatos`, `autocompletePlatos` | Búsqueda (dos consultas: resultados con filtros, y opciones de filtro con solo el texto) |
 | Detalle de una cocina | `getCocinaById` | Catálogo (cocina y menú) + Búsqueda (qué platos tienen stock). Si Búsqueda no contesta, el menú se muestra igual |
-| Login y registro | `loginUser`, `registerUser` | Usuarios. El registro pide la dirección (HU01) |
+| Login y registro | `loginUser`, `registerUser` | Usuarios. El registro pide la dirección |
 
-Las fotos de los platos de ejemplo están en `data/dishPhotos.js` y `public/images/platos`; las de portada y las categorías del inicio, en `data/visual.js`. El botón "Agregar" ya está en cada plato, pero el carrito real llega con L17: hasta entonces `context/CartContext.jsx` es una versión provisoria que avisa que todavía no está disponible.
+Las fotos de los platos de ejemplo están en `data/dishPhotos.js` y `public/images/platos`; las de portada y las categorías del inicio, en `data/visual.js`. El botón "Agregar" de cada plato usa el carrito de `context/CartContext.jsx`, que le pide todo a Pedidos.
 
-## Panel del admin (G21)
+## Panel del admin
 
 | Pantalla | Función de `ghostkitchen.js` | Backend |
 | --- | --- | --- |
 | Cocinas de la localidad, con sus restaurantes | `getAdminCocinas` | Catálogo `GET /api/v1/admin/cocinas` (solo las de su localidad) |
 | Agregar cocina | `crearCocina` | Catálogo `POST /api/v1/admin/cocinas` y Usuarios `POST /api/v1/admin/cuentas-cocina`. La ubicación sale de la zona elegida (`data/visual.js`). Si la cuenta falla, la cocina ya quedó creada y se avisa |
-| Pausar o reactivar una cocina o un restaurante | `toggleCocina`, `toggleRestaurante` | Catálogo `PATCH` (RN19: lo pausado deja de mostrarse) |
-| Nuevo restaurante (hasta 4) | `crearRestaurante` | Catálogo `POST .../restaurantes` (RN20) |
+| Pausar o reactivar una cocina o un restaurante | `toggleCocina`, `toggleRestaurante` | Catálogo `PATCH` (lo pausado deja de mostrarse) |
+| Nuevo restaurante (hasta 4) | `crearRestaurante` | Catálogo `POST .../restaurantes` (hasta 4, sin repetir el nombre) |
 | Métricas de los últimos 7 días | `getMetricas` | Pedidos `GET /api/v1/admin/metricas?cocinaId=` |
 
 Las rutas `/admin/...` van dentro de `ProtectedRoute` (solo rol `ADMIN`) y `WorkspaceLayout`. La cocina elegida en las métricas se recuerda en el navegador. Quien decide los permisos es el backend: la pantalla solo evita mostrar lo que no corresponde.
 
-## Qué entra en cada parte
+## Pantallas
 
-El frontend se suma por partes, cada una en el commit de quien la hace:
-
-| Commit | Pantallas |
-| --- | --- |
-| G14 | Base: proyecto, contenedor, encabezado, pie, paneles, cliente del gateway y sesión |
-| G18 | Login, registro, elegir la sede, inicio, buscar platos y detalle de la cocina |
-| G21 | Panel del admin: cocinas y restaurantes (`/admin/cocinas`) y métricas del negocio (`/admin/metricas`) |
-| V16 · V17 | Inventario · menú, platos y recetas de la cocina |
-| L17 · L18 | Carrito · mis pedidos y tablero de la cocina |
-| G21 | Panel del admin: cocinas, marcas y métricas |
+| Ruta | Quién la ve | Pantalla |
+| --- | --- | --- |
+| `/` | Todos | Inicio: elegir la sede y platos destacados |
+| `/buscar` | Todos | Buscar platos con filtros |
+| `/cocinas/:id` | Todos | Menú de una cocina |
+| `/login` · `/registro` | Todos | Iniciar sesión y crear una cuenta de cliente |
+| `/carrito` | Cliente | Carrito con el tiempo que le queda a la reserva, y confirmar el pedido |
+| `/pedidos` | Cliente | Mis pedidos: seguir el estado, cancelar y confirmar que llegó |
+| `/cocina` | Cocina | Pedidos de la cocina en columnas: aceptar, rechazar y avanzar |
+| `/cocina/inventario` | Cocina | Stock de ingredientes, reposiciones y mermas |
+| `/cocina/platos` | Cocina | Platos y recetas |
+| `/admin/cocinas` | Admin | Cocinas y restaurantes de su localidad |
+| `/admin/metricas` | Admin | Métricas del negocio |

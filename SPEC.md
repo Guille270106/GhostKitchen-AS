@@ -1,6 +1,6 @@
 # SPEC: alcance y requisitos de GhostKitchen
 
-> **Versión:** Entrega 1 (9/10/2026), revisada el 12/10/2026. **Forma de trabajo:** Scrum, con la cátedra como Product Owner.
+> **Versión:** Entrega 1 (9/10/2026), revisada el 12/10/2026 y actualizada para la entrega final (10/11/2026). **Forma de trabajo:** Scrum, con la cátedra como Product Owner.
 > Acá definimos qué tiene que hacer el sistema. Como trabajamos con Scrum, lo escribimos como **historias de usuario (HU)** con criterios de aceptación, más **reglas de negocio (RN)** numeradas, para poder nombrarlas en el backlog, en los tests y en los ADR. Cómo está armado el sistema está en [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## 1. Problema y objetivo
@@ -282,7 +282,7 @@ Como sistema de otro grupo quiero enviar la ubicación de una sede propia y la d
 - [ ] Está en una URL pública (Entrega 2).
 
 **HU29 · Usar lo que publica el grupo proveedor** (M · P)
-- [ ] Se usa dentro de la confirmación del pedido (lo definimos cuando la cátedra nos asigne el proveedor).
+- [ ] Se usa al confirmar el pedido: Pedidos le pide la factura a la API de comprobantes del Grupo 4.
 - [ ] Si el proveedor falla o no contesta, el cliente ve un mensaje claro y el pedido no se pierde.
 
 ## 9. Quién puede hacer qué
@@ -328,12 +328,12 @@ Como sistema de otro grupo quiero enviar la ubicación de una sede propia y la d
 | Integración con otros grupos | HU28, HU29 |
 | Tests unitarios, de integración y de carga | Sección 10 y [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 
-## 13. Para validar con la cátedra
+## 13. Reglas que el enunciado no fija
 
-| Tema | Lo que proponemos |
+| Tema | Lo que decidimos |
 | --- | --- |
 | ¿Quién recibe los pedidos? | La **cocina**, que prepara todo. El restaurante es solo una marca |
 | ¿Los 10 minutos se reinician al agregar platos? | No se reinician |
 | ¿El cliente puede cancelar? ¿Hasta cuándo? | Sí, hasta que la cocina acepta |
 | ¿Hace falta simular el pago? | No, queda fuera de alcance |
-| ¿Qué publicamos y qué consumimos? | Publicamos "cocinas, platos y proximidad de sedes externas" ([contrato](docs/contracts/README.md)). Lo que consumimos lo asigna la cátedra |
+| ¿Qué publicamos y qué consumimos? | Publicamos "cocinas, platos y proximidad de sedes externas" ([contrato](docs/contracts/README.md)). Consumimos la API de comprobantes del Grupo 4 |

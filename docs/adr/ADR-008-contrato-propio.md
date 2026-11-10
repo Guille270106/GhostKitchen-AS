@@ -140,12 +140,12 @@ Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción
 - Hay que mantener un servicio en la nube todo el cuatrimestre.
 - Nos comprometemos a no romper la `v1`.
 
-## Cómo lo vamos a validar
+## Cómo lo validamos
 
 - **Entrega 1:** contrato validado con `swagger-cli` 4.0.4 y mock probado con Prism 5.16.0. Las cuatro operaciones y los errores documentados (404, 429, 503, latitud inválida y falta de API key) responden; cómo probarlo está en la [guía del contrato](../contracts/README.md#probar-sin-esperar-al-backend-mock). Que Prism arranque, por sí solo, no sustituye la validación formal de OpenAPI.
-- **Ampliación 1.1.0:** validar formalmente OpenAPI y los ejemplos del nuevo POST; comprobar 200, validaciones estructurales y errores simulados. Las reglas de distancia, rango inclusivo, comparación con el cliente y cobertura se prueban con la implementación real.
-- **Entrega 2 (hecho en parte):** la versión real funciona detrás del gateway y sus respuestas se validaron contra el contrato. La URL pública ya está publicada (`https://57-156-56-219.sslip.io/public`, ver [infra/nube](../../infra/nube/README.md)). El test automático corre en cada pull request.
-- **Durante la integración:** si el otro grupo nos pide un cambio, lo anotamos acá con la versión nueva.
+- **Ampliación 1.1.0 (hecho):** OpenAPI y los ejemplos del nuevo POST validados; las reglas de distancia, rango inclusivo, comparación con el cliente y cobertura se prueban con la implementación real.
+- **Entrega 2 y final (hecho):** la versión real funciona detrás del gateway y sus respuestas se validaron contra el contrato. La URL pública ya está publicada (`https://57-156-56-219.sslip.io/public`, ver [infra/nube](../../infra/nube/README.md)). El test automático corre en cada pull request.
+- **Durante la integración:** el Grupo 5 no nos pidió cambios; si lo hace, lo anotamos acá con la versión nueva.
 
 ## Referencias
 

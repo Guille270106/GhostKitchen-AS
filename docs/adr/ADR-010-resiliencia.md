@@ -75,7 +75,7 @@ La tabla completa por dependencia está en la sección 10 de [ARCHITECTURE](../A
 
 ### 6. Salud y reinicio
 
-- ✅ Cada servicio tiene `/health` (el proceso está vivo) y `/ready` (sus dependencias responden). Docker Compose usa `/health` para marcar el contenedor como sano, y el gateway no arranca hasta que Búsqueda y Catálogo lo están. `/ready` sirve para saber si puede atender: un servicio sin Solr está vivo pero no listo, y reiniciarlo no arregla Solr.
+- ✅ Cada servicio con API tiene `/health` (el proceso está vivo) y `/ready` (sus dependencias responden). Notificaciones no tiene API: si se cae, se nota porque los mensajes se acumulan en su cola. Docker Compose usa `/health` para marcar el contenedor como sano, y el gateway no arranca hasta que Búsqueda y Catálogo lo están. `/ready` sirve para saber si puede atender: un servicio sin Solr está vivo pero no listo, y reiniciarlo no arregla Solr.
 - ✅ `restart: unless-stopped` en Docker Compose: si un proceso termina, Docker lo vuelve a levantar. (Docker Compose no reinicia un contenedor solo por estar "no sano"; eso lo haría un orquestador como Kubernetes.)
 
 ### Librerías
