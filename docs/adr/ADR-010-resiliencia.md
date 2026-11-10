@@ -97,7 +97,7 @@ Para Pedidos usamos `sony/gobreaker` (circuit breaker) y `cenkalti/backoff` (esp
 ## Cómo lo validamos
 
 - **Entrega 2 (hecho):** tests de Búsqueda con Solr caído (503 con `Retry-After`, nunca lista vacía), proximidad sin Solr, Catálogo caído en la mitad de la reconstrucción y Catálogo con MongoDB caído. Con el gateway: servicio caído → 503 con Problem Details.
-- **Jornada de fallas (final):** apagar Inventario, RabbitMQ, el correo y el proveedor; medir el tiempo de respuesta y el mensaje al usuario; registrar todo en el POSTMORTEM.
+- **Jornada de fallas (hecha, 2026-11-10):** se apagaron Inventario, RabbitMQ, el correo y el proveedor, de a uno. En los cuatro casos el comportamiento fue el de este ADR: respuestas en menos de 3 s ("Estamos confirmando tu pedido", `503` sin inventar reservas), recuperación sola al volver la dependencia, sin duplicados y sin la alerta de errores 5xx. Tiempos, evidencia y mejoras en el [POSTMORTEM](../../POSTMORTEM.md).
 
 ## Referencias
 

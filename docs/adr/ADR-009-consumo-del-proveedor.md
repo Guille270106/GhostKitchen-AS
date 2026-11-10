@@ -87,7 +87,7 @@ Un cambio en sus nombres o formatos se arregla en el adaptador, sin tocar las re
 
 - **Test de contrato** contra su mock, en cada corrida de `testdata/compose.yml` (y en CI con la L21).
 - **Tests del servicio y del adaptador**: misma clave en cada reintento, rechazo sin reintento, timeout como pendiente, circuit breaker.
-- **Jornada de fallas:** con el proveedor caído o lento, mostrar que el pedido se confirma igual, que la factura queda pendiente y que sale sola cuando vuelve; registrarlo en el POSTMORTEM.
+- **Jornada de fallas (hecha, 2026-11-10):** con el proveedor caído, el pedido se confirmó igual en 0,1 s, la factura quedó pendiente y salió sola 7 s después de que volvió. Detalle en el [POSTMORTEM](../../POSTMORTEM.md).
 
 ## Referencias
 
