@@ -70,7 +70,8 @@ func TestRecetaAPIReal(t *testing.T) {
 	if err := json.Unmarshal(data, &receta); err != nil {
 		t.Fatal(err)
 	}
-	if receta.Version != 1 || len(receta.Items) != 1 || receta.Items[0].Cantidad != 2 {
+	// p1 puede traer ya la receta de ejemplo (migración 000009): la versión sube, no vuelve a 1.
+	if receta.Version < 1 || len(receta.Items) != 1 || receta.Items[0].Cantidad != 2 {
 		t.Fatal(receta)
 	}
 	if status, data := hacer("PUT", "/cocina/platos/p1/receta", "nueva-cordoba", `{"items":[{"ingredienteId":"`+ajeno.ID+`","cantidad":1}]}`); status != 404 {
@@ -84,7 +85,7 @@ func TestRecetaAPIReal(t *testing.T) {
 	if err := json.Unmarshal(data, &despues); err != nil {
 		t.Fatal(err)
 	}
-	if despues.Version != 1 || len(despues.Items) != 1 || despues.Items[0].IngredienteID != propio.ID {
+	if despues.Version != receta.Version || len(despues.Items) != 1 || despues.Items[0].IngredienteID != propio.ID {
 		t.Fatal("modificación parcial", despues)
 	}
 	if status, _ := hacer("GET", "/cocina/platos/p1/receta", "barrio-jardin", ""); status != 404 {
