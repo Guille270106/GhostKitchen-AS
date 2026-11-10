@@ -1,6 +1,6 @@
 # ADR-007 — Caché
 
-- **Estado:** Aceptada. Implementada en G16 (`services/catalogo/internal/repositories/cache`); la medición con y sin caché va en el ADR-013
+- **Estado:** Aceptada, implementada (`services/catalogo/internal/repositories/cache`) y medida con y sin caché (ver [Cómo lo validamos](#cómo-lo-validamos))
 - **Fecha:** 2026-10-16
 - **Responsable:** Guillermina Sánchez
 - **Decisión del enunciado:** D7 (qué se guarda temporalmente, cómo se invalida, cuánto dura, qué pasa si falla y cómo medimos si sirve)
@@ -57,7 +57,7 @@ Las lecturas de Catálogo sobre MongoDB (`catalogo_db`), que es la fuente de ver
 - La prueba de carga ([ADR-013](ADR-013-capacidad-y-costos.md)) compara p50, p95, errores y consultas a MongoDB del menú de una cocina, con caché y sin caché.
 - **Criterio para quedarnos con la caché:** que baje el p95 del menú o la carga sobre MongoDB de forma visible, sin servir datos viejos después de una escritura. Si no mejora, lo documentamos y la sacamos.
 
-### 7. Cómo quedó implementado (G16)
+### 7. Cómo quedó implementado
 
 - `cache.Repositorio` es el decorator: implementa las mismas interfaces que el repositorio de MongoDB. `main` le pasa al servicio público el decorator y a las escrituras del admin y de la cocina el repositorio de MongoDB para leer, y el decorator para escribir (así invalidan).
 - La generación vive en Memcached (`incr`), así la ven las dos copias de Catálogo. Si no existe (Memcached recién arrancado), se crea con la hora en nanosegundos y no con 1, para no repetir una generación de antes de un reinicio.
@@ -89,8 +89,8 @@ Las lecturas de Catálogo sobre MongoDB (`catalogo_db`), que es la fuente de ver
 - Un cambio hecho por fuera de Catálogo puede verse hasta 60 s tarde.
 - Hasta dos lecturas a MongoDB por clave cuando vence, una por copia.
 
-## Cómo lo vamos a validar
+## Cómo lo validamos
 
-- **Tests:** el decorator devuelve lo mismo que el repositorio; después de una escritura no se sirve el dato viejo (incluido el caso de la lectura concurrente); con Memcached caído se lee de MongoDB.
-- **Prueba de carga:** menú de una cocina con y sin caché, con 1 y 2 copias de Catálogo. Los resultados van a [ADR-013](ADR-013-capacidad-y-costos.md).
+- **Tests (hecho):** el decorator devuelve lo mismo que el repositorio; después de una escritura no se sirve el dato viejo (incluido el caso de la lectura concurrente); con Memcached caído se lee de MongoDB.
+- **Prueba de carga (hecho):** con el menú de una cocina, 100 usuarios durante 3 minutos y una copia, la caché bajó las consultas a MongoDB de **35.842 a 67** y el p95 de 13,4 ms a 11,7 ms, sin errores. El detalle está en el [ADR-013](ADR-013-capacidad-y-costos.md).
 

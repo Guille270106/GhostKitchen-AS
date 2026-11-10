@@ -1,4 +1,8 @@
-# V18 · Carga de la API publicada
+# Pruebas de carga
+
+Usamos **k6** en Docker, así no hay que instalar nada. Los resultados y su análisis están en el [ADR-013](../../docs/adr/ADR-013-capacidad-y-costos.md).
+
+## Carga de la API publicada
 
 Con Búsqueda y Solr listos en Docker Compose, corré estos comandos desde la raíz del repo en PowerShell. Usá la red de tu proyecto si tiene otro nombre.
 
@@ -27,7 +31,7 @@ Base de trabajo b25025f. k6 0.54.0, Docker con 12 CPU lógicas y 7,54 GiB de RAM
 
 La corrida alcanzó 100 usuarios virtuales y promedió 310,28 solicitudes por segundo. Cumplió los umbrales de latencia y errores. La prueba corta también pasó con 24 de 24 comprobaciones.
 
-## V19 · 200 clientes por el mismo plato
+## 200 clientes por el mismo plato
 
 Usá una instalación local **descartable**, con Gateway, Usuarios, Catálogo, Pedidos e Inventario listos y el seed de Cerro cargado. La preparación crea cuentas de prueba, un ingrediente con 20 unidades y reemplaza la receta de un plato del seed de Cerro. La limpieza se hace descartando los datos del entorno de prueba.
 
@@ -53,7 +57,7 @@ Base de trabajo 2f37248. k6 0.54.0 en Docker, con gateway real, Usuarios, Pedido
 
 Inventario terminó con total 20, reservado 20 y disponible 0. k6 no descartó iteraciones.
 
-## V20 · Caché, balanceo y caída de una copia
+## Caché, balanceo y caída de una copia
 
 Desde la raíz del repositorio, con Docker y PowerShell 7:
 
@@ -65,7 +69,7 @@ El runner crea un proyecto Docker aislado con volúmenes propios. Corre cinco ca
 
 Cada caso espera que Catálogo termine de verificar el seed antes de medir. La caché arranca vacía y el setup de k6 valida los cuatro menús antes de iniciar la carga. Los percentiles de fase:carga excluyen ese setup. Los deltas de MongoDB (comandos find y aggregate) y de caché (aciertos, fallos y errores de menú) sí incluyen el setup. Son contadores de comandos observados durante el caso, no un conteo de lecturas físicas en disco. El conteo de la copia caída usa su última muestra anterior al apagado.
 
-En el caso de caída, el resumen registra las respuestas de la copia activa, los errores visibles y el tiempo hasta el último intento observado a la IP de la copia caída. Ese tiempo sale del log del gateway, con resolución de un segundo. El valor nulo indica que el log no mostró un intento después del apagado. El runner elimina sus contenedores y volúmenes al terminar y conserva los resultados para V21.
+En el caso de caída, el resumen registra las respuestas de la copia activa, los errores visibles y el tiempo hasta el último intento observado a la IP de la copia caída. Ese tiempo sale del log del gateway, con resolución de un segundo. El valor nulo indica que el log no mostró un intento después del apagado. El runner elimina sus contenedores y volúmenes al terminar y conserva los resultados para el ADR-013.
 
 ### Corrida local del 9 de noviembre de 2026
 

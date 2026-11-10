@@ -1,6 +1,6 @@
 # ADR-013 — Capacidad y costos
 
-- **Estado:** Mediciones locales completadas. Costo de nube documentado como estimación del despliegue.
+- **Estado:** Aceptada. Mediciones locales completadas y costo del despliegue en la nube calculado
 - **Fecha:** 2026-10-16
 - **Responsable:** Valentina Rey
 - **Decisión del enunciado:** D13 (resultados de las pruebas de carga, principal límite identificado, alternativa de escalado y estimación de costos)
@@ -15,7 +15,7 @@ El enunciado pide un test de carga ejecutado, con resultados, análisis de capac
 - 200 clientes queriendo el último plato en 10 s → **0 platos vendidos de más**;
 - con 100 usuarios a la vez, **agregar al carrito < 500 ms** y **buscar < 300 ms** (p95).
 
-En la Entrega 2 funcionan Búsqueda, Catálogo y el gateway. Inventario y Pedidos llegan después, así que esta versión define **cómo** vamos a medir y qué esperamos encontrar; los números se completan cuando el flujo principal exista.
+En la Entrega 2 solo funcionaban Búsqueda, Catálogo y el gateway, así que esa versión definió **cómo** medir. Los números de abajo son de la entrega final, con el flujo completo.
 
 ## Decisión
 
@@ -36,7 +36,7 @@ El escenario 1 le pega **directo a Búsqueda** dentro de la red de Docker (`http
 
 ### Resultados locales del 9 de noviembre de 2026
 
-Usamos k6 0.54.0 y bases descartables en Docker local. Docker tenía 12 CPU lógicas y 7,54 GiB de RAM asignadas durante V18. Los comandos y las condiciones de repetición quedan en la [guía de carga](../../tests/carga/README.md).
+Usamos k6 0.54.0 y bases descartables en Docker local. Docker tenía 12 CPU lógicas y 7,54 GiB de RAM asignadas durante las corridas. Los comandos y las condiciones de repetición quedan en la [guía de carga](../../tests/carga/README.md).
 
 | Escenario | Base | Solicitudes | Solicitudes/s | p50 (ms) | p95 (ms) | p99 (ms) | Errores inesperados |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -84,7 +84,7 @@ Por escenario: fecha y versión (commit), máquina usada, tabla de p50/p95/p99, 
 | Bloqueos en Inventario | No se escala con más copias del servicio, porque el cuello está en la fila: lotes de stock por ingrediente o reservas por cocina en tablas separadas. Lo evaluamos solo si los números lo piden |
 | Gateway | Una segunda instancia detrás de un balanceador del proveedor de nube |
 
-### Estimación de costos (primera versión)
+### Estimación de costos
 
 Para la presentación final hay que desplegar en la nube con una URL pública. Sumamos la memoria aproximada de cada contenedor:
 
@@ -99,7 +99,7 @@ Para la presentación final hay que desplegar en la nube con una URL pública. S
 | NGINX, Memcached, Mailpit | 0,1–0,2 GB |
 | **Total** | **≈ 2,5–3,5 GB** |
 
-Esta tabla estima la memoria para el entorno completo. El [despliegue de Lu](../../infra/nube/README.md) usa Azure for Students, región Chile Central, una VM Standard B2als v2 con 2 vCPU, 4 GiB de RAM y 2 GiB de swap. Publica solo la API de lectura. Las corridas locales de este ADR se realizaron en un entorno distinto.
+Esta tabla estima la memoria para el entorno completo. El [despliegue en la nube](../../infra/nube/README.md) usa Azure for Students, región Chile Central, una VM Standard B2als v2 con 2 vCPU, 4 GiB de RAM y 2 GiB de swap. Publica solo la API de lectura. Las corridas locales de este ADR se realizaron en un entorno distinto.
 
 La guía del despliegue registra un costo aproximado de USD 0,053 por hora encendida, unos USD 38 por mes de uso continuo con el crédito estudiantil. Al detener la VM quedan los cargos de disco e IP según esa guía. Para completar el gasto efectivamente facturado faltan las horas del período y el desglose de Azure Cost Management.
 
@@ -118,8 +118,8 @@ La guía del despliegue registra un costo aproximado de USD 0,053 por hora encen
 - El entorno local permite medir el carrito con Inventario y Pedidos. El despliegue público cubre las lecturas.
 - Una sola máquina en la nube es un punto único de falla; lo aceptamos para el trabajo.
 
-## Cómo lo vamos a validar
+## Cómo lo validamos
 
-- **Entrega 2:** dejar listo el escenario 1 y correrlo contra la API publicada en local.
-- **Presentación final:** adjuntar una captura del tablero para la corrida que se quiera mostrar y completar el gasto facturado del despliegue cuando esté disponible.
+- **Entrega 2 (hecho):** el escenario 1 quedó listo y se corrió contra la API publicada en local.
+- **Entrega final (hecho):** escenarios 1 a 4 corridos en local, con los resultados de arriba. Para la presentación falta una captura del tablero durante una corrida.
 

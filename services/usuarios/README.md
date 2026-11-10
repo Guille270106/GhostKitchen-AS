@@ -2,7 +2,7 @@
 
 **Responsable:** Guillermina Sánchez.
 
-> **Estado (G8):** registra clientes, hace el login de los tres roles con JWT, verifica tokens para el gateway, carga los admins iniciales y deja que cada admin cree cuentas Cocina de su localidad. La conexión con el gateway (G9) viene después.
+Registra clientes, hace el login de los tres roles con JWT, verifica los tokens para el gateway, carga los admins iniciales y deja que cada admin cree las cuentas Cocina de su localidad.
 
 Se encarga de las cuentas y del login. Puerto **8081**, solo dentro de Docker.
 
@@ -28,7 +28,7 @@ Es un servicio con pocas reglas, así que usamos las capas de siempre: el **hand
 ```
 cmd/api/                       arranca el servicio (conexión a MySQL, servidor HTTP, apagado ordenado)
 internal/handlers/             rutas HTTP, correlation id, log por solicitud y errores Problem Details
-internal/services/             reglas: mail único, hash de contraseña, token, permisos del admin (G6 a G8)
+internal/services/             reglas: mail único, hash de contraseña, token, permisos del admin
 internal/repositories/         qué necesita el servicio de la base (interfaz)
 internal/repositories/mysql/   la implementación con MySQL
 internal/domain/               qué es un usuario, sus roles y qué datos lleva cada rol
@@ -63,13 +63,13 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 | --- | --- | --- |
 | `GET /health` | Docker | El proceso está vivo (no mira MySQL) |
 | `GET /ready` | Docker y el gateway | MySQL responde y la tabla existe; si no, 503 |
-| `POST /auth/registro` | cualquiera | Crear una cuenta de cliente (G6, ver abajo) |
-| `POST /auth/login` | cualquiera | Iniciar sesión y recibir el token (G7) |
-| `GET /auth/verify` | el gateway | Ver si un token es válido (G7) |
+| `POST /auth/registro` | cualquiera | Crear una cuenta de cliente (ver abajo) |
+| `POST /auth/login` | cualquiera | Iniciar sesión y recibir el token |
+| `GET /auth/verify` | el gateway | Ver si un token es válido |
 | `PUT /usuarios/me/cocina` | cliente | Elegir o cambiar la cocina |
-| `POST /admin/cuentas-cocina` | admin | Crear la cuenta de una cocina de su localidad (G8) |
+| `POST /admin/cuentas-cocina` | admin | Crear la cuenta de una cocina de su localidad |
 
-### `POST /auth/registro` (HU01)
+### `POST /auth/registro`
 
 ```json
 { "nombre": "Ana", "email": "ana@mail.com", "password": "clave-secreta-1", "direccion": "Obispo Trejo 323" }
@@ -84,7 +84,7 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 
 El correo se guarda en minúsculas. La contraseña se guarda solo como hash bcrypt (costo 10) y no aparece en la respuesta ni en los logs. El tope de 72 bytes es el de bcrypt: una contraseña más larga se rechaza en vez de recortarse sin avisar.
 
-### `POST /auth/login` (HU02)
+### `POST /auth/login`
 
 ```json
 { "email": "ana@mail.com", "password": "clave-secreta-1" }
@@ -114,7 +114,7 @@ Nunca lleva la contraseña, el hash ni la dirección. Al verificar solo se acept
 
 ### `GET /auth/verify` (para el gateway)
 
-Recibe `Authorization: Bearer <token>`. Si el token sirve, responde `204` sin cuerpo y con la identidad en headers, que el gateway copia hacia los servicios (G9):
+Recibe `Authorization: Bearer <token>`. Si el token sirve, responde `204` sin cuerpo y con la identidad en headers, que el gateway copia hacia los servicios:
 
 | Header | Cuándo |
 | --- | --- |
@@ -139,7 +139,7 @@ Los admins no se registran: se cargan al arrancar el servicio, uno por localidad
 
 La contraseña inicial de los cuatro es la de `ADMIN_PASSWORD` en el `.env`, así no queda escrita en el repositorio. Sin esa variable no se crea ninguno y el log lo avisa. La carga se puede repetir en cada arranque: si el correo ya existe, no lo toca ni le cambia la contraseña.
 
-### `POST /admin/cuentas-cocina` (HU15)
+### `POST /admin/cuentas-cocina`
 
 Con `Authorization: Bearer <token de admin>`:
 
@@ -168,7 +168,7 @@ El cierre de sesión descarta el token en el frontend; no implica revocación in
 - **Le pregunta a Catálogo** por una cocina cuando el admin crea una cuenta Cocina, para controlar que sea de su localidad.
 - No manda ni escucha mensajes.
 
-## Dependencias y fallas previstas
+## Dependencias y fallas
 
 | Dependencia | Para qué | Si falla |
 | --- | --- | --- |
@@ -199,7 +199,7 @@ go test ./...
 
 Las de MySQL real se omiten salvo con `TEST_MYSQL=1` y las variables `DB_*` de una base descartable.
 
-Previstas para G6 a G9:
+Qué cubren:
 
 - Correo único, contraseña guardada como hash bcrypt y nunca devuelta, token vencido o mal firmado.
 - Alta de una cuenta Cocina rechazada si la cocina pertenece a otra localidad, está inactiva o no se puede verificar.

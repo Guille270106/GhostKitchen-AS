@@ -312,14 +312,14 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 - **Manda** `pedido.estado_cambiado`, con el mail del cliente adentro.
 - **Escucha** `reserva.vencida`.
 
-## Dependencias y fallas previstas
+## Dependencias y fallas
 
 | Dependencia | Para qué | Si falla |
 | --- | --- | --- |
 | MySQL (`pedidos_db`) | Carritos, pedidos, historial y pasos de recuperación | No se puede operar el carrito ni consultar o cambiar pedidos con garantías |
 | Catálogo | Validar plato, cocina y precio | No se agrega el plato; máximo 500 ms por intento y un reintento |
 | Inventario | Reservar, descontar y devolver | Máximo 800 ms por intento y un reintento con la misma clave; si el resultado es incierto, se consulta y se recupera |
-| Grupo proveedor | Paso de confirmación pendiente de asignación | Usa el presupuesto restante; se recupera o compensa según su contrato, sin inventar el resultado |
+| Grupo proveedor (Grupo 4) | Pedir la factura del pedido | La factura queda pendiente y se pide sola cuando vuelve, en segundo plano: el pedido se confirma igual |
 | RabbitMQ | Publicar estados y recibir vencimientos | El outbox conserva los eventos; los avisos y la actualización de carritos vencidos pueden atrasarse |
 
 Autenticación, llamadas, esperas entre reintentos y trabajo local comparten **3 s totales**. Si una confirmación no tiene resultado seguro dentro de ese plazo, se muestra "Estamos confirmando tu pedido" y continúa desde el paso persistido. No se responde que fracasó mientras se desconoce si el stock se descontó ([ADR-005](../../docs/adr/ADR-005-comunicacion-entre-servicios.md)).
@@ -329,6 +329,7 @@ Autenticación, llamadas, esperas entre reintentos y trabajo local comparten **3
 - Publicación del outbox con confirmación del broker.
 - Recuperación de confirmaciones incompletas desde su paso persistido.
 - Recuperación de devoluciones pendientes: cancelar el pedido no se frena porque Inventario esté indisponible.
+- Pedido de las facturas pendientes al proveedor.
 
 El cambio de estado, su historial y el evento se guardan en una sola transacción. El admin solo consulta métricas de cocinas de su localidad; Pedidos guarda la localidad de la cocina como referencia al crear el pedido.
 
@@ -336,9 +337,11 @@ El cambio de estado, su historial y el evento se guardan en una sola transacció
 
 `PEDIDOS_DB_PASSWORD`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, `PROVIDER_BASE_URL` y `PROVIDER_API_KEY` están en las [variables del `.env`](../../README.md#variables-del-env). Las direcciones internas de Catálogo e Inventario, el modo de Inventario (`CONSUMO_INVENTARIO`) y el mock del proveedor se arman en `docker-compose.yml`. El proveedor es el Grupo 4 (API de comprobantes).
 
-## Pruebas previstas
+## Pruebas
 
 - Transiciones inválidas, cancelación después de aceptar y acceso a pedidos de otro cliente o cocina.
 - Dos confirmaciones con la misma clave crean un pedido; cancelar y aceptar a la vez permite solo una transición.
 - Caída en cada paso de la confirmación y recuperación al reiniciar; devolución pendiente sin duplicar stock.
-- Contrato del proveedor cuando se conozca; creación conjunta del cambio de estado, historial y outbox.
+- Contrato del proveedor contra su mock (`contrato_test.go`); creación conjunta del cambio de estado, historial y outbox.
+
+Todo esto está cubierto por tests de Go: sin base para las reglas, y contra MySQL y RabbitMQ reales con `testdata/compose.yml`.

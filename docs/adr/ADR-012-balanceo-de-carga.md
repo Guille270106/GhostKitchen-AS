@@ -1,6 +1,6 @@
 # ADR-012 — Balanceo de carga
 
-- **Estado:** Aceptada. Implementada en G17: `catalogo-1` y `catalogo-2`, con la caché compartida de G16
+- **Estado:** Aceptada, implementada (`catalogo-1` y `catalogo-2`, con la caché compartida) y validada con la prueba de carga y la caída de una copia (ver [Cómo lo validamos](#cómo-lo-validamos))
 - **Fecha:** 2026-10-16
 - **Responsable:** Guillermina Sánchez
 - **Decisión del enunciado:** D12 (qué servicio se balancea, cómo se reparte el tráfico, cómo se verifica que una instancia está disponible y qué pasa si se cae una)
@@ -42,7 +42,7 @@ proxy_next_upstream_timeout 3s;
 
 - Si una copia falla **3 veces en 10 s**, NGINX deja de mandarle tráfico durante 10 s y después vuelve a probar. Exigir varias fallas evita sacar y meter una copia por una demora pasajera (*flapping*).
 - Si una solicitud de **lectura** falla por conexión o timeout, NGINX la manda **a la otra copia**, dentro del mismo plazo de 3 s. NGINX no reenvía solicitudes que cambian datos (POST, PATCH) salvo que se lo indiquemos, y no lo vamos a hacer: repetir una escritura puede duplicarla.
-- Además, cada copia tiene `/ready` (MongoDB responde), que usa Docker y que vamos a mostrar en el tablero ([ADR-011](ADR-011-observabilidad.md)).
+- Además, cada copia tiene `/ready` (MongoDB responde), que usa Docker y que se ve en el tablero ([ADR-011](ADR-011-observabilidad.md)).
 
 ### Qué pasa si se cae una copia
 
@@ -55,10 +55,10 @@ proxy_next_upstream_timeout 3s;
 
 ### Cómo lo mostramos
 
-- El log del gateway ya registra `upstream` (la copia que atendió). Cada copia de Catálogo también va a registrar su nombre (`INSTANCIA`).
+- El log del gateway registra `upstream` (la copia que atendió) y cada copia de Catálogo registra su nombre (`INSTANCIA`).
 - En el tablero: solicitudes por copia y estado de cada una. En la demo, apagamos `catalogo-1` con `docker compose stop catalogo-1` durante una prueba de carga y mostramos que no hay errores visibles.
 
-### Cómo quedó implementado (G17)
+### Cómo quedó implementado
 
 - **Compose:** `catalogo-1` y `catalogo-2` (la segunda con `extends` de la primera). Cada una tiene `INSTANCIA` con su nombre, que va en cada línea de log y en el header `X-Instancia` de cada respuesta; el log del gateway lo anota como `instancia`.
 - **Las dos responden al nombre `catalogo`** dentro de Docker (alias de red). Búsqueda, Usuarios y Pedidos siguen usando `http://catalogo:8082`: Docker les da las dos direcciones y, si una no contesta, Go prueba con la otra. Así no hizo falta una entrada interna en el gateway.
@@ -82,8 +82,8 @@ proxy_next_upstream_timeout 3s;
 - La caché compartida es necesaria para que las dos copias muestren lo mismo.
 - El gateway sigue siendo **una sola instancia**: si se cae, se cae todo. Lo aceptamos para el trabajo.
 
-## Cómo lo vamos a validar
+## Cómo lo validamos
 
-- **Prueba de carga** ([ADR-013](ADR-013-capacidad-y-costos.md)): menú de una cocina con 1 y con 2 copias; comparar p95 y solicitudes por segundo.
-- **Caída de una copia:** durante la carga, `docker compose stop catalogo-1`; esperar 0 errores visibles (o muy pocos, en los primeros segundos) y que todo el tráfico pase a `catalogo-2`. Volver a levantarla y ver que NGINX la suma de nuevo.
+- **Prueba de carga (hecho):** con 100 usuarios durante 3 minutos, cada copia atendió **8.950 solicitudes**, la mitad exacta ([ADR-013](ADR-013-capacidad-y-costos.md)).
+- **Caída de una copia (hecho):** durante la carga apagamos una copia con `docker compose stop`: **0 errores**, la otra atendió todo (8.815 respuestas) y hubo algunas solicitudes de hasta 1 s mientras NGINX la sacaba.
 

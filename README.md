@@ -76,19 +76,19 @@ Las imágenes de los diagramas están únicamente en **`docs/diagrams/`**. Qué 
 - Contrato OpenAPI v1: [docs/contracts/v1/openapi.yaml](docs/contracts/v1/openapi.yaml)
 - Guía para el consumidor (autenticación, errores, ejemplos, versionado): [docs/contracts/README.md](docs/contracts/README.md)
 - Mock: `docker compose up` → http://localhost:4010
-- URL pública en la nube: se publica en la Entrega 2.
+- URL pública en la nube: `https://57-156-56-219.sslip.io/public/v1` (con API key; ver [infra/nube](infra/nube/README.md)).
 
 ## Tecnologías
 
-**Backend (lo programamos desde la Entrega 2)**
+**Backend**
 
 - Go + Gin para los microservicios
 - NGINX como API Gateway y para repartir la carga
 - MySQL, MongoDB, Solr (búsqueda), Memcached (caché) y RabbitMQ (mensajes)
-- Observabilidad: logs JSON con `correlation_id` y `trace_id`, y trazas distribuidas con OpenTelemetry y Jaeger (Entrega 2). Métricas con Prometheus (`/metrics` en cada servicio), tablero en Grafana y alertas (G19, G20).
-- Pruebas previstas: tests de Go para las reglas; integración con bases y RabbitMQ reales en Docker Compose; pruebas de contrato y de carga. La herramienta de carga se definirá al implementar.
+- Observabilidad: logs JSON con `correlation_id` y `trace_id`, y trazas distribuidas con OpenTelemetry y Jaeger. Métricas con Prometheus (`/metrics` en cada servicio con API), tablero en Grafana y alertas.
+- Pruebas: tests de Go para las reglas; integración con bases y RabbitMQ reales en Docker; test de contrato del proveedor y de nuestra API; carga con k6.
 
-**Frontend (Entrega 2):** React + Vite.
+**Frontend:** React + Vite.
 
 **Contrato y puesta en marcha:** OpenAPI (para escribir el contrato), Prism (para el mock), Docker y Docker Compose.
 
@@ -96,7 +96,13 @@ Las imágenes de los diagramas están únicamente en **`docs/diagrams/`**. Qué 
 
 Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedores Linux iniciados. La primera ejecución descarga las imágenes (MongoDB, Solr, NGINX, Go, Prism) y necesita conexión a Internet.
 
-1. Crear un archivo `.env` en la raíz del repositorio con las variables de la tabla [Variables del `.env`](#variables-del-env), una por línea (`NOMBRE=valor`). Las contraseñas, con letras y números. El `.env` no se sube al repositorio.
+1. Crear el `.env` con claves al azar. Desde la raíz del repositorio (en Windows, desde **Git Bash**):
+
+   ```bash
+   sh infra/nube/crear-env.sh localhost
+   ```
+
+   El script completa todas las variables, no pisa un `.env` que ya exista e imprime una API key para probar la capacidad publicada. El `.env` no se sube al repositorio. Si preferís armarlo a mano, las variables están en [Variables del `.env`](#variables-del-env).
 2. Desde la raíz del repositorio:
 
    ```bash
@@ -106,29 +112,29 @@ Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedor
 3. Probar la capacidad publicada, ya implementada, a través del gateway (en PowerShell usar `curl.exe`):
 
    ```bash
-   curl -H "X-API-Key: clave-local" http://localhost:8080/public/v1/sedes
+   curl -H "X-API-Key: <la clave que imprimió el script>" http://localhost:8080/public/v1/sedes
    ```
 
-   O todas las operaciones juntas, en PowerShell: `.\scripts\probar-api-publica.ps1 -Clave clave-local`.
+   O todas las operaciones juntas, en PowerShell: `.\scripts\probar-api-publica.ps1 -Clave <la clave>`.
 
 | Servicio | URL |
 | --- | --- |
-| Capacidad publicada (real, Entrega 2) | http://localhost:8080/public/v1/sedes (header `X-API-Key` con una clave de `PUBLIC_API_KEYS`) |
+| Capacidad publicada | http://localhost:8080/public/v1/sedes (header `X-API-Key` con una clave de `PUBLIC_API_KEYS`) |
 | Capacidad publicada en la nube | https://57-156-56-219.sslip.io/public/v1/sedes (con la API key del grupo; ver [infra/nube](infra/nube/README.md)) |
 | Mock de la capacidad publicada | http://localhost:4010/v1/sedes (header `X-API-Key` con cualquier valor) |
 | Lecturas de Catálogo para el frontend | http://localhost:8080/api/v1/cocinas |
 | Panel de Solr (desarrollo) | http://localhost:8983 |
 | MongoDB con Compass (desarrollo) | `mongodb://root:<MONGO_ROOT_PASSWORD>@localhost:27017` |
 | Trazas en Jaeger | http://localhost:16686 |
-| Tablero en Grafana (G20) | http://localhost:3000 (se ve sin entrar; para editar, `admin` y `GRAFANA_ADMIN_PASSWORD`) |
-| Prometheus y alertas (G20) | http://localhost:9090/alerts |
+| Tablero en Grafana | http://localhost:3000 (se ve sin entrar; para editar, `admin` y `GRAFANA_ADMIN_PASSWORD`) |
+| Prometheus y alertas | http://localhost:9090/alerts |
 | Panel de RabbitMQ (desarrollo) | http://localhost:15672 (usuario y contraseña de `RABBITMQ_USER` y `RABBITMQ_PASSWORD`) |
 
 Para detener todo: `docker compose down`. Con `-v` se borran también los volúmenes de MongoDB y Solr: al arrancar de nuevo se cargan los datos iniciales y se reconstruye el índice.
 
 ### Variables del `.env`
 
-Las marcadas como **obligatorias** las pide Docker Compose: si falta alguna, no arranca y dice cuál. Las demás las van a usar los servicios que todavía no están implementados. Para usar en local alcanza con valores inventados.
+Las marcadas como **obligatorias** las pide Docker Compose: si falta alguna, no arranca y dice cuál. Para usar en local alcanza con valores inventados; `infra/nube/crear-env.sh` las completa todas.
 
 | Variable | Para qué | Obligatoria hoy |
 | --- | --- | --- |
@@ -189,7 +195,7 @@ Para no mandar datos sensibles a Jaeger, los spans llevan la ruta como plantilla
 
 ## Estructura del repositorio
 
-**MySQL y V5:** una instancia con bases y usuarios separados para Usuarios, Inventario y Pedidos. Completar las cuatro contraseñas MySQL de `.env` antes de ejecutar Compose. La [guía de MySQL y migraciones](infra/mysql/README.md) describe el arranque y la persistencia. Inventario ya incorpora la API interna de ingredientes y ejecuta sus migraciones en su entrypoint; Usuarios y Pedidos conservan las plantillas de migración.
+**MySQL:** una instancia con una base y un usuario por servicio (Usuarios, Inventario y Pedidos). Cada servicio aplica sus migraciones al arrancar; la [guía de MySQL y migraciones](infra/mysql/README.md) explica cómo.
 
 ```
 GhostKitchen/
@@ -198,11 +204,16 @@ GhostKitchen/
 ├── docker-compose.yml            # Puesta en marcha local con un solo comando
 ├── docs/
 │   ├── ARCHITECTURE.md           # Arquitectura: diagramas, servicios, datos, comunicación
-│   ├── adr/                      # Decisiones arquitectónicas (D1, D3, D5 y D8 en esta entrega)
+│   ├── adr/                      # Decisiones arquitectónicas (D1 a D13)
 │   └── contracts/                # Capacidad publicada: contrato OpenAPI v1 + guía + CHANGELOG
 ├── services/                     # Un microservicio por carpeta, cada uno con su README
 │   └── usuarios/  catalogo/  busqueda/  inventario/  pedidos/  notificaciones/
-└── gateway/                      # API Gateway NGINX (la configuración llega en la Entrega 2)
+├── POSTMORTEM.md                 # Informe de la jornada de fallas
+├── frontend/                     # React + Vite
+├── gateway/                      # API Gateway NGINX
+├── infra/                        # MySQL, MongoDB, RabbitMQ, Prometheus, Grafana y la nube
+├── scripts/                      # Prueba del contrato, de la API publicada y jornada de fallas
+└── tests/carga/                  # Pruebas de carga con k6
 ```
 
 ## Forma de trabajo

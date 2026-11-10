@@ -1,6 +1,6 @@
 # ADR-006 — Búsqueda
 
-- **Estado:** Aceptada (Entrega 2). La actualización por mensajes se suma cuando exista RabbitMQ
+- **Estado:** Aceptada e implementada. El índice se actualiza por mensajes de Catálogo e Inventario
 - **Fecha:** 2026-10-16
 - **Responsable:** Guillermina Sánchez
 - **Decisión del enunciado:** D6 (qué se indexa, cómo se consulta, cómo se actualiza o reconstruye el índice y cuánto atraso aceptamos)
@@ -11,7 +11,7 @@
 Tenemos que resolver tres consultas que una base de las operaciones hace mal:
 
 - **buscar platos** de una cocina por texto, con filtros (restaurante, categoría, etiqueta, precio, disponibilidad), orden y páginas, aunque el usuario escriba sin acentos o en mayúsculas;
-- **encontrar la cocina más cercana** a un punto, con un límite de cobertura de 25 km (RN24);
+- **encontrar la cocina más cercana** a un punto, con un límite de cobertura de 25 km;
 - **atender la capacidad publicada** para otro grupo sin cargar a Catálogo ni a Inventario con tráfico externo.
 
 Los datos no son de Búsqueda: los comerciales son de Catálogo y la disponibilidad es de Inventario ([ADR-001](ADR-001-limites-de-los-servicios.md)). Por eso el índice es una **copia derivada**, armada para buscar y ordenar: nunca es la fuente de verdad y se tiene que poder reconstruir desde cero.
@@ -38,7 +38,7 @@ Guardamos **solo lo necesario para buscar, filtrar y mostrar**. No indexamos rec
 - **Filtros** (`fq`, no afectan la relevancia y Solr los reutiliza entre consultas): `activo:true`, la cocina, `disponible:true` por defecto, y los filtros opcionales del contrato.
 - **Orden:** por relevancia (`score desc, id asc`) o por precio (`precio asc|desc, id asc`). El `id` desempata para que la paginación sea estable.
 - **Cocina más cercana:** `sort=geodist() asc, id asc` sobre las cocinas activas; si la más cercana está a más de 25 km, `404 SIN_COBERTURA`. La distancia que mostramos se calcula con Haversine en Go con el mismo radio terrestre que usa Solr.
-- **Disponibilidad:** es orientativa (RN21). Búsqueda **nunca decide el stock**: al agregar al carrito, Inventario vuelve a controlar.
+- **Disponibilidad:** es orientativa. Búsqueda **nunca decide el stock**: al agregar al carrito, Inventario vuelve a controlar.
 
 ### Cómo se mantiene al día
 
@@ -48,18 +48,18 @@ Guardamos **solo lo necesario para buscar, filtrar y mostrar**. No indexamos rec
 | **Mensajes** `cocina.*`, `plato.*` y `disponibilidad.cambiada` | Cada vez que cambia algo | Cuando exista RabbitMQ (Entrega final) |
 
 - La reconstrucción **agrega o reemplaza por id** y guarda página por página. Si Catálogo falla a mitad de camino, lo ya guardado queda y el resto conserva la versión anterior; la operación informa el error y se puede repetir.
-- Un plato solo es visible si **él, su restaurante y su cocina** están activos (RN19). Lo desactivado se guarda con `activo=false`, así una consulta nunca lo devuelve.
-- Mientras no existe Inventario, la disponibilidad sale de una **tabla provisional**. Un plato que no está en la tabla (por ejemplo, uno nuevo, todavía sin receta) figura como **no disponible**.
+- Un plato solo es visible si **él, su restaurante y su cocina** están activos. Lo desactivado se guarda con `activo=false`, así una consulta nunca lo devuelve.
+- La disponibilidad sale de **Inventario**, por el mensaje `disponibilidad.cambiada` y al reconstruir el índice. Un plato sin receta (por ejemplo, uno nuevo) figura como **no disponible**.
 
 ### Atraso aceptable
 
 | Dato | Atraso aceptado | Por qué |
 | --- | --- | --- |
-| Nombre, descripción, precio, fotos | Hasta 5 s con mensajes; en la Entrega 2, hasta la siguiente reconstrucción | El precio que vale es el de Catálogo al agregar al carrito (RN15) |
-| Disponibilidad | Hasta 5 s (RN21) | Es orientativa; Inventario controla al reservar |
+| Nombre, descripción, precio, fotos | Hasta 5 s, con mensajes | El precio que vale es el de Catálogo al agregar al carrito |
+| Disponibilidad | Hasta 5 s | Es orientativa; Inventario controla al reservar |
 | Alta o baja de una cocina | Hasta 5 s | Una cocina desactivada no puede recibir pedidos aunque aparezca un momento: Catálogo y Pedidos lo validan |
 
-Si el atraso supera lo aceptado, lo tratamos como incidente aunque Solr siga respondiendo. Lo vamos a medir desde la Entrega final como "tiempo entre el cambio en Catálogo y su llegada a Solr" ([ADR-011](ADR-011-observabilidad.md)).
+Si el atraso supera lo aceptado, lo tratamos como incidente aunque Solr siga respondiendo. Lo medimos como "tiempo entre el cambio en Catálogo y su llegada a Solr" ([ADR-011](ADR-011-observabilidad.md)).
 
 ### Si algo falla
 
@@ -95,12 +95,13 @@ Si el atraso supera lo aceptado, lo tratamos como incidente aunque Solr siga res
 
 | Riesgo | Qué hacemos |
 | --- | --- |
-| Un mensaje viejo pisa un dato nuevo | Versión por fuente en cada documento (Catálogo y Inventario por separado), al implementar los mensajes |
+| Un mensaje viejo pisa un dato nuevo | Versión por fuente en cada documento (Catálogo y Inventario por separado) |
 | El índice queda atrasado sin que nadie lo note | Medir el atraso y alertar ([ADR-011](ADR-011-observabilidad.md)) |
 | Una reconstrucción a medias deja datos mezclados | Se informa el error y se repite; es idempotente |
 
 ## Cómo lo validamos
 
 - **Entrega 2 (hecho):** tests del armado de consultas (texto, filtros, orden, páginas, escape), de la cocina más cercana y `SIN_COBERTURA`, de la reconstrucción contra un Catálogo simulado (activos, páginas, falla a mitad de camino) y del esquema idempotente. Las respuestas cumplen el OpenAPI 1.1.0.
-- **Pendiente:** test de integración contra un Solr real en Docker Compose (acentos, relevancia y `geodist()`); medir el atraso de indexación cuando existan los mensajes.
+- **Entrega final (hecho):** el lector de mensajes tiene un test contra RabbitMQ real; el atraso entre el cambio y el índice se mide (`busqueda_indice_atraso_seconds`) y la alerta `IndiceAtrasado` salta si el p95 pasa los 5 s ([ADR-011](ADR-011-observabilidad.md)).
+- **No llegamos:** un test de integración contra un Solr real (acentos, relevancia y `geodist()`). Hoy se prueba con un Solr simulado.
 
