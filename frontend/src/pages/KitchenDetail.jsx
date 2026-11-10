@@ -14,7 +14,7 @@ import "../styles/kitchen.css";
 function KitchenDetail() {
   const { id } = useParams();
   const [marca, setMarca] = useState("todas");
-  const { data, loading, error } = useLiveQuery(() => getCocinaById(id), [id]);
+  const { data, loading, error, reload } = useLiveQuery(() => getCocinaById(id), [id]);
 
   if (loading && !data) return <Loader />;
   if (error || !data) {
@@ -65,6 +65,14 @@ function KitchenDetail() {
             </button>
           ))}
         </div>
+        {data.stockSinConfirmar && (
+          <p className="search-aviso" role="alert">
+            No pudimos confirmar el stock de los platos: se controla cuando los agregás al carrito.{" "}
+            <button className="text-link" onClick={reload}>
+              Reintentar
+            </button>
+          </p>
+        )}
         {visibles.map((m, index) => {
           const propios = platos.filter((p) => p.restauranteId === m.id);
           return (
@@ -75,7 +83,9 @@ function KitchenDetail() {
                   <h2>{[...new Set(propios.map((p) => p.categoria))].join(" · ") || "Menú"}</h2>
                 </div>
                 <span className="availability">
-                  {propios.filter((p) => !p.sinStock).length} de {propios.length} disponibles
+                  {data.stockSinConfirmar
+                    ? `${propios.length} platos · stock sin confirmar`
+                    : `${propios.filter((p) => !p.sinStock && !p.stockSinConfirmar).length} de ${propios.length} disponibles`}
                 </span>
               </div>
               {propios.length ? (

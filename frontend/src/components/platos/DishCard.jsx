@@ -13,6 +13,7 @@ function DishCard({ plato, preview = false }) {
         {plato.destacado && !plato.sinStock && <span className="dish-tag">{plato.destacado}</span>}
         {pocas && <span className="dish-tag low">Quedan {plato.unidadesDisponibles}</span>}
         {plato.sinStock && <span className="sold-label">Sin stock</span>}
+        {plato.stockSinConfirmar && !preview && <span className="dish-tag unknown">Stock sin confirmar</span>}
       </div>
       <div className="dish-info">
         <p className="eyebrow">{plato.restauranteNombre}</p>
@@ -32,7 +33,7 @@ function DishCard({ plato, preview = false }) {
               aria-label={`Agregar ${plato.nombre}`}
               onClick={() => addItem(plato)}
               disabled={plato.sinStock || busyId === plato.id}
-              title={plato.sinStock ? "Sin stock" : "Agregar al carrito"}
+              title={plato.sinStock ? "Sin stock" : plato.stockSinConfirmar ? "No pudimos confirmar el stock: se controla al agregar" : "Agregar al carrito"}
             >
               {busyId === plato.id ? <span className="spinner dark" /> : <Icon name="plus" size={15} />}
               {plato.sinStock ? "Agotado" : "Agregar"}

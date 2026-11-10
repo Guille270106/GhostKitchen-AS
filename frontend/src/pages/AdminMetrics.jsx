@@ -35,8 +35,8 @@ function AdminMetrics() {
       </div>
       <div className="quick-stats four">
         <Stat label="Pedidos" value={data.pedidos} detail="Sin contar cancelados" />
-        <Stat label="Facturación" value={formatPrice(data.facturacion)} detail="Incluye envíos" />
-        <Stat label="Ticket promedio" value={formatPrice(data.ticketPromedio)} detail="Por pedido" />
+        <Stat label="Ventas de platos" value={formatPrice(data.facturacion)} detail="Sin envíos ni cancelados" />
+        <Stat label="Ticket promedio" value={formatPrice(data.ticketPromedio)} detail="Platos por pedido, sin envío" />
         <Stat label="Cancelados" value={data.cancelados} detail="Pedidos cancelados en la semana" tone="warn" />
       </div>
       <div className="metrics-grid">

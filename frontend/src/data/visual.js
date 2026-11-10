@@ -43,15 +43,18 @@ export const photos = {
   local: img("1555396273-367ea4eb4db5", 1200),
 };
 
+// Accesos rápidos del inicio. "id" es el valor EXACTO que tienen los platos en Catálogo (la
+// búsqueda filtra por categoría exacta); "label" es lo que se muestra. Las etiquetas (esEtiqueta)
+// filtran por restricción alimentaria en lugar de categoría.
 export const categorias = [
   { id: "Hamburguesas", label: "Hamburguesas", foto: photos.burger3 },
-  { id: "Pizza", label: "Pizza", foto: photos.pizza2 },
+  { id: "Pizzas", label: "Pizza", foto: photos.pizza2 },
   { id: "Sushi", label: "Sushi", foto: photos.sushi2 },
   { id: "Pastas", label: "Pastas", foto: photos.penne },
   { id: "Milanesas", label: "Milanesas", foto: photos.milanesa },
   { id: "Pollo", label: "Pollo", foto: photos.polloFrito },
-  { id: "Parrilla", label: "Parrilla", foto: photos.bife },
-  { id: "Veggie", label: "Veggie", foto: photos.bowl },
+  { id: "Carnes", label: "Carnes", foto: photos.bife },
+  { id: "Vegano", label: "Vegano", foto: photos.bowl, esEtiqueta: true },
   { id: "Postres", label: "Postres", foto: photos.donas },
   { id: "Cafetería", label: "Cafetería", foto: photos.cafe },
   { id: "Sin TACC", label: "Sin TACC", foto: photos.poke, esEtiqueta: true },
