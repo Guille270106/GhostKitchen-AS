@@ -35,7 +35,8 @@ type LineaComprobante struct {
 }
 
 // LineasDeComprobante arma las líneas de la factura con los platos del pedido, con el precio que
-// se copió al confirmar (no el de Catálogo de hoy).
+// se copió al confirmar (no el de Catálogo de hoy), y el envío que se cobró, si quedó guardado y
+// no es gratis.
 func (p Pedido) LineasDeComprobante() []LineaComprobante {
 	lineas := make([]LineaComprobante, 0, len(p.Items))
 	for _, it := range p.Items {
@@ -43,6 +44,9 @@ func (p Pedido) LineasDeComprobante() []LineaComprobante {
 			Descripcion: fmt.Sprintf("%s x%d", it.Nombre, it.Cantidad),
 			Importe:     it.Subtotal(),
 		})
+	}
+	if p.CostoEnvio != nil && *p.CostoEnvio > 0 {
+		lineas = append(lineas, LineaComprobante{Descripcion: "Envío", Importe: *p.CostoEnvio})
 	}
 	return lineas
 }
