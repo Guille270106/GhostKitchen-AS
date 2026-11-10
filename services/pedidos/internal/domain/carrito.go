@@ -16,6 +16,8 @@ var (
 	ErrInventarioCaido   = errors.New("no podemos reservar los ingredientes en este momento")
 	ErrCantidadInvalida  = errors.New("la cantidad tiene que ser un entero entre 1 y 50")
 	ErrCarritoModificado = errors.New("el carrito cambió mientras se procesaba; volvé a intentar")
+	// ErrOperacionRepetida: esa Idempotency-Key ya se aplicó a este carrito (no se suma de nuevo).
+	ErrOperacionRepetida = errors.New("ese cambio del carrito ya se hizo")
 )
 
 // MaxCantidadPorPlato evita pedidos absurdos (y reservas enormes) por un error de tipeo.
@@ -61,6 +63,10 @@ type Carrito struct {
 	// Se calculan al responder (L7): cuánto le queda a la reserva y si ya venció.
 	SegundosRestantes int64 `json:"segundosRestantes"`
 	Vencido           bool  `json:"vencido"`
+
+	// Operacion es la Idempotency-Key del cambio que se está guardando (si el cliente la mandó).
+	// Se guarda junto con el carrito, así la misma clave no se aplica dos veces.
+	Operacion string `json:"-"`
 }
 
 // Vacio indica si el carrito no tiene platos.

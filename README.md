@@ -109,6 +109,8 @@ Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedor
    docker compose up --build
    ```
 
+   Levanta **todo**: frontend, gateway, los seis servicios (Notificaciones incluido), las bases, RabbitMQ, Mailpit y el monitoreo. Cada servicio con MySQL aplica sus migraciones al arrancar.
+
 3. Probar la capacidad publicada, ya implementada, a través del gateway (en PowerShell usar `curl.exe`):
 
    ```bash
@@ -119,6 +121,8 @@ Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedor
 
 | Servicio | URL |
 | --- | --- |
+| Frontend | http://localhost:5173 |
+| Mails que manda Notificaciones (Mailpit) | http://localhost:8025 |
 | Capacidad publicada | http://localhost:8080/public/v1/sedes (header `X-API-Key` con una clave de `PUBLIC_API_KEYS`) |
 | Capacidad publicada en la nube | https://57-156-56-219.sslip.io/public/v1/sedes (con la API key del grupo; ver [infra/nube](infra/nube/README.md)) |
 | Mock de la capacidad publicada | http://localhost:4010/v1/sedes (header `X-API-Key` con cualquier valor) |
@@ -141,7 +145,7 @@ Las marcadas como **obligatorias** las pide Docker Compose: si falta alguna, no 
 | `PUBLIC_API_KEYS` | Claves de los grupos que consumen nuestra API, separadas por coma (por ejemplo `clave-local`). Si queda vacía, `/public/v1` responde 401 a todos | No, pero sin ella no se puede probar la API |
 | `MONGO_ROOT_PASSWORD` | Contraseña del usuario `root` de MongoDB | Sí |
 | `CATALOGO_DB_PASSWORD` | Contraseña del usuario de Catálogo en MongoDB | Sí |
-| `NOTIFICACIONES_DB_PASSWORD` | Contraseña del usuario de Notificaciones en MongoDB | No |
+| `NOTIFICACIONES_DB_PASSWORD` | Contraseña del usuario de Notificaciones en MongoDB | Sí |
 | `MYSQL_ROOT_PASSWORD` | Contraseña del usuario `root` de MySQL | Sí |
 | `USUARIOS_DB_PASSWORD` | Contraseña del usuario de Usuarios en MySQL | Sí |
 | `INVENTARIO_DB_PASSWORD` | Contraseña del usuario de Inventario en MySQL | Sí |
@@ -151,7 +155,6 @@ Las marcadas como **obligatorias** las pide Docker Compose: si falta alguna, no 
 | `JWT_SECRET` | Clave aleatoria de al menos 32 caracteres con la que Usuarios firma los tokens del login (por ejemplo, la que da `openssl rand -base64 48`) | Sí |
 | `JWT_TTL_MINUTES` | Duración del token en minutos (si falta, `120`) | No |
 | `ADMIN_PASSWORD` | Contraseña inicial de los 4 admins (una por localidad), de 8 caracteres o más. Si falta, los admins no se crean | No, pero sin ella no hay admins |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Servidor de correo de Notificaciones (en local, Mailpit: `mailpit` y `1025`) | No |
 | `PROVIDER_BASE_URL`, `PROVIDER_API_KEY` | Dirección y clave de la API del grupo proveedor | No |
 | `GRAFANA_ADMIN_PASSWORD` | Contraseña del administrador de Grafana. Si falta, `admin` (solo sirve en local: el tablero se ve sin entrar) | No |
 
@@ -175,7 +178,7 @@ Los ejemplos de uso están en [la guía del contrato](docs/contracts/README.md#e
 docker compose logs gateway busqueda catalogo | Select-String "mi-prueba-1"
 ```
 
-**Trazas distribuidas (OpenTelemetry + Jaeger).** Cada solicitud genera una traza con un span por paso: el gateway, Búsqueda, cada consulta a Solr, cada llamada a Catálogo y cada comando de Catálogo a MongoDB. El `trace_id` viaja en el header estándar `traceparent` (W3C) y también aparece en los logs, así que se puede pasar de un log a su traza y al revés. Para verla:
+**Trazas distribuidas (OpenTelemetry + Jaeger).** Cada solicitud genera una traza con un span por paso: el gateway, cada servicio con API (Usuarios, Catálogo, Búsqueda, Inventario y Pedidos), cada llamada de un servicio a otro, cada consulta a Solr y cada comando de Catálogo a MongoDB. Por ejemplo, agregar al carrito muestra `gateway → pedidos → catalogo` y `pedidos → inventario`. El `trace_id` viaja en el header estándar `traceparent` (W3C) y también aparece en los logs, así que se puede pasar de un log a su traza y al revés. Para verla:
 
 1. Hacer una solicitud con un id conocido:
    ```powershell
@@ -204,11 +207,11 @@ GhostKitchen/
 ├── docker-compose.yml            # Puesta en marcha local con un solo comando
 ├── docs/
 │   ├── ARCHITECTURE.md           # Arquitectura: diagramas, servicios, datos, comunicación
+│   ├── POSTMORTEM.md             # Informe de la jornada de fallas
 │   ├── adr/                      # Decisiones arquitectónicas (D1 a D13)
 │   └── contracts/                # Capacidad publicada: contrato OpenAPI v1 + guía + CHANGELOG
 ├── services/                     # Un microservicio por carpeta, cada uno con su README
 │   └── usuarios/  catalogo/  busqueda/  inventario/  pedidos/  notificaciones/
-├── POSTMORTEM.md                 # Informe de la jornada de fallas
 ├── frontend/                     # React + Vite
 ├── gateway/                      # API Gateway NGINX
 ├── infra/                        # MySQL, MongoDB, RabbitMQ, Prometheus, Grafana y la nube
@@ -234,6 +237,7 @@ GhostKitchen/
 | --- | --- |
 | [SPEC.md](SPEC.md) | Qué tiene que hacer el sistema: roles, funcionalidades, reglas y cómo sabemos que algo está terminado |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Cómo está armado: diagramas, servicios, datos, comunicación y cómo funciona cada paso |
-| [docs/adr/](docs/adr/README.md) | Las decisiones que tomamos y por qué (D1, D3, D5 y D8 en esta entrega) |
+| [docs/adr/](docs/adr/README.md) | Las decisiones que tomamos y por qué (D1 a D13) |
+| [docs/POSTMORTEM.md](docs/POSTMORTEM.md) | La jornada de fallas: qué apagamos, qué vio el usuario y qué aprendimos |
 | [docs/contracts/](docs/contracts/README.md) | El contrato de lo que publicamos, con ejemplos y errores |
 | [services/](services/README.md) | Qué hace cada microservicio y de quién depende |

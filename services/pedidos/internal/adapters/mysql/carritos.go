@@ -95,7 +95,20 @@ func (repo CarritosMySQL) Guardar(ctx context.Context, c domain.Carrito, version
 		}
 	}
 
-	// 2. Los platos: borramos los anteriores y guardamos los actuales.
+	// 2. La clave del cliente (si mandó una), en la misma transacción: si ya estaba, este cambio
+	//    ya se hizo y no se guarda nada.
+	if c.Operacion != "" {
+		_, err := tx.ExecContext(ctx, `INSERT INTO carrito_operacion (cliente_id,clave,creada_en) VALUES (?,?,?)`, c.ClienteID, c.Operacion, ahora)
+		var errMySQL *driver.MySQLError
+		if errors.As(err, &errMySQL) && errMySQL.Number == 1062 {
+			return domain.ErrOperacionRepetida
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	// 3. Los platos: borramos los anteriores y guardamos los actuales.
 	if _, err := tx.ExecContext(ctx, `DELETE FROM carrito_item WHERE cliente_id=?`, c.ClienteID); err != nil {
 		return err
 	}
@@ -107,6 +120,13 @@ func (repo CarritosMySQL) Guardar(ctx context.Context, c domain.Carrito, version
 		}
 	}
 	return tx.Commit()
+}
+
+// OperacionAplicada dice si esa Idempotency-Key ya se aplicó al carrito del cliente.
+func (repo CarritosMySQL) OperacionAplicada(ctx context.Context, clienteID, clave string) (bool, error) {
+	var n int
+	err := repo.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM carrito_operacion WHERE cliente_id=? AND clave=?`, clienteID, clave).Scan(&n)
+	return n > 0, err
 }
 
 // nulo guarda NULL en lugar de un texto vacío.

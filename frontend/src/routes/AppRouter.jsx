@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import ProtectedRoute from "../components/auth/ProtectedRoute";
 import WorkspaceLayout from "../components/layout/WorkspaceLayout";
 import StockIngredientes from "../pages/StockIngredientes";
+import MenuCocina from "../pages/MenuCocina";
 import BottomNav from "../components/layout/BottomNav";
 import Footer from "../components/layout/Footer";
 import Header from "../components/layout/Header";
@@ -91,6 +92,7 @@ function AppRouter() {
 
                 <Route path="/cocina" element={<ProtectedRoute allowedRoles={["COCINA"]}><WorkspaceLayout /></ProtectedRoute>}>
                   <Route index element={<KitchenOrders />} />
+                  <Route path="menu" element={<MenuCocina />} />
                   <Route path="inventario" element={<StockIngredientes />} />
                   <Route path="platos" element={<RecetasMermas />} />
                 </Route>

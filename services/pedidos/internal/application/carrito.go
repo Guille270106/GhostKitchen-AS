@@ -40,8 +40,28 @@ func (s CarritoService) Ver(ctx context.Context, actor domain.Actor) (domain.Car
 
 // AgregarPlato suma un plato al carrito y aparta sus ingredientes en Inventario.
 func (s CarritoService) AgregarPlato(ctx context.Context, actor domain.Actor, platoID string, cantidad int64) (domain.Carrito, error) {
+	return s.AgregarPlatoConClave(ctx, actor, platoID, cantidad, "")
+}
+
+// AgregarPlatoConClave es AgregarPlato con la Idempotency-Key del cliente. "Agregar" suma, así
+// que reenviar la misma solicitud (por ejemplo, porque se cortó la respuesta) sumaría dos veces.
+// Con la clave no: si esa clave ya se aplicó, se devuelve el carrito como está, sin tocar nada.
+// Dos clics distintos mandan claves distintas, así que se suman los dos. La clave es opcional.
+func (s CarritoService) AgregarPlatoConClave(ctx context.Context, actor domain.Actor, platoID string, cantidad int64, clave string) (domain.Carrito, error) {
 	if err := validarCliente(actor); err != nil {
 		return domain.Carrito{}, err
+	}
+	if clave != "" {
+		if !domain.ClaveValida(clave) {
+			return domain.Carrito{}, domain.ErrClaveInvalida
+		}
+		aplicada, err := s.Repo.OperacionAplicada(ctx, actor.UsuarioID, clave)
+		if err != nil {
+			return domain.Carrito{}, err
+		}
+		if aplicada {
+			return s.Ver(ctx, actor)
+		}
 	}
 
 	// 1. Le preguntamos a Catálogo el plato: si existe, su precio y de qué cocina es.
@@ -62,9 +82,15 @@ func (s CarritoService) AgregarPlato(ctx context.Context, actor domain.Actor, pl
 	if err := carrito.Agregar(plato, cantidad); err != nil {
 		return domain.Carrito{}, err
 	}
+	carrito.Operacion = clave
 
 	// 3. Reservamos en Inventario y guardamos.
-	return s.reservarYGuardar(ctx, carrito, versionAnterior)
+	resultado, err := s.reservarYGuardar(ctx, carrito, versionAnterior)
+	if errors.Is(err, domain.ErrOperacionRepetida) {
+		// La misma clave llegó dos veces a la vez y la otra ganó: ya está sumado una vez.
+		return s.Ver(ctx, actor)
+	}
+	return resultado, err
 }
 
 // CambiarCantidad deja una cantidad final para un plato del carrito.
@@ -151,10 +177,44 @@ func (s CarritoService) reservarYGuardar(ctx context.Context, carrito domain.Car
 	carrito.VencioEn = nil // el cliente lo cambió: ya no hace falta avisar que el anterior venció
 	carrito.Version = versionAnterior + 1
 	if err := s.Repo.Guardar(ctx, carrito, versionAnterior); err != nil {
+		// Inventario ya cambió la reserva pero el carrito no se guardó (se cayó la base, u otro
+		// cambio del mismo carrito se guardó antes). Sin esto, la reserva quedaría apartando
+		// ingredientes que ningún carrito tiene. La dejamos igual a lo que quedó guardado.
+		s.reconciliar(ctx, carrito)
 		return domain.Carrito{}, err
 	}
 	carrito.ActualizarTiempo(time.Now())
 	return carrito, nil
+}
+
+// reconciliar deja la reserva de Inventario igual al carrito que quedó guardado, después de que
+// falló guardar un cambio que Inventario ya aplicó:
+//   - si el carrito guardado no tiene esta reserva (era el primer plato), se libera entera;
+//   - si la tiene, se ajusta a los platos guardados (ajustar manda el contenido final, así que
+//     repetirlo es seguro).
+//
+// Usa un plazo propio (no el de la solicitud, que puede estar por vencer). Si tampoco se puede
+// leer el carrito guardado (la base sigue caída), no hay con qué comparar: la reserva vence sola
+// a los 10 minutos y libera los ingredientes.
+func (s CarritoService) reconciliar(ctx context.Context, intento domain.Carrito) {
+	if intento.ReservaID == "" {
+		return
+	}
+	ctx, cancelar := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer cancelar()
+
+	guardado, err := s.Repo.Obtener(ctx, intento.ClienteID)
+	if err != nil {
+		return
+	}
+	if guardado.ReservaID != intento.ReservaID || guardado.Vacio() {
+		clave := fmt.Sprintf("%s-liberar", intento.ReservaID)
+		_ = s.Inventario.Liberar(ctx, clave, intento.ReservaID)
+		return
+	}
+	items := itemsParaReserva(guardado)
+	clave := "reconciliar-" + claveDeCambio(guardado.ID, guardado.Version, items)
+	_ = s.Inventario.Ajustar(ctx, clave, intento.ReservaID, items)
 }
 
 // vaciarYGuardar libera la reserva y deja el carrito vacío, con otro id para la próxima.

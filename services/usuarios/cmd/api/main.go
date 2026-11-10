@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"ghostkitchen/usuarios/internal/trazas"
 	"log/slog"
 	"net"
 	"net/http"
@@ -100,6 +101,13 @@ func sembrarAdmins(log *slog.Logger, svc *services.Usuarios) {
 }
 
 func run(log *slog.Logger) error {
+	// Trazas (ADR-011): cada solicitud se ve en Jaeger, junto con las llamadas a otros servicios.
+	cerrarTrazas, err := trazas.Iniciar(context.Background())
+	if err != nil {
+		return err
+	}
+	defer cerrarTrazas(context.Background())
+
 	tk, err := tokens()
 	if err != nil {
 		log.Error("configuración inválida", "motivo", err.Error())

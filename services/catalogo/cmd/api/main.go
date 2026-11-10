@@ -114,7 +114,7 @@ func correr() error {
 	}
 
 	r := router.Nuevo(log,
-		handlers.Nuevo(services.Nuevo(lecturas), repo.Ping),
+		handlers.Nuevo(services.Nuevo(lecturas), repo.Ping).ConFuente(services.Nuevo(repo)),
 		handlers.NuevoAdmin(services.NuevoAdmin(repo, escritor)),
 		handlers.NuevoPlatos(services.NuevoPlatosCocina(repo, escritor, clients.NuevoInventario(cfg.InventarioURL))))
 	srv := &http.Server{

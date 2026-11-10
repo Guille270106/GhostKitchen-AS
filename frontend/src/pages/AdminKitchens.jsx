@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { crearCocina, crearRestaurante, toggleCocina, toggleRestaurante } from "../api/ghostkitchen";
+import { crearCocina, crearRestaurante, editarCocina, editarRestaurante, toggleCocina, toggleRestaurante } from "../api/ghostkitchen";
 import Button from "../components/common/Button";
 import EmptyState from "../components/common/EmptyState";
 import Icon from "../components/common/Icon";
@@ -25,6 +25,8 @@ function AdminKitchens() {
   const { cocinas, localidad, loading, error } = useAdminCocina();
   const [nuevaCocina, setNuevaCocina] = useState(null);
   const [nuevaMarca, setNuevaMarca] = useState(null); // { cocinaId, cocinaNombre, nombre }
+  const [cocinaEditada, setCocinaEditada] = useState(null); // { id, nombre, direccion, tiempoMin, tiempoMax, envio }
+  const [marcaEditada, setMarcaEditada] = useState(null); // { cocinaId, id, nombre, anterior }
   const [saving, setSaving] = useState(false);
 
   if (loading) return <Loader />;
@@ -83,9 +85,26 @@ function AdminKitchens() {
             <div>
               <div className="network-top">
                 <span className={`stock-pill ${cocina.activa ? "ok" : "low"}`}>{cocina.activa ? "Activa" : "Pausada"}</span>
-                <button className="text-link" onClick={() => pausar(cocina)}>
-                  {cocina.activa ? "Pausar" : "Reactivar"}
-                </button>
+                <span>
+                  <button
+                    className="text-link"
+                    onClick={() =>
+                      setCocinaEditada({
+                        id: cocina.id,
+                        nombre: cocina.nombre,
+                        direccion: cocina.direccion || "",
+                        tiempoMin: String(cocina.tiempoMin ?? ""),
+                        tiempoMax: String(cocina.tiempoMax ?? ""),
+                        envio: String(cocina.envio ?? 0),
+                      })
+                    }
+                  >
+                    Editar
+                  </button>{" "}
+                  <button className="text-link" onClick={() => pausar(cocina)}>
+                    {cocina.activa ? "Pausar" : "Reactivar"}
+                  </button>
+                </span>
               </div>
               <h2>{cocina.nombre}</h2>
               <p>
@@ -100,6 +119,9 @@ function AdminKitchens() {
                       <strong>{r.nombre}</strong>
                       <small>{r.activo ? "Activo" : "Pausado"}</small>
                     </div>
+                    <button className="text-link" onClick={() => setMarcaEditada({ cocinaId: cocina.id, id: r.id, nombre: r.nombre, anterior: r.nombre })}>
+                      Editar
+                    </button>
                     <button className="text-link" onClick={() => pausarMarca(cocina, r)}>
                       {r.activo ? "Pausar" : "Reactivar"}
                     </button>
@@ -187,6 +209,86 @@ function AdminKitchens() {
               </Button>
               <Button type="submit" loading={saving} disabled={!nuevaCocina.zonaId}>
                 Crear cocina
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {cocinaEditada && (
+        <Modal title={`Editar ${cocinaEditada.nombre}`} onClose={() => setCocinaEditada(null)}>
+          <form
+            className="modal-form"
+            onSubmit={(e) =>
+              guardar(
+                e,
+                () => editarCocina(cocinaEditada.id, cocinaEditada),
+                () => {
+                  notify(`Guardaste los cambios de ${cocinaEditada.nombre}.`, "success");
+                  setCocinaEditada(null);
+                }
+              )
+            }
+          >
+            <label>
+              Nombre
+              <input value={cocinaEditada.nombre} maxLength={80} onChange={(e) => setCocinaEditada({ ...cocinaEditada, nombre: e.target.value })} required />
+            </label>
+            <label>
+              Dirección
+              <input value={cocinaEditada.direccion} maxLength={120} onChange={(e) => setCocinaEditada({ ...cocinaEditada, direccion: e.target.value })} required />
+            </label>
+            <div className="form-row">
+              <label>
+                Entrega desde (min)
+                <input type="number" min="1" max="240" value={cocinaEditada.tiempoMin} onChange={(e) => setCocinaEditada({ ...cocinaEditada, tiempoMin: e.target.value })} required />
+              </label>
+              <label>
+                hasta (min)
+                <input type="number" min="1" max="240" value={cocinaEditada.tiempoMax} onChange={(e) => setCocinaEditada({ ...cocinaEditada, tiempoMax: e.target.value })} required />
+              </label>
+            </div>
+            <label>
+              Costo de envío (ARS)
+              <input type="number" min="0" step="100" value={cocinaEditada.envio} onChange={(e) => setCocinaEditada({ ...cocinaEditada, envio: e.target.value })} />
+            </label>
+            <div className="modal-actions">
+              <Button variant="secondary" onClick={() => setCocinaEditada(null)}>
+                Cancelar
+              </Button>
+              <Button type="submit" loading={saving}>
+                Guardar cambios
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {marcaEditada && (
+        <Modal title={`Editar ${marcaEditada.anterior}`} onClose={() => setMarcaEditada(null)}>
+          <form
+            className="modal-form"
+            onSubmit={(e) =>
+              guardar(
+                e,
+                () => editarRestaurante(marcaEditada.cocinaId, marcaEditada.id, marcaEditada.nombre),
+                () => {
+                  notify(`${marcaEditada.anterior} ahora se llama ${marcaEditada.nombre}.`, "success");
+                  setMarcaEditada(null);
+                }
+              )
+            }
+          >
+            <label>
+              Nombre del restaurante
+              <input value={marcaEditada.nombre} maxLength={80} onChange={(e) => setMarcaEditada({ ...marcaEditada, nombre: e.target.value })} required />
+            </label>
+            <div className="modal-actions">
+              <Button variant="secondary" onClick={() => setMarcaEditada(null)}>
+                Cancelar
+              </Button>
+              <Button type="submit" loading={saving}>
+                Guardar
               </Button>
             </div>
           </form>

@@ -24,11 +24,22 @@ import (
 type Catalogo struct {
 	svc  *services.Catalogo
 	ping func(context.Context) error
+	// fuente lee directo de MongoDB, sin caché. La usan las rutas internas con las que otros
+	// servicios toman una decisión (el precio al agregar al carrito, la cocina de una cuenta):
+	// ahí no puede haber un dato viejo de la caché (ADR-007).
+	fuente *services.Catalogo
 }
 
 // Nuevo crea los handlers.
 func Nuevo(svc *services.Catalogo, ping func(context.Context) error) *Catalogo {
-	return &Catalogo{svc: svc, ping: ping}
+	return &Catalogo{svc: svc, ping: ping, fuente: svc}
+}
+
+// ConFuente indica de dónde leen las rutas internas de un plato o una cocina (MongoDB sin
+// caché). Sin llamarla, leen de lo mismo que las públicas.
+func (h *Catalogo) ConFuente(fuente *services.Catalogo) *Catalogo {
+	h.fuente = fuente
+	return h
 }
 
 // Registrar agrega las rutas. Las de /internal/ solo se usan dentro de la red de Docker:
@@ -44,6 +55,10 @@ func (h *Catalogo) Registrar(r gin.IRoutes) {
 
 	r.GET("/internal/cocinas", h.todasLasCocinas)
 	r.GET("/internal/platos", h.paginaPlatos)
+	// Un plato o una cocina, leídos de la fuente de verdad (sin caché). Responden lo mismo que
+	// las públicas: lo desactivado da 404.
+	r.GET("/internal/platos/:id", h.obtenerPlatoFuente)
+	r.GET("/internal/cocinas/:id", h.obtenerCocinaFuente)
 }
 
 // preparado atiende GET /ready: MongoDB responde en menos de 1 s. /health, en cambio, solo
@@ -84,6 +99,24 @@ func (h *Catalogo) menu(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"cocina": gin.H{"id": cocina.ID, "nombre": cocina.Nombre}, "items": platos})
+}
+
+func (h *Catalogo) obtenerPlatoFuente(c *gin.Context) {
+	p, err := h.fuente.ObtenerPlato(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		responderError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, p)
+}
+
+func (h *Catalogo) obtenerCocinaFuente(c *gin.Context) {
+	cocina, err := h.fuente.ObtenerCocina(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		responderError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, cocina)
 }
 
 func (h *Catalogo) obtenerPlato(c *gin.Context) {

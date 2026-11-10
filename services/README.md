@@ -11,7 +11,7 @@ Funcionan los seis. Usuarios, Inventario y Pedidos usan MySQL; Catálogo y Notif
 | [busqueda](busqueda/README.md) | Buscar platos, sugerir la cocina más cercana, calcular proximidad externa y atender lo que publicamos | Solr | Capas (entra por HTTP y por mensajes) | 8083 |
 | [inventario](inventario/README.md) | Ingredientes, stock, recetas y reservas de 10 minutos | MySQL | Hexagonal liviano | 8084 |
 | [pedidos](pedidos/README.md) | Carrito, pedido, estados y la confirmación con Inventario y el proveedor | MySQL | Hexagonal + DDD | 8085 |
-| [notificaciones](notificaciones/README.md) | Un mail por cada cambio de estado del pedido | MongoDB | Un solo paquete (entra por mensajes) | — (sin API HTTP) |
+| [notificaciones](notificaciones/README.md) | Un mail por cada cambio de estado del pedido | MongoDB | Un solo paquete (entra por mensajes) | 8086 (solo `/health`, `/ready` y `/metrics`) |
 
 El gateway (NGINX, puerto 8080) está explicado en [`gateway/`](../gateway/README.md).
 
@@ -24,8 +24,8 @@ Las imágenes de contexto y contenedores están en `docs/diagrams/`. Las depende
 
 ## Reglas que siguen todos los servicios
 
-- **Go + Gin** (Notificaciones no usa Gin porque no tiene API HTTP).
-- Los que tienen API HTTP tienen tres rutas técnicas:
+- **Go + Gin** (Notificaciones usa `net/http`: solo tiene las tres rutas técnicas).
+- Todos tienen tres rutas técnicas:
   - `/health`: el servicio está prendido (lo usa Docker para saber si reiniciarlo);
   - `/ready`: el servicio puede atender, por ejemplo porque llega a su base;
   - `/metrics`: números para Prometheus.

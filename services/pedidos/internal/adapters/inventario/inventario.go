@@ -3,6 +3,7 @@
 package inventario
 
 import (
+	"ghostkitchen/pedidos/internal/trazas"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -28,7 +29,7 @@ type InventarioHTTP struct {
 func Nuevo(baseURL string) InventarioHTTP {
 	return InventarioHTTP{
 		BaseURL:        baseURL,
-		Client:         &http.Client{Timeout: 800 * time.Millisecond},
+		Client:         &http.Client{Timeout: 800 * time.Millisecond, Transport: trazas.Transporte(nil)},
 		BreakerConsumo: NuevoBreaker("inventario-consumir"),
 	}
 }

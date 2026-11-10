@@ -138,7 +138,7 @@ Algunas herramientas ya las conocíamos de la materia y otras las agregamos noso
 | — | Prism | Mock del contrato a partir del OpenAPI | 008 |
 | — | Mailpit | Servidor de correo de prueba en local | 005 |
 | Logs, métricas y seguimiento con Correlation ID; Prometheus como ejemplo de datos de series de tiempo | Grafana | Prometheus reúne las métricas y Grafana permite verlas en un tablero | 011 |
-| Trazabilidad distribuida | OpenTelemetry y Jaeger | Seguir una solicitud por todos los servicios y ver dónde se demora. Funciona desde la Entrega 2 | 011 |
+| Trazabilidad distribuida | OpenTelemetry y Jaeger | Seguir una solicitud entre servicios y ver dónde se demora. Funciona en el gateway y en todos los servicios con API | 011 |
 | Circuit breaker y reintentos con espera creciente | `sony/gobreaker` y `cenkalti/backoff` | Usar librerías en lugar de programar estos mecanismos a mano (Pedidos) | 010 |
 | Separar las reglas de las dependencias para poder probarlas, y comprobar fallas de forma controlada | Tests de Go, dependencias reales en Docker Compose y k6 para la carga | Pruebas unitarias, de integración, de contrato y de carga que pide el enunciado | 013 |
 
@@ -431,7 +431,7 @@ El enunciado pide definir qué pasa cuando cada dependencia se cae o responde le
 | **Grupo proveedor** | No se marca como hecho un paso cuyo resultado no conocemos; se reintenta o se compensa según su contrato | Mensaje claro; el pedido no se pierde |
 | **Usuarios** | El gateway no puede verificar tokens | No se puede iniciar sesión ni usar funciones privadas (ver la sección 14) |
 
-Las caídas de Inventario, RabbitMQ, el correo y el proveedor las provocamos en la jornada de fallas del 2026-11-10 (`scripts/fallas/jornada.mjs`): todas se comportaron como dice esta tabla y ninguna produjo errores 5xx. El detalle está en el [POSTMORTEM](../POSTMORTEM.md).
+Las caídas de Inventario, RabbitMQ, el correo y el proveedor las provocamos en la jornada de fallas del 2026-11-10 (`scripts/fallas/jornada.mjs`): todas se comportaron como dice esta tabla. Los únicos 5xx fueron los `503` esperados (agregar al carrito con Inventario caído), que no alcanzan para disparar la alerta `MuchosErrores5xx`: no hubo errores inesperados. El detalle está en el [POSTMORTEM](POSTMORTEM.md).
 
 ## 11. Despliegue
 
@@ -448,7 +448,7 @@ Las caídas de Inventario, RabbitMQ, el correo y el proveedor las provocamos en 
 | API publicada en la nube (Azure) con HTTPS | ✅ Entrega final ([infra/nube](../infra/nube/README.md)) |
 | Test de contrato de la API publicada en cada pull request | ✅ Entrega final (`.github/workflows/contrato.yml`) |
 
-En local, Docker Compose levanta frontend, gateway, servicios y sus dependencias. La entrada del frontend es el gateway. Notificaciones y Mailpit van en el perfil `notificaciones` (`docker compose --profile notificaciones up`).
+En local, Docker Compose levanta frontend, gateway, servicios y sus dependencias. La entrada del frontend es el gateway. `docker compose up --build` levanta todo, Notificaciones y Mailpit incluidos.
 
 Solo el gateway y las herramientas de monitoreo quedan accesibles desde fuera de Docker: ningún microservicio se puede llamar sin pasar por el gateway.
 
@@ -471,7 +471,7 @@ Solo el gateway y las herramientas de monitoreo quedan accesibles desde fuera de
 
 La idea es saber qué pasó con un pedido sin abrir la consola de cada servicio por separado. Para eso registramos el inicio y fin de cada paso, servicio, resultado y duración con el mismo `correlation_id`, también en los eventos. Así podemos reconstruir el recorrido y ubicar una demora. No guardamos contraseñas, tokens ni coordenadas externas en los logs.
 
-Prometheus reúne los números y Grafana los muestra en un tablero. Los logs JSON y las trazas en Jaeger funcionan en todos los servicios y en el gateway; las métricas, el tablero, los objetivos de servicio y las alertas están en el [ADR-011](adr/ADR-011-observabilidad.md).
+Prometheus reúne los números y Grafana los muestra en un tablero. Los logs JSON con `correlation_id` funcionan en el gateway y los seis servicios, y las trazas en Jaeger en el gateway y los cinco servicios con API: una compra se ve entera (`gateway → pedidos → catalogo` y `pedidos → inventario`). Del mensaje de RabbitMQ en adelante se sigue por el `correlation_id`; las métricas, el tablero, los objetivos de servicio y las alertas están en el [ADR-011](adr/ADR-011-observabilidad.md).
 
 | Qué miramos | Para qué nos sirve |
 | --- | --- |
@@ -490,7 +490,7 @@ El enunciado pide pruebas unitarias, integración con una dependencia real y car
 - **Integración:** levantamos las dependencias de prueba con Docker Compose y probamos cada servicio contra una base o RabbitMQ real, con datos separados. Por ejemplo, dos solicitudes intentan reservar el último plato y solo una lo consigue; un evento repetido no vuelve a aplicar su efecto.
 - **Contrato:** comprobamos que lo que mandamos al proveedor respeta su OpenAPI (contra su mock), y que nuestra API publicada respeta el nuestro en cada pull request.
 - **Carga:** con k6 mandamos solicitudes concurrentes y registramos cantidad, tiempos de respuesta, errores y el recurso que limita la capacidad. Comparamos Catálogo con y sin caché, con una y dos copias, y la caída de una copia. Los escenarios están en `tests/carga/` y los resultados en el ADR-013.
-- **Fallas controladas:** apagamos Inventario, RabbitMQ, el correo y el proveedor, comprobamos la respuesta al usuario y la recuperación, y registramos el resultado en el [POSTMORTEM](../POSTMORTEM.md).
+- **Fallas controladas:** apagamos Inventario, RabbitMQ, el correo y el proveedor, comprobamos la respuesta al usuario y la recuperación, y registramos el resultado en el [POSTMORTEM](POSTMORTEM.md).
 
 El objetivo es probar las reglas importantes y explicar los resultados. Un porcentaje alto de cobertura por sí solo no demuestra que el stock sea correcto.
 
@@ -525,5 +525,5 @@ El objetivo es probar las reglas importantes y explicar los resultados. Un porce
 - **El pago es simulado** y no manejamos repartidores.
 - **Los restaurantes tienen nombres reales** solo como ejemplo. Los platos, precios y stock son inventados.
 - **Lo que no llegamos a hacer:** cargar las zonas en Solr (la cocina más cercana se calcula sobre las cocinas), un test de integración contra un Solr real, una métrica propia de confirmaciones pendientes en Pedidos y medir el carrito con 100 usuarios a la vez sin pedir todos el mismo plato.
-- **Notificaciones no tiene API HTTP** (ni `/health` ni `/metrics`): solo escucha mensajes. Si se cae, se nota porque los mensajes se acumulan en su cola de RabbitMQ.
+- **La traza no cruza RabbitMQ:** en Jaeger se ve la solicitud hasta que Pedidos guarda el evento; el mail se sigue por el `correlation_id`, que viaja en el evento y aparece en los logs de Notificaciones.
 - **Seis servicios para tres personas es bastante trabajo.** Lo aceptamos porque cada uno tiene un motivo claro (ver el ADR-001).

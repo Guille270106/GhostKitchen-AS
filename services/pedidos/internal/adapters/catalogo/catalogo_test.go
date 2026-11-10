@@ -19,7 +19,7 @@ func TestObtenerPlato(t *testing.T) {
 		if r.Header.Get("X-Correlation-Id") != "prueba-1" {
 			t.Error("no se pasó el correlation id")
 		}
-		if r.URL.Path == "/platos/p17" {
+		if r.URL.Path == "/internal/platos/p17" {
 			w.Write([]byte(`{"id":"p17","cocinaId":"cerro","restauranteId":"r5","nombre":"Burger","precio":12000,"activo":true}`))
 			return
 		}

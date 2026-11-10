@@ -14,8 +14,11 @@ import (
 
 // CarritosMock guarda los carritos en un mapa, con el mismo control de versión que MySQL.
 type CarritosMock struct {
-	mu       sync.Mutex
-	carritos map[string]domain.Carrito
+	mu         sync.Mutex
+	carritos   map[string]domain.Carrito
+	operaciones map[string]bool // cliente + clave ya aplicadas
+	// fallarGuardar simula que la base se cae justo al guardar (después de reservar).
+	fallarGuardar bool
 }
 
 func (r *CarritosMock) Obtener(_ context.Context, clienteID string) (domain.Carrito, error) {
@@ -32,11 +35,29 @@ func (r *CarritosMock) Obtener(_ context.Context, clienteID string) (domain.Carr
 func (r *CarritosMock) Guardar(_ context.Context, c domain.Carrito, versionAnterior int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.fallarGuardar {
+		return errors.New("se cayó la base")
+	}
 	if r.carritos[c.ClienteID].Version != versionAnterior {
 		return domain.ErrCarritoModificado
 	}
+	if c.Operacion != "" {
+		if r.operaciones == nil {
+			r.operaciones = map[string]bool{}
+		}
+		if r.operaciones[c.ClienteID+"|"+c.Operacion] {
+			return domain.ErrOperacionRepetida
+		}
+		r.operaciones[c.ClienteID+"|"+c.Operacion] = true
+	}
 	r.carritos[c.ClienteID] = c
 	return nil
+}
+
+func (r *CarritosMock) OperacionAplicada(_ context.Context, clienteID, clave string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.operaciones[clienteID+"|"+clave], nil
 }
 
 // MarcarVencido vacía el carrito que tiene esa reserva, igual que MySQL: si ya no la tiene, no hace nada.
@@ -348,5 +369,60 @@ func TestReservaVencidaConDatosRotos(t *testing.T) {
 	svc, _, _ := carritoEntorno()
 	if err := svc.ReservaVencida(context.Background(), "", "car-1"); !errors.Is(err, domain.ErrDatosInvalidos) {
 		t.Fatal(err)
+	}
+}
+
+// Si la base se cae justo después de reservar el primer plato, el carrito no se guarda: la
+// reserva no puede quedar apartando ingredientes que ningún carrito tiene. Se libera.
+func TestSiFallaGuardarElPrimerPlatoSeLiberaLaReserva(t *testing.T) {
+	svc, repo, inv := carritoEntorno()
+	repo.fallarGuardar = true
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 2); err == nil {
+		t.Fatal("tenía que fallar")
+	}
+	if len(inv.reservas) != 0 {
+		t.Fatal("quedó una reserva sin carrito:", inv.reservas)
+	}
+}
+
+// Si falla guardar un cambio de un carrito que ya existía, la reserva vuelve a quedar igual a
+// lo guardado (no con el plato que no se pudo agregar).
+func TestSiFallaGuardarUnCambioLaReservaVuelveALoGuardado(t *testing.T) {
+	svc, repo, inv := carritoEntorno()
+	c, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Guardar falla (pero leer anda): Inventario ya ajustó la reserva con p21.
+	repo.fallarGuardar = true
+
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p21", 1); err == nil {
+		t.Fatal("tenía que fallar")
+	}
+	// La reserva tiene que coincidir con lo que quedó guardado: solo p17 x2.
+	if r := inv.reservas[c.ReservaID]; len(r) != 1 || r[0].PlatoID != "p17" || r[0].Cantidad != 2 {
+		t.Fatal("la reserva no volvió a lo guardado:", r)
+	}
+}
+
+// Reenviar el mismo "agregar" (la misma Idempotency-Key) no suma dos veces; otro clic sí suma.
+func TestReenviarElMismoAgregarNoSumaDosVeces(t *testing.T) {
+	svc, repo, inv := carritoEntorno()
+	if _, err := svc.AgregarPlatoConClave(context.Background(), clienteCarrito, "p17", 1, "clic-1"); err != nil {
+		t.Fatal(err)
+	}
+	c, err := svc.AgregarPlatoConClave(context.Background(), clienteCarrito, "p17", 1, "clic-1")
+	if err != nil || len(c.Items) != 1 || c.Items[0].Cantidad != 1 {
+		t.Fatal("el reenvío volvió a sumar:", err, c)
+	}
+	if r := inv.reservas[c.ReservaID]; r[0].Cantidad != 1 {
+		t.Fatal("el reenvío volvió a reservar:", r)
+	}
+	c, err = svc.AgregarPlatoConClave(context.Background(), clienteCarrito, "p17", 1, "clic-2")
+	if err != nil || c.Items[0].Cantidad != 2 || repo.carritos["u-cliente"].Items[0].Cantidad != 2 {
+		t.Fatal("otro clic tenía que sumar:", err, c)
+	}
+	if _, err := svc.AgregarPlatoConClave(context.Background(), clienteCarrito, "p17", 1, "con espacio"); !errors.Is(err, domain.ErrClaveInvalida) {
+		t.Fatal("una clave inválida tenía que rechazarse:", err)
 	}
 }

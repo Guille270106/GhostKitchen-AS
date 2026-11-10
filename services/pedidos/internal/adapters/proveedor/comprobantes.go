@@ -4,6 +4,7 @@
 package proveedor
 
 import (
+	"ghostkitchen/pedidos/internal/trazas"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -33,7 +34,7 @@ func Nuevo(baseURL, apiKey string) Comprobantes {
 	return Comprobantes{
 		BaseURL: baseURL,
 		APIKey:  apiKey,
-		Client:  &http.Client{Timeout: 5 * time.Second},
+		Client:  &http.Client{Timeout: 5 * time.Second, Transport: trazas.Transporte(nil)},
 		Breaker: gobreaker.NewCircuitBreaker(gobreaker.Settings{
 			Name:        "proveedor-comprobantes",
 			MaxRequests: 3,

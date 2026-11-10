@@ -87,7 +87,7 @@ Un cambio en sus nombres o formatos se arregla en el adaptador, sin tocar las re
 
 - **Test de contrato** contra su mock, en cada corrida de `testdata/compose.yml` (y en GitHub Actions, en cada pull request).
 - **Tests del servicio y del adaptador**: misma clave en cada reintento, rechazo sin reintento, timeout como pendiente, circuit breaker.
-- **Jornada de fallas (hecha, 2026-11-10):** con el proveedor caído, el pedido se confirmó igual en 0,1 s, la factura quedó pendiente y salió sola 7 s después de que volvió. Detalle en el [POSTMORTEM](../../POSTMORTEM.md).
+- **Jornada de fallas (hecha, 2026-11-10):** con el proveedor caído, el pedido se confirmó igual en 0,1 s, la factura quedó pendiente y salió sola 7 s después de que volvió. Detalle en el [POSTMORTEM](../POSTMORTEM.md).
 
 ## Referencias
 

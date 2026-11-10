@@ -2,6 +2,7 @@
 package catalogo
 
 import (
+	"ghostkitchen/pedidos/internal/trazas"
 	"context"
 	"encoding/json"
 	"errors"
@@ -21,7 +22,7 @@ type CatalogoHTTP struct {
 
 // Nuevo arma el cliente con el tiempo máximo de cada intento (500 ms, ADR-005).
 func Nuevo(baseURL string) CatalogoHTTP {
-	return CatalogoHTTP{BaseURL: baseURL, Client: &http.Client{Timeout: 500 * time.Millisecond}}
+	return CatalogoHTTP{BaseURL: baseURL, Client: &http.Client{Timeout: 500 * time.Millisecond, Transport: trazas.Transporte(nil)}}
 }
 
 // platoJSON es la parte del plato de Catálogo que usamos.
@@ -48,7 +49,7 @@ func (c CatalogoHTTP) ObtenerPlato(ctx context.Context, platoID string) (domain.
 // pedirPlato hace un intento.
 func (c CatalogoHTTP) pedirPlato(ctx context.Context, platoID string) (domain.PlatoCatalogo, error) {
 	// 1. Armamos el pedido, con el correlation id para seguirlo en los logs.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/platos/"+url.PathEscape(platoID), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/internal/platos/"+url.PathEscape(platoID), nil)
 	if err != nil {
 		return domain.PlatoCatalogo{}, err
 	}

@@ -30,9 +30,11 @@ scrape_configs:
     static_configs:
       - targets: ["pedidos:8085"]
 
-  # Notificaciones (V13) no se lee: no tiene servidor HTTP, solo escucha su cola, y arranca
-  # aparte (perfil "notificaciones"). Lo que importa de ella se ve en RabbitMQ: los mensajes en
-  # notificaciones.mailer y en su DLQ (panel "Colas" y alerta MensajesEnDLQ).
+  # Notificaciones no atiende solicitudes: sus métricas cuentan mensajes (enviados, repetidos,
+  # reintentos y DLQ) y miden cuánto tarda cada mail.
+  - job_name: notificaciones
+    static_configs:
+      - targets: ["notificaciones:8086"]
 
   # RabbitMQ trae su plugin de Prometheus (puerto 15692). /metrics/detailed con
   # queue_coarse_metrics da los mensajes de cada cola, también las DLQ.

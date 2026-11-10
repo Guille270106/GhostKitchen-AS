@@ -1,6 +1,6 @@
 # ADR-010 — Qué pasa cuando algo falla
 
-- **Estado:** Aceptada e implementada en todos los servicios. Búsqueda, Catálogo y el gateway desde la Entrega 2; Pedidos, Inventario y Notificaciones en la entrega final. Validada en la jornada de fallas del 2026-11-10 ([POSTMORTEM](../../POSTMORTEM.md))
+- **Estado:** Aceptada e implementada en todos los servicios. Búsqueda, Catálogo y el gateway desde la Entrega 2; Pedidos, Inventario y Notificaciones en la entrega final. Validada en la jornada de fallas del 2026-11-10 ([POSTMORTEM](../POSTMORTEM.md))
 - **Fecha:** 2026-10-16
 - **Responsable:** Lucía Rucci
 - **Decisión del enunciado:** D10 (comportamiento ante fallas y mecanismos para limitar su propagación o degradar el sistema de forma controlada)
@@ -75,7 +75,7 @@ La tabla completa por dependencia está en la sección 10 de [ARCHITECTURE](../A
 
 ### 6. Salud y reinicio
 
-- ✅ Cada servicio con API tiene `/health` (el proceso está vivo) y `/ready` (sus dependencias responden). Notificaciones no tiene API: si se cae, se nota porque los mensajes se acumulan en su cola. Docker Compose usa `/health` para marcar el contenedor como sano, y el gateway no arranca hasta que Búsqueda y Catálogo lo están. `/ready` sirve para saber si puede atender: un servicio sin Solr está vivo pero no listo, y reiniciarlo no arregla Solr.
+- ✅ Cada servicio tiene `/health` (el proceso está vivo) y `/ready` (sus dependencias responden). En Notificaciones, que no atiende solicitudes, `/ready` además pide que esté escuchando su cola. Docker Compose usa `/health` para marcar el contenedor como sano, y el gateway no arranca hasta que Búsqueda y Catálogo lo están. `/ready` sirve para saber si puede atender: un servicio sin Solr está vivo pero no listo, y reiniciarlo no arregla Solr.
 - ✅ `restart: unless-stopped` en Docker Compose: si un proceso termina, Docker lo vuelve a levantar. (Docker Compose no reinicia un contenedor solo por estar "no sano"; eso lo haría un orquestador como Kubernetes.)
 
 ### Librerías
@@ -102,5 +102,5 @@ Para Pedidos usamos `sony/gobreaker` (circuit breaker) y `cenkalti/backoff` (esp
 
 - **Entrega 2 (hecho):** tests de Búsqueda con Solr caído (503 con `Retry-After`, nunca lista vacía), proximidad sin Solr, Catálogo caído en la mitad de la reconstrucción y Catálogo con MongoDB caído. Con el gateway: servicio caído → 503 con Problem Details.
 - **Entrega final (hecho):** tests de Pedidos con Inventario y el proveedor caídos o lentos (reintentos, circuit breaker y respuesta en menos de 3 s), y la integración con MySQL real.
-- **Jornada de fallas (hecho, 2026-11-10):** con `scripts/fallas/jornada.mjs` apagamos Inventario, RabbitMQ, el correo y el proveedor. Con Inventario caído, agregar al carrito respondió `503` en 1,6 s y confirmar respondió "Estamos confirmando tu pedido" en 2,1 s; el pedido se completó solo 13 s después de que volvió. Con RabbitMQ caído los pedidos siguieron andando y el outbox se vació 36 s después de que volvió. El correo llegó tarde (corte corto) o terminó en la DLQ (corte largo), y la factura salió 7 s después de que volvió el proveedor. Ninguna caída produjo errores 5xx. El detalle está en el [POSTMORTEM](../../POSTMORTEM.md).
+- **Jornada de fallas (hecho, 2026-11-10):** con `scripts/fallas/jornada.mjs` apagamos Inventario, RabbitMQ, el correo y el proveedor. Con Inventario caído, agregar al carrito respondió `503` en 1,6 s y confirmar respondió "Estamos confirmando tu pedido" en 2,1 s; el pedido se completó solo 13 s después de que volvió. Con RabbitMQ caído los pedidos siguieron andando y el outbox se vació 36 s después de que volvió. El correo llegó tarde (corte corto) o terminó en la DLQ (corte largo), y la factura salió 7 s después de que volvió el proveedor. Los únicos 5xx fueron los `503` esperados (agregar al carrito con Inventario caído), que no alcanzan para disparar la alerta `MuchosErrores5xx`: no hubo errores inesperados. El detalle está en el [POSTMORTEM](../POSTMORTEM.md).
 

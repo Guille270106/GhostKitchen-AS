@@ -1,6 +1,6 @@
 # ADR-011 — Observabilidad: logs, trazas, métricas y alertas
 
-- **Estado:** Aceptada e implementada: logs JSON y trazas en todos los servicios, `/metrics` en los servicios con API, Prometheus, tablero en Grafana y alertas
+- **Estado:** Aceptada e implementada: logs JSON con `correlation_id` y trazas en el gateway y los seis servicios (Notificaciones, solo logs: no atiende solicitudes), `/metrics` en los seis servicios, Prometheus, tablero en Grafana y alertas
 - **Fecha:** 2026-10-16
 - **Responsable:** Guillermina Sánchez
 - **Decisión del enunciado:** D11 (estrategia de logs, métricas, trazas y tableros, objetivo de servicio y criterios de alerta)
@@ -64,7 +64,7 @@ Prometheus lee `/metrics` de cada servicio; Grafana muestra un tablero con:
 
 #### Cómo quedó `/metrics`
 
-Cada servicio en Go (Usuarios, Catálogo, Búsqueda, Inventario y Pedidos) publica `GET /metrics` con `prometheus/client_golang`. Solo se llega desde adentro de Docker: el gateway no la publica. Notificaciones no tiene API HTTP, así que no publica `/metrics`: sus mensajes se ven en la cola y la DLQ de RabbitMQ.
+Cada servicio en Go (Usuarios, Catálogo, Búsqueda, Inventario y Pedidos) publica `GET /metrics` con `prometheus/client_golang`. Solo se llega desde adentro de Docker: el gateway no la publica. Notificaciones publica `/metrics` en su puerto técnico 8086 con otras métricas, porque su trabajo son los mensajes y no las solicitudes: `notificaciones_mensajes_total` por resultado (enviado, duplicado, reintento, dlq, invalido), `notificaciones_envio_duration_seconds` y `notificaciones_rabbitmq_conectado`. Así se distingue un worker caído (no aparece) de uno sin trabajo (aparece, sin mensajes) y de uno con problemas (reintentos o DLQ).
 
 | Métrica | Tipo | Etiquetas | Panel |
 | --- | --- | --- | --- |
@@ -107,7 +107,8 @@ Además vienen las de Go y del proceso (memoria, goroutines, CPU). Decisiones:
   - `promtool check` de la configuración y de las reglas, y las 22 expresiones del tablero pasadas por el parser de Prometheus.
   - Tests de las alertas con `promtool test rules` (`infra/prometheus/alertas_test.yml`): 10 % de 5xx salta a los 5 minutos y un error suelto no; una copia caída salta al minuto; un mensaje en la DLQ salta a los 5 minutos.
   - Prometheus real contra Usuarios y RabbitMQ: todas las consultas del tablero responden y `ServicioCaido` se disparó para los servicios apagados.
-- **No llegamos:** una métrica propia de confirmaciones pendientes en Pedidos (hoy se ven en la tabla `confirmacion` y en los logs) y métricas de Notificaciones, que no tiene API HTTP: sus mensajes se ven en la cola y la DLQ de RabbitMQ.
+- **No llegamos:** una métrica propia de confirmaciones pendientes en Pedidos (hoy se ven en la tabla `confirmacion` y en los logs).
+- **Trazas:** Usuarios, Inventario y Pedidos crean su span por solicitud (`otelgin`) y sus llamadas a otros servicios llevan el `traceparent` (`otelhttp`), así una compra se ve entera en Jaeger: `gateway → pedidos → catalogo` y `pedidos → inventario`. La traza no sigue a través de RabbitMQ: del mensaje en adelante, el pedido se sigue por su `correlation_id`, que viaja en el evento y aparece en los logs de Notificaciones.
 
 ### 4. Objetivos de servicio (SLO)
 

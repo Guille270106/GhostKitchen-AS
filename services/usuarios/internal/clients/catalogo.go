@@ -3,6 +3,7 @@
 package clients
 
 import (
+	"ghostkitchen/usuarios/internal/trazas"
 	"context"
 	"encoding/json"
 	"errors"
@@ -44,7 +45,7 @@ type Catalogo struct {
 
 // NuevoCatalogo crea el cliente. baseURL es, por ejemplo, http://catalogo:8082.
 func NuevoCatalogo(baseURL string) *Catalogo {
-	return &Catalogo{base: strings.TrimRight(baseURL, "/"), http: &http.Client{Timeout: TimeoutIntento}}
+	return &Catalogo{base: strings.TrimRight(baseURL, "/"), http: &http.Client{Timeout: TimeoutIntento, Transport: trazas.Transporte(nil)}}
 }
 
 // Cocina pide una cocina activa a Catálogo (GET /cocinas/:id). Reintenta una vez si no hubo
@@ -69,7 +70,7 @@ func (c *Catalogo) Cocina(ctx context.Context, id, correlationID string) (Cocina
 }
 
 func (c *Catalogo) pedir(ctx context.Context, id, correlationID string) (Cocina, bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/cocinas/"+url.PathEscape(id), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/internal/cocinas/"+url.PathEscape(id), nil)
 	if err != nil {
 		return Cocina{}, false, fmt.Errorf("%w: armar solicitud", ErrCatalogoNoDisponible)
 	}
