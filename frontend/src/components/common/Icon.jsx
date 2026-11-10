@@ -60,6 +60,13 @@ const paths = {
     </>
   ),
   chart: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />,
+  // Libro de recetas: "Platos y recetas" (el tenedor y cuchillo queda para "Menú").
+  recipe: (
+    <>
+      <path d="M5 4a2 2 0 0 1 2-2h12v17H7a2 2 0 0 0-2 2V4Z" />
+      <path d="M5 21a2 2 0 0 1 2-2h12v3H7a2 2 0 0 1-2-1ZM9 7h6M9 11h6" />
+    </>
+  ),
   utensils: <path d="M7 3v7M4 3v4a3 3 0 0 0 6 0V3M7 10v11M16 3v18M16 3c5 3 5 9 0 10" />,
   alert: (
     <>
