@@ -435,7 +435,7 @@ El enunciado pide definir qué pasa cuando cada dependencia se cae o responde le
 | **Grupo proveedor** | No se marca como hecho un paso cuyo resultado no conocemos; se reintenta o se compensa según su contrato | Mensaje claro; el pedido no se pierde |
 | **Usuarios** | El gateway no puede verificar tokens | No se puede iniciar sesión ni usar funciones privadas (ver la sección 14) |
 
-Las caídas de Inventario, RabbitMQ y el correo son las que vamos a provocar en la jornada de fallas y documentar en `POSTMORTEM.md`.
+Las caídas de Inventario, RabbitMQ, el correo y el proveedor las provocamos en la jornada de fallas del 2026-11-10 (`scripts/fallas/jornada.mjs`): todas se comportaron como dice esta tabla y ninguna produjo errores 5xx. El detalle está en el [POSTMORTEM](../POSTMORTEM.md).
 
 ## 11. Despliegue
 
@@ -447,10 +447,12 @@ Las caídas de Inventario, RabbitMQ y el correo son las que vamos a provocar en 
 | Gateway, Búsqueda con Solr, Catálogo con MongoDB | ✅ Entrega 2 |
 | Logs JSON correlacionados y trazas en Jaeger | ✅ Entrega 2 ([ADR-011](adr/ADR-011-observabilidad.md)) |
 | MySQL con tres bases, usuarios y plantillas de migración | Ronda 1; ver [guía](../infra/mysql/README.md) |
-| Usuarios, Inventario, Pedidos, Notificaciones, RabbitMQ, Memcached, Mailpit y frontend | Entrega final |
-| Segunda copia de Catálogo ([ADR-012](adr/ADR-012-balanceo-de-carga.md)), métricas con Prometheus y tablero con Grafana | Entrega final |
+| Usuarios, Inventario, Pedidos, Notificaciones, RabbitMQ, Memcached, Mailpit y frontend | ✅ Entrega final |
+| Segunda copia de Catálogo ([ADR-012](adr/ADR-012-balanceo-de-carga.md)), métricas con Prometheus y tablero con Grafana | ✅ Entrega final |
+| API publicada en la nube (Azure) con HTTPS | ✅ Entrega final ([infra/nube](../infra/nube/README.md)) |
+| Test de contrato de la API publicada en cada pull request | ✅ Entrega final (`.github/workflows/contrato.yml`) |
 
-En local, Docker Compose levantará frontend, gateway, servicios y sus dependencias. La entrada del frontend será el gateway. Para publicar la capacidad externa se desplegará lo necesario para Búsqueda y su API; el resto se mantendrá dentro de la red prevista.
+En local, Docker Compose levanta frontend, gateway, servicios y sus dependencias. La entrada del frontend es el gateway. Notificaciones y Mailpit van en el perfil `notificaciones` (`docker compose --profile notificaciones up`).
 
 Solo el gateway y las herramientas de monitoreo quedan accesibles desde fuera de Docker: ningún microservicio se puede llamar sin pasar por el gateway.
 
@@ -506,19 +508,19 @@ El objetivo es probar las reglas importantes y explicar los resultados. Un porce
 | [ADR-002](adr/ADR-002-arquitectura-interna.md) | D2 Cómo se organiza cada servicio por dentro | Aceptada para Búsqueda y Catálogo | 2 |
 | [ADR-003](adr/ADR-003-persistencia.md) | D3 Qué base usa cada servicio | Aceptada; validada para MongoDB y Solr | 1 (validada en la 2) |
 | [ADR-004](adr/ADR-004-consistencia-y-concurrencia.md) | D4 Consistencia y concurrencia | Propuesta; validación del flujo crítico pendiente | Ronda 1; validación final |
-| [ADR-005](adr/ADR-005-comunicacion-entre-servicios.md) | D5 Cómo se comunican | Aceptada; validada la parte síncrona | 1 (validada en la 2) |
+| [ADR-005](adr/ADR-005-comunicacion-entre-servicios.md) | D5 Cómo se comunican | Aceptada; validada (síncrona, mensajería y saga) | 1 (validada en la 2 y en la final) |
 | [ADR-006](adr/ADR-006-busqueda.md) | D6 Búsqueda | Aceptada | 2 |
 | [ADR-007](adr/ADR-007-cache.md) | D7 Caché | Propuesta | 2 |
 | [ADR-008](adr/ADR-008-contrato-propio.md) | D8 Lo que publicamos | Aceptada, implementada (contrato 1.1.0 sin cambios) | 1 (implementada en la 2) |
-| [ADR-009](adr/ADR-009-consumo-del-proveedor.md) | D9 Lo que consumimos | Aceptada (Grupo 4, comprobantes) | 2 |
-| [ADR-010](adr/ADR-010-resiliencia.md) | D10 Qué pasa cuando algo falla | Aceptada | 2 |
+| [ADR-009](adr/ADR-009-consumo-del-proveedor.md) | D9 Lo que consumimos | Aceptada e implementada (Grupo 4, comprobantes; hoy contra su mock) | 2 (implementada en la final) |
+| [ADR-010](adr/ADR-010-resiliencia.md) | D10 Qué pasa cuando algo falla | Aceptada; implementada y validada en la jornada de fallas | 2 (validada en la final) |
 | [ADR-011](adr/ADR-011-observabilidad.md) | D11 Monitoreo | Primera versión | 2 |
 | [ADR-012](adr/ADR-012-balanceo-de-carga.md) | D12 Balanceo de carga | Propuesta | 2 |
 | [ADR-013](adr/ADR-013-capacidad-y-costos.md) | D13 Capacidad y costos | Primera versión | 2 |
 
 ## 14. Limitaciones conocidas
 
-- **Funcionan tres piezas de siete:** gateway, Búsqueda y Catálogo. Usuarios, Inventario, Pedidos y Notificaciones todavía no tienen código, así que la disponibilidad de los platos sale de los datos iniciales y la búsqueda no recibe mensajes.
+- **En la nube corre solo la API publicada:** Usuarios, Inventario, Pedidos y Notificaciones corren en local. Por eso la disponibilidad que devuelve la API en la nube sale de los datos de ejemplo ([infra/nube](../infra/nube/README.md)).
 - **El grupo proveedor (Grupo 4) todavía no publicó su URL pública:** Pedidos usa su mock, servido desde su contrato, y el test de contrato corre contra ese mock ([ADR-009](adr/ADR-009-consumo-del-proveedor.md)). Cuando la publiquen, se completa el `.env` y se pide la API key.
 - **Tenemos que confirmar con la cátedra:** que los pedidos los reciba la cocina (y no cada restaurante), que los 10 minutos no se reinicien al agregar platos y hasta cuándo puede cancelar el cliente.
 - **Usuarios es una pieza crítica:** el gateway le pregunta en cada solicitud con login. Si se cae, nadie puede usar las funciones privadas. La alternativa sería que NGINX verifique el token por su cuenta, pero eso requiere un módulo extra o un gateway propio.

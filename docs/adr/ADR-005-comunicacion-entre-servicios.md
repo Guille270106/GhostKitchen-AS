@@ -1,6 +1,6 @@
 # ADR-005 — Cómo se comunican los servicios
 
-- **Estado:** Aceptada. Validada en la Entrega 2 la parte de llamadas directas y correlación (ver [Validación](#validación-entrega-2)); la mensajería se valida con Pedidos, Inventario y Notificaciones
+- **Estado:** Aceptada y validada. Las llamadas directas y la correlación, en la Entrega 2 (ver [Validación](#validación-entrega-2)); la mensajería (outbox, RabbitMQ, DLQ y mensajes repetidos), en la entrega final (ver [Validación final](#validación-entrega-final))
 - **Fecha:** 2026-10-09; validada el 2026-10-16
 - **Responsable:** Lucía Rucci
 - **Decisión del enunciado:** D5 (cuándo usar llamadas directas y cuándo mensajes, tiempos de espera, reintentos, eventos e idempotencia)
@@ -172,12 +172,12 @@ Lo que planeábamos validar ("agregar al carrito" de punta a punta y un mensaje 
 
 | Qué decía el ADR | Qué implementamos | Resultado |
 | --- | --- | --- |
-| Búsqueda → Catálogo para reconstruir: 5 s y 3 reintentos, fuera de una solicitud de usuario | 5 s por intento y 3 reintentos con espera de 0,5 s, 1 s y 2 s. Hoy reintenta ante cualquier respuesta que no sea `200`: es una lectura, así que repetirla es seguro (lo afinamos para no reintentar un `4xx`). Si falla, se conserva el índice anterior | ✅ |
+| Búsqueda → Catálogo para reconstruir: 5 s y 3 reintentos, fuera de una solicitud de usuario | 5 s por intento y 3 reintentos con espera de 0,5 s, 1 s y 2 s. Es una lectura, así que repetirla es seguro; desde la L22 no reintenta un `4xx`, que es una respuesta definitiva. Si falla, se conserva el índice anterior | ✅ |
 | Ninguna pantalla espera más de 3 s | Gateway: 1 s para conectar y 3 s para responder. Solr y MongoDB: 2 s. La verificación de la API key: 1 s | ✅ |
 | Reintenta uno solo | El gateway no reintenta; solo reintenta la reconstrucción, que es trabajo de fondo | ✅ |
 | `correlation_id` en los logs de todos los servicios | El gateway lo genera (o usa el del cliente), Búsqueda lo pasa a Catálogo en `X-Correlation-Id` y los tres lo registran. Además viaja la traza (`traceparent`) y Jaeger muestra una reconstrucción como una sola traza con spans de Búsqueda y Catálogo ([ADR-011](ADR-011-observabilidad.md)) | ✅ |
 | Las llamadas internas no salen por el gateway | `/internal/` está bloqueado en el gateway: responde `404` | ✅ |
-| Mensajes, outbox, idempotencia, DLQ | Sin cambios en la decisión; se implementan con RabbitMQ | Pendiente |
+| Mensajes, outbox, idempotencia, DLQ | Implementados en la entrega final (ver [Validación final](#validación-entrega-final)) | ✅ |
 
 **Lo que aprendimos:** el reintento con espera creciente alcanzó para la reconstrucción. Para las llamadas de Pedidos, que tienen el plazo de 3 s, vamos a usar librerías de circuit breaker y backoff ([ADR-010](ADR-010-resiliencia.md)) en lugar de programarlo a mano.
 
@@ -190,10 +190,27 @@ Lo que planeábamos validar ("agregar al carrito" de punta a punta y un mensaje 
 - Un **ajuste**: un plato que llega antes que su cocina no se reintenta, se guarda inactivo y se completa con el mensaje de la cocina. Devolverlo a la cola podía dejarlo delante del mensaje de la cocina y trabar los dos.
 - Probado con RabbitMQ real (plato antes que la cocina, mensaje roto a la DLQ) y con Solr simulado (409 y reintento). Falta medir el atraso de punta a punta (`demora_ms` en el log) con todo el sistema levantado.
 
-## Cómo lo vamos a validar
+## Validación (entrega final)
 
-- **Entrega 2 (hecho con el flujo de búsqueda, ver arriba):** seguir un "agregar al carrito" de punta a punta con el mismo `correlation_id` en el gateway, Pedidos, Catálogo e Inventario. Y un test que mande dos veces el mismo mensaje de cambio de estado y verifique que llega un solo mail.
-- **Entrega final:** lo que no se pudo en la Entrega 2: "agregar al carrito" de punta a punta con el mismo `correlation_id` y el mensaje repetido que manda un solo mail. Además, si tiramos Inventario, Pedidos tiene que responder rápido "no podemos tomar pedidos ahora". Si tiramos RabbitMQ, no se tiene que perder ningún mensaje.
+Con todos los servicios implementados se validó lo que en la Entrega 2 no se podía:
+
+| Qué decía el ADR | Qué implementamos | Resultado |
+| --- | --- | --- |
+| Pedidos coordina la confirmación (saga orquestada) | Cada paso queda guardado en `confirmacion`; si no se sabe cómo terminó un paso, se responde "Estamos confirmando tu pedido" y un proceso lo retoma cada 10 s | ✅ |
+| Toda escritura entre servicios lleva `Idempotency-Key` | Reservar, ajustar, liberar, descontar y devolver en Inventario, y la factura del proveedor, con la misma clave en cada reintento. Probado con dos confirmaciones a la vez del mismo carrito: un solo pedido y un solo descuento | ✅ |
+| Outbox: el cambio y su mensaje se guardan juntos | Pedidos (`pedido.estado_cambiado`), Catálogo (`cocina.*`, `plato.*`) e Inventario (`reserva.vencida`, `disponibilidad.cambiada`) guardan el mensaje en la misma transacción; un publicador lo manda y lo marca recién cuando RabbitMQ confirma | ✅ |
+| Una cola por consumidor, ACK después del efecto, DLQ | Búsqueda, Inventario, Pedidos y Notificaciones leen su cola de a un mensaje, confirman después de guardar, mandan a la DLQ lo roto y reintentan lo pasajero | ✅ |
+| Un mensaje repetido no hace dos veces lo mismo | Notificaciones: el mismo evento dos veces manda **un solo mail** (`services/notificaciones/prueba-v15.ps1`, con RabbitMQ y Mailpit reales). Pedidos: el mismo `reserva.vencida` dos veces no cambia nada | ✅ |
+| `correlation_id` de punta a punta | Pedidos lo recibe del gateway, lo registra, lo pasa a Catálogo, Inventario y el proveedor en `X-Correlation-Id`, y lo copia en el sobre de cada mensaje | ✅ |
+| Con RabbitMQ caído no se pierde nada | Jornada de fallas: los pedidos siguieron funcionando, los avisos esperaron en el outbox y salieron solos al volver ([POSTMORTEM](../../POSTMORTEM.md)) | ✅ |
+| Con Inventario caído, Pedidos responde rápido | Jornada de fallas: agregar al carrito → `503` en 1,6 s; confirmar → "Estamos confirmando tu pedido" en 2,1 s, y se completó solo al volver | ✅ |
+
+**Lo que aprendimos:** un mail que cae en la DLQ queda guardado pero no se reenvía solo; anotamos como mejora un comando para reprocesarla (ver el POSTMORTEM).
+
+## Cómo lo validamos
+
+- **Entrega 2:** con el flujo de búsqueda (ver [Validación (Entrega 2)](#validación-entrega-2)).
+- **Entrega final:** con el flujo completo, los tests de cada servicio, la prueba de punta a punta (`services/pedidos/testdata/e2e.mjs`) y la jornada de fallas (ver [Validación (entrega final)](#validación-entrega-final)).
 
 ## Referencias
 
