@@ -82,7 +82,10 @@ function MyOrders() {
                       {formatDate(pedido.creadoEn)} · {pedido.cantidad} productos · #{pedido.codigo}
                     </p>
                   </div>
-                  <strong>{formatPrice(pedido.total)}</strong>
+                  <strong>
+                    {formatPrice(pedido.total)}
+                    {!pedido.envioRegistrado && <small title="Pedido anterior a guardar el envío: el total es solo de los platos"> (sin envío registrado)</small>}
+                  </strong>
                   <span className={pedido.estado === "ENTREGADO" ? "delivered" : "cancelled"}>{estadoLabel(pedido.estado)}</span>
                   <button onClick={() => setExpanded(expanded === pedido.id ? null : pedido.id)}>
                     {expanded === pedido.id ? "Ocultar" : "Ver detalle"} <Icon name="chevron" size={16} />

@@ -45,6 +45,9 @@ type Confirmacion struct {
 	CocinaID     string             `json:"cocinaId"`
 	PedidoID     string             `json:"pedidoId,omitempty"`
 	Items        []Item             `json:"-"`
+	// CostoEnvio es la tarifa de la cocina al momento de confirmar. Se guarda acá para que el
+	// pedido tenga el mismo envío aunque lo cree después el proceso de recuperación.
+	CostoEnvio *int64 `json:"-"`
 	Estado       EstadoConfirmacion `json:"estado"`
 	Paso         PasoConfirmacion   `json:"-"`
 	Motivo       string             `json:"motivo,omitempty"`
@@ -91,7 +94,12 @@ func NuevaConfirmacion(id, pedidoID string, cliente Actor, clave string, carrito
 // CrearPedido arma el pedido en RECIBIDO con lo que se guardó al confirmar.
 func (c Confirmacion) CrearPedido(ahora time.Time) (Pedido, error) {
 	cliente := Actor{UsuarioID: c.ClienteID, Rol: RolCliente}
-	return NuevoPedido(c.PedidoID, cliente, c.ClienteEmail, c.CocinaID, c.Items, ahora)
+	p, err := NuevoPedido(c.PedidoID, cliente, c.ClienteEmail, c.CocinaID, c.Items, ahora)
+	if err != nil {
+		return Pedido{}, err
+	}
+	p.FijarEnvio(c.CostoEnvio)
+	return p, nil
 }
 
 // ClaveValida: la Idempotency-Key tiene de 1 a 128 caracteres ASCII visibles (igual que Inventario).

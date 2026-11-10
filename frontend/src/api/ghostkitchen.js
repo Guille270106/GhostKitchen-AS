@@ -220,6 +220,19 @@ async function buscarEnSede(sedeId, params) {
   return pedir("GET", `/busqueda/sedes/${encodeURIComponent(sedeId)}/platos?${qs}`);
 }
 
+// Búsqueda devuelve como mucho 50 platos por página. Cuando hace falta TODO lo que coincide (el
+// stock de un menú entero, varias marcas, las opciones de los filtros), se recorren todas las
+// páginas: el tamaño de página no puede convertirse en un límite de resultados.
+const POR_PAGINA = 50;
+async function buscarTodo(sedeId, params) {
+  const primera = await buscarEnSede(sedeId, { ...params, page: 1, pageSize: POR_PAGINA });
+  const paginas = primera.totalPages || Math.ceil((primera.total || 0) / POR_PAGINA) || 1;
+  const resto = await Promise.all(
+    Array.from({ length: paginas - 1 }, (_, i) => buscarEnSede(sedeId, { ...params, page: i + 2, pageSize: POR_PAGINA })),
+  );
+  return [primera, ...resto].flatMap((r) => r.items || []);
+}
+
 // Una cocina con sus marcas y su menú. El menú sale de Catálogo (la fuente de verdad); si
 // Búsqueda contesta, se le suma qué platos tienen stock. Si Búsqueda no contesta, el menú se
 // muestra igual: la disponibilidad se controla de verdad al agregar al carrito.
@@ -227,11 +240,12 @@ export async function getCocinaById(id) {
   const [cocina, menu, disponibles] = await Promise.all([
     pedir("GET", `/cocinas/${encodeURIComponent(id)}`),
     pedir("GET", `/cocinas/${encodeURIComponent(id)}/platos`),
-    buscarEnSede(id, { soloDisponibles: false, pageSize: 50 }).catch(() => null),
+    // Si Búsqueda no contesta, no se inventa el stock: los platos quedan "sin confirmar".
+    buscarTodo(id, { soloDisponibles: false }).catch(() => null),
   ]);
   const c = cocinaParaPantallas(cocina);
   const nombres = Object.fromEntries(c.marcas.map((m) => [m.id, m.nombre]));
-  const stock = disponibles ? Object.fromEntries(disponibles.items.map((p) => [p.id, p.disponible])) : {};
+  const stock = disponibles ? Object.fromEntries(disponibles.map((p) => [p.id, p.disponible])) : {};
   const platos = (menu.items || []).map((p) => ({
     id: p.id,
     nombre: p.nombre,
@@ -246,8 +260,11 @@ export async function getCocinaById(id) {
     cocinaNombre: c.nombre,
     localidadId: c.id,
     sinStock: stock[p.id] === false,
+    // No sabemos si hay stock (Búsqueda no contestó o todavía no indexó el plato): se puede
+    // intentar agregar, e Inventario decide de verdad al reservar.
+    stockSinConfirmar: stock[p.id] === undefined,
   }));
-  return { cocina: c, marcas: c.marcas, platos };
+  return { cocina: c, marcas: c.marcas, platos, stockSinConfirmar: disponibles === null };
 }
 
 // Algunos platos con stock de la sede, para el inicio.
@@ -275,37 +292,41 @@ export async function searchPlatos(filters = {}) {
   const { q = "", localidadId, restauranteIds = [], categoria, etiqueta, precioMax, soloDisponibles = false, orden = "relevancia", page = 1, pageSize = 12 } = filters;
   if (!localidadId) return { items: [], total: 0, page: 1, pages: 1, facetas: { cocinas: [], restaurantes: [], categorias: [], precioMaximo: 0 } };
   const texto = q.trim();
-  // Búsqueda filtra por una sola marca: con varias elegidas se piden todas y se filtra acá.
+  // Búsqueda filtra por una sola marca: con varias elegidas se traen TODAS las páginas con los
+  // demás filtros y se filtra acá. Las opciones de los filtros (marcas, categorías, precio)
+  // también salen de todos los platos que coinciden con el texto, no de la primera página.
   const unaMarca = restauranteIds.length === 1 ? restauranteIds[0] : undefined;
   const varias = restauranteIds.length > 1;
-  const [res, todo] = await Promise.all([
-    buscarEnSede(localidadId, {
-      q: texto, categoria, etiqueta, precioMax, restauranteId: unaMarca,
-      soloDisponibles, orden: ORDENES[orden] || "relevancia",
-      page: varias ? 1 : page, pageSize: varias ? 50 : pageSize,
-    }),
-    buscarEnSede(localidadId, { q: texto, soloDisponibles: false, pageSize: 50 }),
+  const filtrosBusqueda = { q: texto, categoria, etiqueta, precioMax, soloDisponibles, orden: ORDENES[orden] || "relevancia" };
+  const [res, base] = await Promise.all([
+    varias
+      ? buscarTodo(localidadId, filtrosBusqueda)
+      : buscarEnSede(localidadId, { ...filtrosBusqueda, restauranteId: unaMarca, page, pageSize }),
+    buscarTodo(localidadId, { q: texto, soloDisponibles: false }),
   ]);
 
-  let items = res.items.map(platoDeBusqueda);
-  let total = res.total;
-  let paginaActual = res.page || page;
-  let paginas = res.totalPages || Math.max(1, Math.ceil(total / pageSize));
+  let items, total, paginaActual, paginas;
   if (varias) {
-    const todos = items.filter((p) => restauranteIds.includes(p.restauranteId));
+    const todos = res.map(platoDeBusqueda).filter((p) => restauranteIds.includes(p.restauranteId));
     total = todos.length;
     paginas = Math.max(1, Math.ceil(total / pageSize));
     paginaActual = Math.min(Math.max(1, page), paginas);
     items = todos.slice((paginaActual - 1) * pageSize, paginaActual * pageSize);
+  } else {
+    items = res.items.map(platoDeBusqueda);
+    total = res.total;
+    paginaActual = res.page || page;
+    paginas = res.totalPages || Math.max(1, Math.ceil(total / pageSize));
   }
 
-  const base = todo.items.map(platoDeBusqueda);
+  const platos = base.map(platoDeBusqueda);
   const facetas = {
-    cocinas: [...new Map(base.map((p) => [p.cocinaId, { id: p.cocinaId, nombre: p.cocinaNombre }])).values()],
-    restaurantes: [...new Map(base.map((p) => [p.restauranteId, { id: p.restauranteId, nombre: p.restauranteNombre, cantidad: base.filter((x) => x.restauranteId === p.restauranteId).length }])).values()],
-    categorias: [...new Set(base.map((p) => p.categoria))],
-    precioMaximo: Math.max(0, ...base.map((p) => p.precio)),
+    cocinas: [...new Map(platos.map((p) => [p.cocinaId, { id: p.cocinaId, nombre: p.cocinaNombre }])).values()],
+    restaurantes: [...new Map(platos.map((p) => [p.restauranteId, { id: p.restauranteId, nombre: p.restauranteNombre, cantidad: platos.filter((x) => x.restauranteId === p.restauranteId).length }])).values()],
+    categorias: [...new Set(platos.map((p) => p.categoria))],
+    precioMaximo: Math.max(0, ...platos.map((p) => p.precio)),
   };
+  // Búsqueda no corrige errores de tipeo: "sorentinos" no encuentra "sorrentinos".
   return { items, total, page: paginaActual, pages: paginas, facetas, toleranciaAplicada: false };
 }
 
@@ -490,8 +511,9 @@ export function codigoPedido(id) {
 // Pedidos del cliente y tablero de la cocina (Pedidos, L18)
 // ---------------------------------------------------------------------------
 
-// Convierte un pedido de Pedidos a la forma que usan las pantallas. El total incluye el envío de
-// la cocina, igual que en el carrito. Los avisos por mail son uno por cambio de estado (cada
+// Convierte un pedido de Pedidos a la forma que usan las pantallas. El envío es el que se cobró al
+// confirmar y quedó guardado en el pedido: si la cocina cambia su tarifa, el pedido no cambia. En
+// los pedidos anteriores a guardarlo, el envío viene en null y se muestra "no registrado". Los avisos por mail son uno por cambio de estado (cada
 // cambio publica pedido.estado_cambiado y Notificaciones manda el mail).
 function pedidoParaPantallas(p, cocina) {
   const items = (p.items || []).map((it) => ({
@@ -501,7 +523,7 @@ function pedidoParaPantallas(p, cocina) {
     cantidad: it.cantidad,
     restauranteId: it.restauranteId,
   }));
-  const envio = cocina?.envio || 0;
+  const envio = p.costoEnvio ?? null;
   const codigo = codigoPedido(p.id);
   return {
     id: p.id,
@@ -519,7 +541,9 @@ function pedidoParaPantallas(p, cocina) {
     })),
     cantidad: items.reduce((acc, i) => acc + i.cantidad, 0),
     envio,
-    total: p.total + envio,
+    subtotal: p.total,
+    total: p.totalConEnvio ?? p.total,
+    envioRegistrado: envio !== null,
     comprobante: p.comprobante || null,
     notificaciones: (p.historial || [])
       .slice()

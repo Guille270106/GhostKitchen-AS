@@ -688,3 +688,30 @@ func TestQuitarSinVaciarConFalloAlGuardar(t *testing.T) {
 		t.Fatal(c, inv.reservas, err)
 	}
 }
+
+// El caso de la revisión: reservar 1 → agregar otro (Inventario ajusta a 2) → falla guardar →
+// la reserva se corrige a 1 → el cliente reintenta. El reintento tiene que volver a ajustar a 2
+// (otra clave), no recibir la respuesta vieja de Inventario y dejar carrito 2 / reserva 1.
+func TestReintentarDespuesDeCorregirLaReservaVuelveAAplicarla(t *testing.T) {
+	svc, repo, inv := carritoEntorno()
+	c, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.fallarGuardar = true
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1); err == nil {
+		t.Fatal("tenía que fallar")
+	}
+	if r := inv.reservas[c.ReservaID]; r[0].Cantidad != 1 {
+		t.Fatal("la reserva no volvió a 1:", r)
+	}
+
+	repo.fallarGuardar = false
+	c, err = svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Items[0].Cantidad != 2 || inv.reservas[c.ReservaID][0].Cantidad != 2 {
+		t.Fatalf("carrito %d / reserva %d: tienen que coincidir en 2", c.Items[0].Cantidad, inv.reservas[c.ReservaID][0].Cantidad)
+	}
+}

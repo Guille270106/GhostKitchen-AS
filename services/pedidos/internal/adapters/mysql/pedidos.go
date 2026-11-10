@@ -36,9 +36,9 @@ func (repo PedidosMySQL) Crear(ctx context.Context, p domain.Pedido) error {
 func insertarPedido(ctx context.Context, tx *sql.Tx, p domain.Pedido) error {
 	// 1. El pedido.
 	_, err := tx.ExecContext(ctx, `INSERT INTO pedido
- (id,cliente_id,cliente_email,cocina_id,estado,total,moneda,version,creado_en,actualizado_en)
- VALUES (?,?,?,?,?,?,?,?,?,?)`,
-		p.ID, p.ClienteID, p.ClienteEmail, p.CocinaID, p.Estado, p.Total, p.Moneda, p.Version, p.CreadoEn, p.ActualizadoEn)
+ (id,cliente_id,cliente_email,cocina_id,estado,total,costo_envio,moneda,version,creado_en,actualizado_en)
+ VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		p.ID, p.ClienteID, p.ClienteEmail, p.CocinaID, p.Estado, p.Total, p.CostoEnvio, p.Moneda, p.Version, p.CreadoEn, p.ActualizadoEn)
 	if err != nil {
 		return err
 	}
@@ -65,18 +65,29 @@ func insertarPedido(ctx context.Context, tx *sql.Tx, p domain.Pedido) error {
 	return nil
 }
 
+// envioGuardado convierte la columna costo_envio: NULL (pedidos anteriores a guardarlo) es nil.
+func envioGuardado(e sql.NullInt64) *int64 {
+	if !e.Valid {
+		return nil
+	}
+	v := e.Int64
+	return &v
+}
+
 // Obtener lee el pedido con sus items y su historial ordenado por versión.
 func (repo PedidosMySQL) Obtener(ctx context.Context, id string) (domain.Pedido, error) {
 	// 1. El pedido.
 	var p domain.Pedido
-	err := repo.DB.QueryRowContext(ctx, `SELECT id,cliente_id,cliente_email,cocina_id,estado,total,moneda,version,creado_en,actualizado_en
- FROM pedido WHERE id=?`, id).Scan(&p.ID, &p.ClienteID, &p.ClienteEmail, &p.CocinaID, &p.Estado, &p.Total, &p.Moneda, &p.Version, &p.CreadoEn, &p.ActualizadoEn)
+	var envio sql.NullInt64
+	err := repo.DB.QueryRowContext(ctx, `SELECT id,cliente_id,cliente_email,cocina_id,estado,total,costo_envio,moneda,version,creado_en,actualizado_en
+ FROM pedido WHERE id=?`, id).Scan(&p.ID, &p.ClienteID, &p.ClienteEmail, &p.CocinaID, &p.Estado, &p.Total, &envio, &p.Moneda, &p.Version, &p.CreadoEn, &p.ActualizadoEn)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Pedido{}, domain.ErrNoEncontrado
 	}
 	if err != nil {
 		return domain.Pedido{}, err
 	}
+	p.FijarEnvio(envioGuardado(envio))
 
 	// 2. Sus platos.
 	if p.Items, err = repo.leerItems(ctx, id); err != nil {
@@ -136,7 +147,7 @@ func (repo PedidosMySQL) leerItems(ctx context.Context, pedidoID string) ([]doma
 // eso está el detalle.
 func (repo PedidosMySQL) Listar(ctx context.Context, f ports.FiltroPedidos) ([]domain.Pedido, error) {
 	// 1. Armamos la consulta según el filtro. Los valores van siempre como parámetros (?).
-	consulta := `SELECT id,cliente_id,cliente_email,cocina_id,estado,total,moneda,version,creado_en,actualizado_en FROM pedido WHERE `
+	consulta := `SELECT id,cliente_id,cliente_email,cocina_id,estado,total,costo_envio,moneda,version,creado_en,actualizado_en FROM pedido WHERE `
 	var args []any
 	if f.ClienteID != "" {
 		consulta += "cliente_id=?"
@@ -161,9 +172,11 @@ func (repo PedidosMySQL) Listar(ctx context.Context, f ports.FiltroPedidos) ([]d
 	pedidos := []domain.Pedido{}
 	for filas.Next() {
 		var p domain.Pedido
-		if err := filas.Scan(&p.ID, &p.ClienteID, &p.ClienteEmail, &p.CocinaID, &p.Estado, &p.Total, &p.Moneda, &p.Version, &p.CreadoEn, &p.ActualizadoEn); err != nil {
+		var envio sql.NullInt64
+		if err := filas.Scan(&p.ID, &p.ClienteID, &p.ClienteEmail, &p.CocinaID, &p.Estado, &p.Total, &envio, &p.Moneda, &p.Version, &p.CreadoEn, &p.ActualizadoEn); err != nil {
 			return nil, err
 		}
+		p.FijarEnvio(envioGuardado(envio))
 		pedidos = append(pedidos, p)
 	}
 	if err := filas.Err(); err != nil {

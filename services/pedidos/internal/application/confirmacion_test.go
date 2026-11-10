@@ -262,3 +262,50 @@ func TestNoSeConfirmaSinClaveOConElCarritoVacio(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// EnviosMock es la tarifa de envío de la cocina en Catálogo; se puede cambiar o "caer".
+type EnviosMock struct {
+	tarifa int64
+	caido  bool
+}
+
+func (e *EnviosMock) CostoEnvio(context.Context, string) (int64, error) {
+	if e.caido {
+		return 0, domain.ErrCatalogoCaido
+	}
+	return e.tarifa, nil
+}
+
+// El pedido guarda el envío que se cobró al confirmar. Si después la cocina cambia su tarifa,
+// el importe del pedido no cambia.
+func TestElPedidoGuardaElEnvioDelMomentoDeConfirmar(t *testing.T) {
+	svc, _, _, _, pedidos := entornoConfirmacion(t)
+	envios := &EnviosMock{tarifa: 1300}
+	svc.Envios = envios
+	r, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1")
+	if err != nil || r.Pedido == nil {
+		t.Fatal(err, r)
+	}
+	if r.Pedido.CostoEnvio == nil || *r.Pedido.CostoEnvio != 1300 || *r.Pedido.TotalConEnvio != 24000+1300 || r.Pedido.Total != 24000 {
+		t.Fatalf("envío o total mal guardados: %+v", r.Pedido)
+	}
+
+	envios.tarifa = 2300 // el admin cambia la tarifa
+	guardado := pedidos.pedidos[r.Pedido.ID]
+	if *guardado.CostoEnvio != 1300 || *guardado.TotalConEnvio != 25300 {
+		t.Fatal("el pedido ya confirmado cambió de importe:", *guardado.CostoEnvio, *guardado.TotalConEnvio)
+	}
+}
+
+// Si Catálogo no contesta al confirmar, todavía no se hizo nada: no se descuenta stock ni se
+// crea el pedido, y el carrito sigue igual.
+func TestSinTarifaDeEnvioNoSeConfirmaNada(t *testing.T) {
+	svc, _, consumo, carritos, pedidos := entornoConfirmacion(t)
+	svc.Envios = &EnviosMock{caido: true}
+	if _, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1"); !errors.Is(err, domain.ErrCatalogoCaido) {
+		t.Fatal("tenía que avisar que Catálogo no está:", err)
+	}
+	if len(pedidos.pedidos) != 0 || consumo.llamadas != 0 || len(carritos.carritos["u-cliente"].Items) == 0 {
+		t.Fatal("no se tenía que tocar nada")
+	}
+}

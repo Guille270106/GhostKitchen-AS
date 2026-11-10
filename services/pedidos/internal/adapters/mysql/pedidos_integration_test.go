@@ -173,3 +173,53 @@ func TestMySQLListar(t *testing.T) {
 		t.Fatal(err, lista)
 	}
 }
+
+// El envío cobrado se guarda con el pedido. Un pedido sin envío registrado (los anteriores a la
+// migración 000010) se lee con el envío en nil: no se inventa.
+func TestMySQLElPedidoGuardaSuEnvio(t *testing.T) {
+	db := conectar(t)
+	repo := adapter.PedidosMySQL{DB: db}
+	ctx := context.Background()
+
+	conEnvio := crearPedidoConEnvio(t, db, repo, ptr(1300))
+	leido, err := repo.Obtener(ctx, conEnvio.ID)
+	if err != nil || leido.CostoEnvio == nil || *leido.CostoEnvio != 1300 || *leido.TotalConEnvio != 33500+1300 {
+		t.Fatalf("envío guardado: %+v %v", leido, err)
+	}
+
+	sinEnvio := crearPedidoConEnvio(t, db, repo, nil)
+	viejo, err := repo.Obtener(ctx, sinEnvio.ID)
+	if err != nil || viejo.CostoEnvio != nil || viejo.TotalConEnvio != nil || viejo.Total != 33500 {
+		t.Fatalf("sin envío registrado: %+v %v", viejo, err)
+	}
+
+	lista, err := repo.Listar(ctx, ports.FiltroPedidos{ClienteID: conEnvio.ClienteID, Pagina: 1, PorPagina: 20})
+	if err != nil || len(lista) != 1 || lista[0].CostoEnvio == nil || *lista[0].CostoEnvio != 1300 {
+		t.Fatalf("la lista también trae el envío: %+v %v", lista, err)
+	}
+}
+
+func ptr(v int64) *int64 { return &v }
+
+func crearPedidoConEnvio(t *testing.T, db *sql.DB, repo adapter.PedidosMySQL, envio *int64) domain.Pedido {
+	t.Helper()
+	cliente := domain.Actor{UsuarioID: "u-" + uuid.NewString()[:8], Rol: domain.RolCliente}
+	p, err := domain.NuevoPedido(uuid.NewString(), cliente, "cliente@ejemplo.com", "cerro", []domain.Item{
+		{PlatoID: "p17", Nombre: "Burger", RestauranteID: "r5", RestauranteNombre: "Johnny B. Good", PrecioUnitario: 12000, Cantidad: 2},
+		{PlatoID: "p21", Nombre: "Pizza", RestauranteID: "r6", RestauranteNombre: "Il Gatto", PrecioUnitario: 9500, Cantidad: 1},
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.FijarEnvio(envio)
+	if err := repo.Crear(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		db.Exec("DELETE FROM outbox WHERE agregado_id=?", p.ID)
+		db.Exec("DELETE FROM pedido_historial WHERE pedido_id=?", p.ID)
+		db.Exec("DELETE FROM pedido_item WHERE pedido_id=?", p.ID)
+		db.Exec("DELETE FROM pedido WHERE id=?", p.ID)
+	})
+	return p
+}
