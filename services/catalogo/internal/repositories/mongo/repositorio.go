@@ -146,12 +146,6 @@ func (r *Repositorio) PaginaPlatos(ctx context.Context, page, pageSize int) ([]d
 	return platos, int(total), nil
 }
 
-// CantidadCocinas cuenta las cocinas guardadas.
-func (r *Repositorio) CantidadCocinas(ctx context.Context) (int, error) {
-	n, err := r.cocinas.CountDocuments(ctx, bson.D{})
-	return int(n), envolver(err)
-}
-
 // InsertarIniciales inserta sin pisar: si un documento ya existe (clave duplicada), lo deja como está.
 func (r *Repositorio) InsertarIniciales(ctx context.Context, cocinas []domain.Cocina, platos []domain.Plato) error {
 	// Sin orden (ordered=false), un duplicado no corta la inserción: MongoDB sigue con los

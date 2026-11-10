@@ -33,13 +33,21 @@ import (
 )
 
 func main() {
+	if err := correr(); err != nil {
+		os.Exit(1) // correr ya registró el error, y sus defer (las últimas trazas) ya se ejecutaron
+	}
+}
+
+// correr arma y levanta el servicio. Devuelve el error en vez de llamar a os.Exit: así se
+// ejecutan los defer antes de salir, entre ellos el que manda a Jaeger las últimas trazas (L22).
+func correr() error {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("servicio", "busqueda")
 	cfg := config.Cargar()
 
 	cerrarTrazas, err := trazas.Iniciar(context.Background())
 	if err != nil {
 		log.Error("no se pudo configurar OpenTelemetry", "error", err.Error())
-		os.Exit(1)
+		return err
 	}
 	defer func() {
 		fin, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -72,7 +80,7 @@ func main() {
 		dispo, err := seed.DisponibilidadInicial()
 		if err != nil {
 			log.Error("no se pudo leer la disponibilidad inicial", "error", err.Error())
-			os.Exit(1)
+			return err
 		}
 		rec := indexer.NuevoReconstructor(clients.NuevoCatalogo(cfg.CatalogoURL), inventario, repo, dispo)
 		reconstruir = func(ctx context.Context) (indexer.Resultado, error) {
@@ -140,21 +148,27 @@ func main() {
 		WriteTimeout:      30 * time.Second, // la reconstrucción manual puede tardar más que una consulta
 	}
 
+	errServidor := make(chan error, 1)
 	go func() {
 		log.Info("escuchando", "puerto", cfg.Puerto)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Error("el servidor se detuvo", "error", err.Error())
-			os.Exit(1)
+			errServidor <- err
 		}
 	}()
 
 	// Apagado ordenado: con SIGTERM (docker stop) se dejan terminar las solicitudes en curso
 	// hasta 10 s en lugar de cortarlas a la mitad.
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+	case err := <-errServidor:
+		log.Error("el servidor se detuvo", "error", err.Error())
+		return err
+	}
 	log.Info("apagando")
 	fin, cancelar := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelar()
 	_ = srv.Shutdown(fin)
+	return nil
 }
 
 // inicializarIndice espera a que Solr (y Catálogo, si se usa) respondan y arma el índice.

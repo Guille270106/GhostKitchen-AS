@@ -61,13 +61,6 @@ func Correlacion() gin.HandlerFunc {
 // IDCorrelacion devuelve el id de correlación de la solicitud.
 func IDCorrelacion(c *gin.Context) string { return c.GetString(claveCorrelacion) }
 
-// ConCorrelacion guarda un id de correlación en el contexto. Sirve para trabajos que no
-// nacen de una solicitud HTTP. Hoy Catálogo no lo usa: está para que el paquete sea igual
-// al de Búsqueda, donde lo usa la reconstrucción del índice al arrancar.
-func ConCorrelacion(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, claveContexto{}, id)
-}
-
 // IDDesdeContexto devuelve el id de correlación guardado en un context.Context.
 func IDDesdeContexto(ctx context.Context) string {
 	id, _ := ctx.Value(claveContexto{}).(string)

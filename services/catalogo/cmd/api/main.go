@@ -34,6 +34,14 @@ import (
 )
 
 func main() {
+	if err := correr(); err != nil {
+		os.Exit(1) // correr ya registró el error, y sus defer (las últimas trazas) ya se ejecutaron
+	}
+}
+
+// correr arma y levanta el servicio. Devuelve el error en vez de llamar a os.Exit: así se
+// ejecutan los defer antes de salir, entre ellos el que manda a Jaeger las últimas trazas (L22).
+func correr() error {
 	cfg := config.Cargar()
 	// Cada línea de log lleva la copia (catalogo-1 o catalogo-2), y cada respuesta también (G17).
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("servicio", "catalogo", "instancia", cfg.Instancia)
@@ -42,7 +50,7 @@ func main() {
 	cerrarTrazas, err := trazas.Iniciar(context.Background())
 	if err != nil {
 		log.Error("no se pudo configurar OpenTelemetry", "error", err.Error())
-		os.Exit(1)
+		return err
 	}
 	defer func() {
 		fin, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -64,7 +72,7 @@ func main() {
 		SetMonitor(otelmongo.NewMonitor()))
 	if err != nil {
 		log.Error("la configuración de MongoDB es inválida", "error", err.Error())
-		os.Exit(1)
+		return err
 	}
 	defer func() { _ = cliente.Disconnect(context.Background()) }()
 
@@ -116,20 +124,26 @@ func main() {
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
 	}
+	errServidor := make(chan error, 1)
 	go func() {
 		log.Info("escuchando", "puerto", cfg.Puerto)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Error("el servidor se detuvo", "error", err.Error())
-			os.Exit(1)
+			errServidor <- err
 		}
 	}()
 
 	// Apagado ordenado: se dejan terminar las solicitudes en curso hasta 10 s.
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+	case err := <-errServidor:
+		log.Error("el servidor se detuvo", "error", err.Error())
+		return err
+	}
 	log.Info("apagando")
 	fin, cancelar := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelar()
 	_ = srv.Shutdown(fin)
+	return nil
 }
 
 // prepararBase espera a MongoDB, crea los índices y carga los datos iniciales que falten.
