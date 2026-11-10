@@ -167,4 +167,3 @@ Esta evidencia cubre la fase de **reserva**, con una instancia del servicio; no 
 
 - SPEC: RN04–RN17, HU06–HU10 y HU24–HU25.
 - ADR-003, ADR-005 y ADR-009.
-- Clases 2, 4 y 7: transacciones, saga, outbox y fallos parciales.

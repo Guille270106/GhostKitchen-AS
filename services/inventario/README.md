@@ -172,7 +172,7 @@ La duración registrada describe una ejecución local con una instancia de Inven
 
 ## Cómo se organiza por dentro: hexagonal liviano
 
-Las reglas del stock quedan **en el centro** y no dependen de la base de datos, de Gin ni de RabbitMQ. El centro dice lo que necesita (por ejemplo, "guardar una reserva") y por afuera hay **adaptadores** que lo hacen con MySQL, HTTP o RabbitMQ. Así podemos testear las reglas sin levantar una base (Clase 8). Es "liviano" porque no usamos todos los patrones de DDD.
+Las reglas del stock quedan **en el centro** y no dependen de la base de datos, de Gin ni de RabbitMQ. El centro dice lo que necesita (por ejemplo, "guardar una reserva") y por afuera hay **adaptadores** que lo hacen con MySQL, HTTP o RabbitMQ. Así podemos testear las reglas sin levantar una base. Es "liviano" porque no usamos todos los patrones de DDD.
 
 ```
 cmd/api/                    arranca el servicio

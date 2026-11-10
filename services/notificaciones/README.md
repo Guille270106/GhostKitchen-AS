@@ -6,7 +6,7 @@ Manda un **mail al cliente cada vez que cambia el estado de su pedido**. Puerto 
 
 ## Qué hace
 
-Es el único servicio que funciona **solo con mensajes**: no recibe pedidos del frontend, solo escucha `pedido.estado_cambiado`. Muestra la ventaja de usar mensajes (Clase 4): si se cae el correo o este mismo servicio, los pedidos siguen funcionando y los mensajes esperan en la cola hasta que vuelva.
+Es el único servicio que funciona **solo con mensajes**: no recibe pedidos del frontend, solo escucha `pedido.estado_cambiado`. Muestra la ventaja de usar mensajes: si se cae el correo o este mismo servicio, los pedidos siguen funcionando y los mensajes esperan en la cola hasta que vuelva.
 
 - **No le pregunta nada a Usuarios:** el mail del cliente ya viene adentro del mensaje (Pedidos lo guardó al crear el pedido).
 - Deduplica eventos ya enviados. Según RN17/HU13, solo se admite un correo repetido si el servicio se cae después de enviarlo y antes de persistir el estado ENVIADO; los reintentos habituales no deben duplicarlo.

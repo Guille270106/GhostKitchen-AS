@@ -1,14 +1,14 @@
 # POSTMORTEM — Jornada de fallas controladas
 
 - **Fecha:** 2026-11-10
-- **Responsable:** Lucía Rucci (L20)
+- **Responsable:** Lucía Rucci
 - **Qué se probó:** apagar a propósito, de a una, las dependencias que pueden fallar en el flujo de un pedido —Inventario, RabbitMQ, el correo y el grupo proveedor— y comprobar que el sistema se comporta como prometen el [ADR-010](docs/adr/ADR-010-resiliencia.md) (resiliencia), el [ADR-005](docs/adr/ADR-005-comunicacion-entre-servicios.md) (mensajes y outbox) y el [ADR-009](docs/adr/ADR-009-consumo-del-proveedor.md) (proveedor).
 - **Resultado:** **el comportamiento fue el esperado en las cuatro fallas.** Ningún pedido se perdió, ningún stock se inventó ni se descontó dos veces, ninguna respuesta tardó más de 3 s y nunca se disparó la alerta de errores 5xx. Quedan tres mejoras anotadas al final.
 - **Evidencia:** la salida completa, con los tiempos de cada paso, está en [`docs/jornada-de-fallas/salida.txt`](docs/jornada-de-fallas/salida.txt).
 
 ## Cómo se hizo
 
-Es una prueba **controlada** (Clase 7): se rompe una pieza a la vez, en un entorno local igual al de desarrollo, se mira qué ve el usuario y se mide cuánto tarda en recuperarse cuando la pieza vuelve. No es una prueba de carga (eso es el [ADR-013](docs/adr/ADR-013-capacidad-y-costos.md)).
+Es una prueba **controlada**: se rompe una pieza a la vez, en un entorno local igual al de desarrollo, se mira qué ve el usuario y se mide cuánto tarda en recuperarse cuando la pieza vuelve. No es una prueba de carga (eso es el [ADR-013](docs/adr/ADR-013-capacidad-y-costos.md)).
 
 | | |
 | --- | --- |

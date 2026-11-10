@@ -133,7 +133,7 @@ Las lecturas usadas para autorizar cuentas o validar un plato al reservar se har
 
 ## Cómo se organiza por dentro: capas + caché
 
-Usamos capas (handler → servicio → repositorio). La caché es una capa que **envuelve al repositorio** (patrón *decorator*): el servicio pide los datos igual que siempre y no sabe si vienen de la caché o de la base. Así podemos prender y apagar la caché para medir cuánto mejora (Clase 3).
+Usamos capas (handler → servicio → repositorio). La caché es una capa que **envuelve al repositorio** (patrón *decorator*): el servicio pide los datos igual que siempre y no sabe si vienen de la caché o de la base. Así podemos prender y apagar la caché para medir cuánto mejora.
 
 ```
 cmd/api/               arranca el servicio

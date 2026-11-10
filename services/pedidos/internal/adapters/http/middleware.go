@@ -18,7 +18,7 @@ import (
 var cidValido = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
 
 // Correlacion reutiliza el X-Correlation-Id que manda el gateway o crea uno nuevo
-// (como el track_id de la clase 8). Lo devuelve en la respuesta y lo deja en el context para
+// para seguir la solicitud entre servicios. Lo devuelve en la respuesta y lo deja en el context para
 // pasárselo a Catálogo e Inventario.
 func Correlacion(ctx *gin.Context) {
 	cid := ctx.GetHeader("X-Correlation-Id")

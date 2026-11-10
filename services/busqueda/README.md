@@ -29,7 +29,7 @@ Sirve para **encontrar platos** y la **cocina más cercana**. También atiende *
 - Atiende la capacidad **"Cocinas, platos y proximidad de sedes externas"** que publicamos ([contrato](../../docs/contracts/README.md)).
 - Mantiene sus datos al día con los mensajes que recibe, y los puede **reconstruir de cero** si hace falta.
 
-Lo que guarda es una **copia** armada para buscar rápido (Clase 5). Sirve para mirar, pero **no decide el stock**: que un plato figure "disponible" es orientativo, y cuando el cliente lo agrega al carrito, Inventario vuelve a controlar.
+Lo que guarda es una **copia** armada para buscar rápido. Sirve para mirar, pero **no decide el stock**: que un plato figure "disponible" es orientativo, y cuando el cliente lo agrega al carrito, Inventario vuelve a controlar.
 
 ## Qué datos guarda (Solr)
 

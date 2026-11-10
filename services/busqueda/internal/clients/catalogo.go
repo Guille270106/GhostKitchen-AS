@@ -69,7 +69,7 @@ type PaginaPlatos struct {
 // y 3 reintentos con espera creciente (ADR-005), separado del plazo de 3 s del usuario.
 //
 // Es el único punto de la cadena Búsqueda → Catálogo → MongoDB que reintenta: "reintenta
-// uno solo, el que llama a la dependencia" (ADR-010, Clase 7). Si también reintentaran
+// uno solo, el que llama a la dependencia" (ADR-010). Si también reintentaran
 // Catálogo o el gateway, cada falla se multiplicaría en muchos intentos.
 type Catalogo struct {
 	lector

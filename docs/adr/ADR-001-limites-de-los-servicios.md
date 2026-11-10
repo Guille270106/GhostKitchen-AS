@@ -20,14 +20,14 @@ El enunciado pide al menos 3 microservicios y un API Gateway.
 
 Para decidir cómo separar tuvimos en cuenta:
 
-1. **Lo que tiene que pasar "de una sola vez" va junto** (Clase 2). Reservar todos los ingredientes de un plato tiene que ser todo o nada.
-2. **Datos que se usan distinto van separados** (Clase 2). El catálogo se lee mucho y cambia poco; el stock cambia todo el tiempo y no se puede equivocar.
-3. **Si se cae algo secundario, se tiene que poder seguir pidiendo** (Clases 4 y 7). Por ejemplo, el mail o la búsqueda.
-4. **La búsqueda no tiene que cargar a la parte que vende** (Clase 5).
+1. **Lo que tiene que pasar "de una sola vez" va junto**. Reservar todos los ingredientes de un plato tiene que ser todo o nada.
+2. **Datos que se usan distinto van separados**. El catálogo se lee mucho y cambia poco; el stock cambia todo el tiempo y no se puede equivocar.
+3. **Si se cae algo secundario, se tiene que poder seguir pidiendo**. Por ejemplo, el mail o la búsqueda.
+4. **La búsqueda no tiene que cargar a la parte que vende**.
 
 ## Decisión
 
-Separamos el sistema en **6 microservicios** y un **API Gateway (NGINX)**. Cada servicio tiene su propia base y es el único que la usa (Clase 2).
+Separamos el sistema en **6 microservicios** y un **API Gateway (NGINX)**. Cada servicio tiene su propia base y es el único que la usa.
 
 | Servicio | De qué se encarga | Datos que son suyos | Lo que NO es suyo |
 | --- | --- | --- | --- |
@@ -104,7 +104,7 @@ El que cocina todo es la cocina; los restaurantes son solo marcas. El pedido tie
 | **Recetas en Catálogo** | El plato y su receta juntos | Inventario necesitaría una copia de la receta, que podría estar desactualizada justo al reservar | La descartamos |
 | **Stock en Catálogo** | Todo en un lugar | Una base pensada para leer, usada para algo que cambia todo el tiempo | La descartamos |
 | **Stock en Pedidos** | Reservar y confirmar en una sola operación | Pedidos haría todo; el personal de cocina cargaría stock en el servicio de los clientes | La descartamos |
-| **Búsqueda dentro de Catálogo** | Un servicio menos | Las búsquedas competirían con la administración del catálogo, y el índice necesita datos de Catálogo **y** de Inventario, así que no es de ninguno de los dos. Separada, crece sola y si se cae no afecta a los pedidos (Clase 5) | La descartamos |
+| **Búsqueda dentro de Catálogo** | Un servicio menos | Las búsquedas competirían con la administración del catálogo, y el índice necesita datos de Catálogo **y** de Inventario, así que no es de ninguno de los dos. Separada, crece sola y si se cae no afecta a los pedidos | La descartamos |
 | **Un pedido por restaurante** | Cada marca maneja lo suyo | Los restaurantes no tienen gente propia: cocina todo la cocina | La descartamos |
 | **Mails dentro de Pedidos** | Un servicio menos | Si falla el correo, afecta a la confirmación de pedidos | La descartamos, pero es el **plan B** si nos cuesta mucho mantener 6 servicios |
 | **Lo que publicamos, en Pedidos** | Pedidos es el centro de la compra | Lo que publicamos es solo de lectura y esos datos ya están en Búsqueda; en Pedidos competiría con las confirmaciones ([ADR-008](ADR-008-contrato-propio.md)) | La descartamos |
@@ -167,11 +167,3 @@ Con tres piezas funcionando (gateway, Búsqueda y Catálogo con MongoDB) revisam
 - **Entrega 2 (hecho, ver arriba):** revisar que ningún servicio necesite entrar a la base de otro. Si pasa, separamos mal y hacemos un ADR nuevo que reemplace a este (sin borrarlo).
 - **Entrega final:** con 200 personas reservando el último plato a la vez, **0 platos vendidos de más**. Y si tiramos Búsqueda o Notificaciones, los pedidos se siguen confirmando.
 
-## Referencias
-
-- Clase 1: monolito y microservicios; un servicio por parte del negocio.
-- Clase 2: una base por servicio, transacciones entre servicios, saga y outbox.
-- Clase 4: mensajería; desacoplar lo que puede hacerse después.
-- Clase 5: el índice de búsqueda como copia derivada de los datos.
-- Clase 6: el gateway como única entrada; quién es se verifica en el borde, qué puede hacer lo decide cada servicio.
-- Clase 7: fallas parciales y aislamiento.

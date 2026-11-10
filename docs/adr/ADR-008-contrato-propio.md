@@ -51,16 +51,16 @@ Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción
 ### Quién la atiende: Búsqueda
 
 - Búsqueda ya tiene en su índice **la ubicación de las sedes y los platos con su disponibilidad**: no hace falta un servicio nuevo ni consultar a varios servicios en cada solicitud.
-- Así, las consultas de otro grupo **no compiten** con las reservas y los pedidos, que es la parte que no puede fallar (Clase 5: la búsqueda no debe cargar a la base que atiende las operaciones críticas).
+- Así, las consultas de otro grupo **no compiten** con las reservas y los pedidos, que es la parte que no puede fallar (la búsqueda no debe cargar a la base que atiende las operaciones críticas).
 - En la nube alcanza con subir **Búsqueda y Solr** con los datos de prueba, en lugar de todo el sistema.
 
 ### Cómo es el contrato
 
 - **Formato:** **OpenAPI 3.0** en YAML (`docs/contracts/v1/openapi.yaml`). Es un estándar: con ese archivo se pueden generar clientes, un mock y tests.
-- **Solo lectura:** los cuatro GET y el nuevo POST de cálculo no modifican recursos ni guardan destinos; los reintentos transitorios se permiten según el contrato (Clase 7). **No publicamos reservas ni pedidos**, para que nadie de afuera pueda tocar el stock.
-- **Cocina más cercana:** la calcula Solr con la distancia en línea recta. Si ninguna cocina está a menos de 25 km, responde `404 SIN_COBERTURA` (RN24), para no sugerir una cocina que no llega.
-- **Autenticación:** cada grupo recibe **su propia API key** por un canal privado y la manda en el header `X-API-Key`. Así podemos saber quién la usa, limitarla o darla de baja. La controla el gateway (Clase 6).
-- **Límite de uso:** 60 pedidos por minuto por clave. Si se pasa, responde `429` y le dice cuánto esperar (Clase 6).
+- **Solo lectura:** los cuatro GET y el nuevo POST de cálculo no modifican recursos ni guardan destinos; los reintentos transitorios se permiten según el contrato. **No publicamos reservas ni pedidos**, para que nadie de afuera pueda tocar el stock.
+- **Cocina más cercana:** la calcula Solr con la distancia en línea recta. Si ninguna cocina está a menos de 25 km, responde `404 SIN_COBERTURA`, para no sugerir una cocina que no llega.
+- **Autenticación:** cada grupo recibe **su propia API key** por un canal privado y la manda en el header `X-API-Key`. Así podemos saber quién la usa, limitarla o darla de baja. La controla el gateway.
+- **Límite de uso:** 60 pedidos por minuto por clave. Si se pasa, responde `429` y le dice cuánto esperar.
 - **Errores:** siempre en el mismo formato (*Problem Details*, RFC 9457), con un código fijo:
 
   | HTTP | Código |
@@ -73,7 +73,7 @@ Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción
   | 503 | `SERVICIO_NO_DISPONIBLE` |
 
 - **Páginas:** `page` (desde 1) y `pageSize` (de 1 a 50, por defecto 20). La respuesta dice el total y cuántas páginas hay.
-- **Somos honestos con el dato:** cada plato dice si está `disponible` y cuándo se actualizó. Aclaramos que **puede tener hasta 5 segundos de atraso y que no reserva nada**. Es la misma regla que usamos adentro: la búsqueda sirve para mirar, y el que decide el stock es Inventario (Clase 5).
+- **Somos honestos con el dato:** cada plato dice si está `disponible` y cuándo se actualizó. Aclaramos que **puede tener hasta 5 segundos de atraso y que no reserva nada**. Es la misma regla que usamos adentro: la búsqueda sirve para mirar, y el que decide el stock es Inventario.
 - **Seguimiento:** si el otro grupo nos manda un `X-Correlation-Id`, se lo devolvemos y queda en nuestros logs, así podemos rastrear un problema juntos.
 - **Precios:** en pesos, como número entero (`precio: 12900`) y con `moneda: "ARS"`.
 
@@ -89,7 +89,7 @@ Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción
 - **La versión va en la ruta** (`/v1`) y además tiene un número (`1.0.0`, `1.1.0`…).
 - **Cambios que no rompen nada** (sube el segundo número, la ruta sigue siendo `/v1`): agregar campos opcionales, filtros opcionales, nuevos órdenes, nuevas operaciones o nuevas cocinas. El otro grupo se compromete a **ignorar los campos que no conoce**.
 - **Cambios que rompen** (necesitan `/v2`): sacar o renombrar un campo, cambiar su tipo o lo que significa, agregar un parámetro obligatorio o cambiar los códigos de error.
-- **Si hay una `v2`, la `v1` sigue andando** hasta el final de la materia, y lo avisamos en el `CHANGELOG` (Clase 6: una versión nueva convive con la anterior hasta su retiro).
+- **Si hay una `v2`, la `v1` sigue andando** hasta el final de la materia, y lo avisamos en el `CHANGELOG` (una versión nueva convive con la anterior hasta su retiro).
 - **Historial:** `docs/contracts/CHANGELOG.md` anota cada versión con su fecha. Las versiones viejas no se borran.
 - **Para no romper el contrato sin darnos cuenta:** en cada pull request corre el test de contrato (`scripts/contrato/probar-contrato.mjs`): cada operación se le pide a la API real a través de Prism, que compara la respuesta con el OpenAPI, y los errores se revisan con su formato Problem Details y su `code`.
 
@@ -107,7 +107,7 @@ Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción
 | Seguimiento | `X-Correlation-Id` devuelto en cada respuesta y registrado en los logs del gateway y de Búsqueda |
 | Privacidad | Las coordenadas de proximidad no se guardan ni se registran en logs ni en trazas ([ADR-011](ADR-011-observabilidad.md)) |
 
-**Cómo lo comprobamos:** las respuestas de Búsqueda se validaron contra el OpenAPI 1.1.0 (esquemas y Problem Details), y el gateway con `scripts/probar-api-publica.ps1` (401, 413, 429 y 503). Desde la L21 esa validación es **automática en cada pull request** (`.github/workflows/contrato.yml`): se levanta la misma configuración que en la nube y Prism, en modo proxy, compara cada respuesta real con el OpenAPI; si algo no cumple, el pull request queda en rojo con la lista de diferencias.
+**Cómo lo comprobamos:** las respuestas de Búsqueda se validaron contra el OpenAPI 1.1.0 (esquemas y Problem Details), y el gateway con `scripts/probar-api-publica.ps1` (401, 413, 429 y 503). Esa validación ahora es **automática en cada pull request** (`.github/workflows/contrato.yml`): se levanta la misma configuración que en la nube y Prism, en modo proxy, compara cada respuesta real con el OpenAPI; si algo no cumple, el pull request queda en rojo con la lista de diferencias.
 
 **Una aclaración en la guía, sin cambiar el contrato:** el gateway manda `RateLimit-Limit: 60` en todas las respuestas, pero `RateLimit-Remaining` solo en el `429` (con valor `0`), porque NGINX gratuito no expone cuántas solicitudes le quedan a cada clave. El contrato ya declaraba esos headers como opcionales, así que es compatible; corregimos la guía, que decía que venía en todas las respuestas, y lo anotamos en el [CHANGELOG](../contracts/CHANGELOG.md).
 
@@ -144,12 +144,9 @@ Usamos POST para expresar el cálculo con JSON (dos ubicaciones, rango y opción
 
 - **Entrega 1:** contrato validado con `swagger-cli` 4.0.4 y mock probado con Prism 5.16.0. Las cuatro operaciones y los errores documentados (404, 429, 503, latitud inválida y falta de API key) responden; cómo probarlo está en la [guía del contrato](../contracts/README.md#probar-sin-esperar-al-backend-mock). Que Prism arranque, por sí solo, no sustituye la validación formal de OpenAPI.
 - **Ampliación 1.1.0:** validar formalmente OpenAPI y los ejemplos del nuevo POST; comprobar 200, validaciones estructurales y errores simulados. Las reglas de distancia, rango inclusivo, comparación con el cliente y cobertura se prueban con la implementación real.
-- **Entrega 2 (hecho en parte):** la versión real funciona detrás del gateway y sus respuestas se validaron contra el contrato. La URL pública ya está publicada (`https://57-156-56-219.sslip.io/public`, ver [infra/nube](../../infra/nube/README.md)). El test automático corre en cada pull request (L21).
+- **Entrega 2 (hecho en parte):** la versión real funciona detrás del gateway y sus respuestas se validaron contra el contrato. La URL pública ya está publicada (`https://57-156-56-219.sslip.io/public`, ver [infra/nube](../../infra/nube/README.md)). El test automático corre en cada pull request.
 - **Durante la integración:** si el otro grupo nos pide un cambio, lo anotamos acá con la versión nueva.
 
 ## Referencias
 
 - Enunciado, sección 4: integración entre grupos.
-- Clase 5: el índice de búsqueda como copia derivada, su atraso aceptable y por qué no cargar la base de las operaciones críticas.
-- Clase 6: API Gateway, autenticación, límite de solicitudes y versionado de contratos.
-- Clase 7: reintentos seguros e idempotencia.

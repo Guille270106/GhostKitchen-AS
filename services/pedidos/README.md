@@ -2,17 +2,11 @@
 
 **Responsable:** Lucía Rucci.
 
-> **L5:** servicio base hexagonal con MySQL y el **agregado Pedido** con sus estados. Aplica sus migraciones al arrancar (`mysql-startup`) y atiende en el puerto interno 8085, sin publicarse fuera de Docker. Ya funcionan las transiciones con sus permisos, el historial, el control de versión (si dos cambios llegan a la vez, gana el primero) y `GET /pedidos/{id}`.
->
-> **L6:** el **carrito**. El cliente agrega, cambia y saca platos de una sola cocina; el precio sale de Catálogo y se guarda al agregar, y cada cambio deja la reserva de Inventario igual al carrito. Entra por el gateway en `/api/v1/carrito` (con login). La confirmación llega en L8.
->
-> **L7:** el carrito muestra **cuánto le queda a la reserva** (`segundosRestantes`) y si ya venció (`vencido`).
->
-> **L8:** **confirmar el pedido como saga**, con plazo de 3 s, circuit breaker (`sony/gobreaker`) y reintentos con backoff (`cenkalti/backoff`). El descuento en Inventario es **simulado** (`CONSUMO_INVENTARIO=simulado`) hasta que exista la V10.
+> Qué hace hoy: el **carrito** (con la reserva de Inventario al día y el tiempo que le queda), **confirmar el pedido** como saga (plazo de 3 s, circuit breaker con `sony/gobreaker` y reintentos con `cenkalti/backoff`), los **estados del pedido** con su historial, la **pantalla de la cocina**, **cancelar** devolviendo los ingredientes, los **avisos** por RabbitMQ y la **factura** del grupo proveedor.
 
 Maneja **el pedido de principio a fin**. Puerto interno **8085**. Es uno de los dos servicios donde no se puede equivocar nada.
 
-## Cómo está organizado (hexagonal, como en la Clase 8)
+## Cómo está organizado (hexagonal)
 
 | Pieza | Rol en hexagonal | Archivo |
 | --- | --- | --- |
@@ -25,7 +19,7 @@ Maneja **el pedido de principio a fin**. Puerto interno **8085**. Es uno de los 
 
 Las piezas se arman a mano en `cmd/api/main.go` (`PedidosService{Repo: pedidosRepo}`), igual que en las demos de clase. En los tests, los puertos se reemplazan por mocks en memoria (`PedidosMock`, `CarritosMock`, `ConfirmacionesMock`, `CatalogoMock`, `InventarioMock`, `ConsumoMock`).
 
-## El carrito (L6)
+## El carrito
 
 | Ruta en el gateway | Para qué |
 | --- | --- |
@@ -51,7 +45,7 @@ La `Idempotency-Key` es carrito + número de cambio + una huella de los platos: 
 | `403 SIN_PERMISO` | No es un cliente (por ejemplo, una cuenta Cocina) |
 | `503 SERVICIO_NO_DISPONIBLE` | Catálogo o Inventario no responden: el carrito no cambia, nunca se inventa un resultado |
 
-## Cuánto le queda a la reserva (L7)
+## Cuánto le queda a la reserva
 
 Todas las respuestas del carrito traen:
 
@@ -64,7 +58,7 @@ Todas las respuestas del carrito traen:
 - Cuando se cumple el plazo, `GET /carrito` responde `vencido: true` y `segundosRestantes: 0`, pero **no cambia nada**: mirar el carrito no modifica datos. Inventario libera los ingredientes en su barrido de cada 15 s; el próximo cambio del cliente recibe `409 CARRITO_VENCIDO` y el carrito queda vacío.
 - El frontend puede mostrar la cuenta regresiva a partir de `venceEn`, sin pedir el carrito cada segundo.
 
-## Confirmar el pedido (L8)
+## Confirmar el pedido
 
 | Ruta en el gateway | Para qué |
 | --- | --- |
@@ -76,8 +70,7 @@ Confirmar toca Pedidos e Inventario, así que no entra en una sola transacción:
 
 1. **Anotar** la confirmación, con una copia del carrito. La misma `Idempotency-Key` del mismo cliente es la misma confirmación (doble clic: un solo pedido), y un carrito se confirma una sola vez aunque lleguen dos claves a la vez.
 2. **Descontar** en Inventario (`POST /reservas/{id}/consumir`). Si no contesta, se reintenta con **backoff y jitter** (100 ms, 200 ms, 400 ms… con ±50 % de azar), siempre con la **misma clave**, hasta 2 s. El **circuit breaker** se abre si en 10 llamadas falla la mitad: durante 10 s responde al instante sin llamar a Inventario.
-3. *(El paso del grupo proveedor va acá cuando la cátedra lo asigne: L15.)*
-4. **Crear el pedido** en RECIBIDO, marcar la confirmación COMPLETADA y vaciar el carrito, en **una sola transacción**.
+3. **Crear el pedido** en RECIBIDO, marcar la confirmación COMPLETADA y vaciar el carrito, en **una sola transacción**.
 
 | Respuesta | Cuándo |
 | --- | --- |
@@ -87,9 +80,9 @@ Confirmar toca Pedidos e Inventario, así que no entra en una sola transacción:
 | `409 CARRITO_VACIO` | No hay platos para confirmar |
 | `400 IDEMPOTENCY_KEY_INVALIDA` | Falta el header o no es válido |
 
-**Descuento real (V10 de Inventario):** `docker-compose.yml` usa `CONSUMO_INVENTARIO: real`, así que confirmar descuenta el stock de verdad (`POST /reservas/{id}/consumir`). Con `simulado` Pedidos no llama a Inventario: siempre sale bien y no descuenta nada (sirve para probar Pedidos solo; los tests de `testdata/` lo usan así).
+**Descuento real en Inventario:** `docker-compose.yml` usa `CONSUMO_INVENTARIO: real`, así que confirmar descuenta el stock de verdad (`POST /reservas/{id}/consumir`). Con `simulado` Pedidos no llama a Inventario: siempre sale bien y no descuenta nada (sirve para probar Pedidos solo; los tests de `testdata/` lo usan así).
 
-## Mis pedidos y confirmar que lo recibí (L11)
+## Mis pedidos y confirmar que lo recibí
 
 | Ruta (por el gateway) | Qué hace |
 | --- | --- |
@@ -110,7 +103,7 @@ Confirmar toca Pedidos e Inventario, así que no entra en una sola transacción:
 | `403 SIN_PERMISO` | El admin no tiene pedidos; la cocina no confirma entregas |
 | `404 PEDIDO_NO_ENCONTRADO` | El pedido no existe o es de otro cliente |
 
-## Pantalla de pedidos de la cocina (L12)
+## Pantalla de pedidos de la cocina
 
 | Ruta (por el gateway) | Qué hace |
 | --- | --- |
@@ -123,7 +116,7 @@ Confirmar toca Pedidos e Inventario, así que no entra en una sola transacción:
 - Cada acción la decide el pedido (dominio) y se guarda con control de versión: si el cliente cancela mientras la cocina acepta, gana el primero y el otro recibe `409 PEDIDO_MODIFICADO`.
 - Desde `EN_CAMINO` la cocina ya no avanza: lo cierra el cliente al confirmar que lo recibió.
 
-## Cancelar y devolver los ingredientes (L10)
+## Cancelar y devolver los ingredientes
 
 | Ruta (por el gateway) | Qué hace |
 | --- | --- |
@@ -143,9 +136,9 @@ Cuando un pedido pasa a `CANCELADO` (lo cancela el cliente o lo **rechaza la coc
 | `403 SIN_PERMISO` | No es un cliente (la cocina no cancela: rechaza) |
 | `404 PEDIDO_NO_ENCONTRADO` | El pedido no existe o es de otro cliente |
 
-Con `CONSUMO_INVENTARIO: real` (lo que usa `docker-compose.yml`) se llama a la V10 de Inventario. Con `simulado` la devolución también es simulada: como el descuento no fue real, no hay nada que devolver.
+Con `CONSUMO_INVENTARIO: real` (lo que usa `docker-compose.yml`) se le pide a Inventario que devuelva los ingredientes. Con `simulado` la devolución también es simulada: como el descuento no fue real, no hay nada que devolver.
 
-## Historial y aviso de cada cambio de estado (L13)
+## Historial y aviso de cada cambio de estado
 
 - **Historial:** cada cambio queda en `pedido_historial` (estado anterior, nuevo, quién y cuándo) y se ve en `GET /api/v1/pedidos/{id}`, en `historial`.
 - **Aviso:** cada cambio (también la creación en `RECIBIDO`) publica `pedido.estado_cambiado` en RabbitMQ, con el sobre común de [`docs/contracts/eventos`](../../docs/contracts/eventos/README.md). Lo escucha Notificaciones (cola `notificaciones.mailer`) para mandarle el mail al cliente.
@@ -161,7 +154,7 @@ Cómo no se pierde un aviso (**outbox**, ADR-005):
 | --- | --- |
 | `RABBITMQ_URL` | `amqp://usuario:clave@rabbitmq:5672/`, armada en `docker-compose.yml` con `RABBITMQ_USER` y `RABBITMQ_PASSWORD` del `.env`. Sin ella, los mensajes quedan en el outbox |
 
-## Carrito vencido por aviso de Inventario (L14)
+## Carrito vencido por aviso de Inventario
 
 Cuando una reserva cumple sus 10 minutos, Inventario libera los ingredientes y publica `reserva.vencida` (`{"reserva_id", "carrito_id", "cocina_id"}`). Pedidos escucha la cola `pedidos.reservas` y:
 
@@ -175,9 +168,9 @@ Cuando una reserva cumple sus 10 minutos, Inventario libera los ingredientes y p
 | Está roto o es de otro tipo | Rechazo sin reencolar: va a `pedidos.reservas.dlq` |
 | Falló algo pasajero (MySQL no contesta) | Espera 5 s y vuelve a la cola; a las 5 entregas RabbitMQ lo manda a la DLQ |
 
-El consumidor lee de a un mensaje (prefetch 1) y, si se corta la conexión con RabbitMQ, vuelve a conectarse a los 5 s. Mientras tanto, el carrito sigue funcionando: si el cliente lo toca con la reserva vencida, recibe `409 CARRITO_VENCIDO` como antes (L7).
+El consumidor lee de a un mensaje (prefetch 1) y, si se corta la conexión con RabbitMQ, vuelve a conectarse a los 5 s. Mientras tanto, el carrito sigue funcionando: si el cliente lo toca con la reserva vencida, recibe `409 CARRITO_VENCIDO`.
 
-## Factura con el grupo proveedor (L15)
+## Factura con el grupo proveedor
 
 Lo que consumimos de otro grupo es la **API de comprobantes del Grupo 4**: con el mail del cliente y las líneas del pedido, emite la factura en PDF y se la manda por correo. Su contrato y cómo lo usamos están en [`docs/contracts/proveedor`](../../docs/contracts/proveedor/README.md), y la decisión, en el [ADR-009](../../docs/adr/ADR-009-consumo-del-proveedor.md).
 
@@ -197,7 +190,7 @@ Lo que consumimos de otro grupo es la **API de comprobantes del Grupo 4**: con e
 - `GET /api/v1/pedidos/{id}` muestra cómo va: `"comprobante": {"estado": "EMITIDO", "numero": "B-0001-00000042"}`.
 - Configuración: `PROVIDER_BASE_URL` y `PROVIDER_API_KEY` del `.env`. Mientras estén vacías (el Grupo 4 todavía no publicó su URL), `docker-compose.yml` usa su mock, `comprobantes-mock`, que valida cada solicitud contra su contrato.
 
-## Métricas del negocio para el admin (G21, HU22)
+## Métricas del negocio para el admin
 
 `GET /api/v1/admin/metricas[?cocinaId=]` devuelve, para los **últimos 7 días** (hoy y los 6 anteriores, cortando los días en hora de Córdoba):
 
@@ -277,7 +270,7 @@ La cocina lo avanza hasta EN_CAMINO y el cliente confirma que lo recibió (ENTRE
 
 ## Cómo se organiza por dentro: hexagonal + DDD
 
-Igual que Inventario, las reglas quedan **en el centro**, separadas de la base, de HTTP y de los otros servicios. Además usamos una idea de DDD: el **pedido controla sus propias reglas**. No se le puede cambiar el estado desde cualquier lado; hay que pedírselo al pedido, y él decide si el cambio es válido (por ejemplo, no se puede cancelar si ya está ACEPTADO) (Clase 8).
+Igual que Inventario, las reglas quedan **en el centro**, separadas de la base, de HTTP y de los otros servicios. Además usamos una idea de DDD: el **pedido controla sus propias reglas**. No se le puede cambiar el estado desde cualquier lado; hay que pedírselo al pedido, y él decide si el cambio es válido (por ejemplo, no se puede cancelar si ya está ACEPTADO).
 
 El número de **versión** sirve para cuando dos cosas pasan a la vez. Si el cliente cancela justo cuando la cocina acepta, se guarda solo el primer cambio y el otro se rechaza.
 
@@ -309,7 +302,7 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 | `POST /pedidos/{id}/cancelar` · `/entregado` | cliente | Cancelar o confirmar que lo recibió |
 | `GET /cocina/pedidos` | cocina | Ver los pedidos de su cocina |
 | `POST /cocina/pedidos/{id}/aceptar` · `/rechazar` · `/avanzar` | cocina | Cambiar el estado |
-| `GET /admin/metricas?cocinaId=` (G21) | admin | Ver las métricas de las cocinas de su localidad |
+| `GET /admin/metricas?cocinaId=` | admin | Ver las métricas de las cocinas de su localidad |
 
 **Permisos:** un cliente solo ve sus pedidos y solo compra en una cocina activa; una cocina solo ve y cambia sus propios pedidos.
 
