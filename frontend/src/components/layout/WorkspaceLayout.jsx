@@ -14,7 +14,7 @@ const MENUS = {
   COCINA: [
     { to: "/cocina", icon: "receipt", label: "Pedidos", end: true },
     { to: "/cocina/menu", icon: "utensils", label: "Menú" },
-    { to: "/cocina/platos", icon: "utensils", label: "Platos y recetas" },
+    { to: "/cocina/platos", icon: "recipe", label: "Platos y recetas" },
     { to: "/cocina/inventario", icon: "box", label: "Inventario" },
   ],
 };
@@ -36,7 +36,10 @@ function WorkspaceLayout() {
         </div>
         <nav>
           {items.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.end}>
+            // Con la pantalla angosta el menú muestra solo los íconos: el nombre aparece en un
+            // cartel al pasar el mouse o al llegar con Tab (data-nombre, ver layout.css), y
+            // aria-label lo da a los lectores de pantalla aunque el texto esté oculto.
+            <NavLink key={item.to} to={item.to} end={item.end} aria-label={item.label} data-nombre={item.label}>
               <Icon name={item.icon} />
               <span>{item.label}</span>
             </NavLink>
