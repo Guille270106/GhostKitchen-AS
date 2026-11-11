@@ -308,7 +308,7 @@ Como sistema de otro grupo quiero enviar la ubicación de una sede propia y la d
 | Que no se pierda nada | Se cae RabbitMQ o un servicio que escucha mensajes | No se pierde ningún pedido, devolución ni mail |
 | Seguridad | Una cocina quiere ver pedidos de otra | No puede; las contraseñas van encriptadas y las claves no están en el repo |
 | Encontrar errores rápido | Falla la confirmación de un pedido | Encontramos la causa en menos de 10 min mirando el tablero y los logs |
-| Calidad del código | Reglas del negocio | Tests unitarios de reglas relevantes; meta inicial del grupo: al menos 70 % de cobertura (no es un porcentaje fijado por el enunciado) |
+| Calidad del código | Reglas del negocio | Tests unitarios de reglas relevantes con al menos 70 % de cobertura (el enunciado no fija el porcentaje: lo elegimos nosotros). Se mide en cada pull request y hoy todos los servicios superan el 82 % ([ARCHITECTURE](docs/ARCHITECTURE.md#122-pruebas-qué-comprobamos)) |
 
 ## 11. Cuándo algo está terminado (Definition of Done)
 

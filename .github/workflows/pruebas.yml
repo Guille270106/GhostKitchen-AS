@@ -1,6 +1,6 @@
-# Pruebas de todo el sistema en cada pull request: los tests de Go de los seis servicios, el
-# frontend (lint y build) y la integración de Pedidos e Inventario contra MySQL y RabbitMQ
-# reales. Así un cambio no puede pasar la revisión rompiendo el flujo principal, aunque no toque
+# Pruebas de todo el sistema en cada pull request: los tests de Go de los seis servicios (con la
+# cobertura de sus reglas de negocio), el frontend (lint y build) y la integración de Pedidos e
+# Inventario contra MySQL y RabbitMQ reales. Así un cambio no puede pasar la revisión rompiendo el flujo principal, aunque no toque
 # la API publicada (de eso se encarga contrato.yml).
 name: Pruebas
 
@@ -25,11 +25,18 @@ jobs:
         with:
           go-version: "1.24"
           cache-dependency-path: services/${{ matrix.servicio }}/go.sum
+      # -coverpkg cuenta también lo que se ejecuta desde los tests de otro paquete (por ejemplo,
+      # los casos de uso que se prueban a través de los handlers HTTP).
       - name: go vet y go test
         working-directory: services/${{ matrix.servicio }}
         run: |
           go vet ./...
-          go test -count=1 ./...
+          go test -count=1 -coverpkg=./internal/... -coverprofile=cobertura.out ./...
+      # Cobertura de las reglas de negocio (dominio y casos de uso): falla por debajo del 70 %
+      # (SPEC, sección 10). El detalle por paquete queda en el resumen del job.
+      - name: Cobertura de las reglas de negocio
+        working-directory: services/${{ matrix.servicio }}
+        run: node ../../scripts/cobertura/reglas.mjs ${{ matrix.servicio }} cobertura.out
 
   frontend:
     name: Frontend (lint y build)
