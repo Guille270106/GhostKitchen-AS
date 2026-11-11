@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { crearCocina, crearRestaurante, editarCocina, editarRestaurante, toggleCocina, toggleRestaurante } from "../api/ghostkitchen";
 import Button from "../components/common/Button";
+import PasswordInput from "../components/common/PasswordInput";
 import EmptyState from "../components/common/EmptyState";
 import Icon from "../components/common/Icon";
 import Loader from "../components/common/Loader";
@@ -200,7 +201,7 @@ function AdminKitchens() {
             </label>
             <label>
               Contraseña inicial
-              <input type="password" minLength={8} autoComplete="new-password" value={nuevaCocina.password} onChange={(e) => setNuevaCocina({ ...nuevaCocina, password: e.target.value })} required />
+              <PasswordInput minLength={8} autoComplete="new-password" value={nuevaCocina.password} onChange={(e) => setNuevaCocina({ ...nuevaCocina, password: e.target.value })} required />
             </label>
             <p className="modal-hint">La cocina queda en tu localidad ({localidad?.nombre}). Con esa cuenta el personal ve y prepara los pedidos de todos sus restaurantes.</p>
             <div className="modal-actions">

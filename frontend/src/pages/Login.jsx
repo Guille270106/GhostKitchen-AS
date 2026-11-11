@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import AuthLayout from "../components/auth/AuthLayout";
 import Button from "../components/common/Button";
+import PasswordInput from "../components/common/PasswordInput";
 import { useSession } from "../context/SessionContext";
 import { homeForRole } from "../utils/auth";
 
@@ -44,7 +45,7 @@ function Login() {
         </label>
         <label>
           Contraseña
-          <input type="password" autoComplete="current-password" placeholder="••••••••" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+          <PasswordInput autoComplete="current-password" placeholder="••••••••" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
         </label>
         {error && <p className="form-error">{error}</p>}
         <Button type="submit" className="full-button" loading={loading}>

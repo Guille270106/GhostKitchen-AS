@@ -19,3 +19,8 @@
 }
 .stock-formularios label { display: grid; gap: .25rem; }
 .stock-formularios button { justify-self: start; }
+
+/* Foto del plato (opcional): el link y una vista previa chica. */
+.campo-foto-vista { margin: 4px 0 10px; display: flex; align-items: center; gap: 10px; }
+.campo-foto-vista img { width: 96px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: var(--canvas); }
+.campo-foto-vista figcaption { font-size: 12px; color: var(--muted); }

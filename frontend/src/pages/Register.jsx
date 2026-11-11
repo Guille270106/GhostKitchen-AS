@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 
 import AuthLayout from "../components/auth/AuthLayout";
 import Button from "../components/common/Button";
+import PasswordInput from "../components/common/PasswordInput";
 import { useSession } from "../context/SessionContext";
 import { useToast } from "../context/ToastContext";
 import { homeForRole } from "../utils/auth";
@@ -51,7 +52,7 @@ function Register() {
         </label>
         <label>
           Contraseña
-          <input type="password" autoComplete="new-password" placeholder="Mínimo 8 caracteres" minLength={8} value={form.password} onChange={change("password")} required />
+          <PasswordInput autoComplete="new-password" placeholder="Mínimo 8 caracteres" minLength={8} value={form.password} onChange={change("password")} required />
         </label>
         <label>
           Dirección

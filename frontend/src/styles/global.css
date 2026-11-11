@@ -177,3 +177,10 @@ p { margin-top: 0; }
 .campo-error::before { content: "!"; flex: 0 0 auto; width: 16px; height: 16px; margin-top: 1px; border-radius: 50%; background: var(--red); color: #fff; font-size: 11px; font-weight: 800; line-height: 16px; text-align: center; }
 @keyframes campo-error-entra { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .campo-error { animation: none; } }
+
+/* Contraseña con botón para verla: el botón queda adentro del campo, a la derecha. */
+.password-field { position: relative; display: block; margin-top: 6px; }
+.password-field input { margin-top: 0 !important; padding-right: 46px !important; }
+.password-toggle { position: absolute; top: 0; right: 4px; bottom: 0; width: 38px; display: grid; place-items: center; border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: 4px; }
+.password-toggle:hover { color: var(--ink); }
+.password-toggle:focus-visible { outline: 2px solid var(--red); outline-offset: -4px; }

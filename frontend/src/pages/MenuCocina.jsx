@@ -40,6 +40,8 @@ function leerPlato(campos) {
     categoria,
     precio,
     descripcion: campos.namedItem("descripcion").value.trim(),
+    // Opcional. Vacía al editar = sacarle la foto (la tarjeta vuelve a la de ejemplo o al recuadro).
+    fotoUrl: campos.namedItem("fotoUrl").value.trim(),
     etiquetas: ETIQUETAS.filter((e) => campos.namedItem(`etiqueta-${e}`)?.checked),
   };
 }
@@ -199,6 +201,7 @@ function CamposPlato({ plato }) {
       <label>Descripción <textarea name="descripcion" maxLength={300} rows={2} defaultValue={plato?.descripcion} /></label>
       <label>Categoría <input name="categoria" required maxLength={40} placeholder="Hamburguesas" defaultValue={plato?.categoria} /></label>
       <label>Precio ($) <input name="precio" type="number" required min="1" step="1" defaultValue={plato?.precio} /></label>
+      <CampoFoto inicial={plato?.fotoUrl} />
       <fieldset>
         <legend>Etiquetas</legend>
         {ETIQUETAS.map((e) => (
@@ -208,5 +211,37 @@ function CamposPlato({ plato }) {
         ))}
       </fieldset>
     </>
+  );
+}
+
+// CampoFoto es el link a la foto del plato, opcional, con una vista previa. Catálogo guarda el
+// link (no el archivo) y solo acepta direcciones https. Si el link no carga una imagen, la vista
+// previa avisa antes de guardar.
+function CampoFoto({ inicial = "" }) {
+  const [link, setLink] = useState(inicial);
+  const [rota, setRota] = useState(false);
+  const valido = /^https:\/\/\S+$/.test(link.trim());
+  return (
+    <div className="campo-foto">
+      <label>Foto (opcional)
+        <input
+          name="fotoUrl"
+          type="url"
+          inputMode="url"
+          maxLength={500}
+          pattern="https://.+"
+          title="Pegá un link que empiece con https://."
+          placeholder="https://… (link a la foto)"
+          defaultValue={inicial}
+          onChange={(e) => { setLink(e.target.value); setRota(false); }}
+        />
+      </label>
+      {valido && (
+        <figure className="campo-foto-vista">
+          {!rota && <img src={link.trim()} alt="Vista previa de la foto" onError={() => setRota(true)} />}
+          <figcaption>{rota ? "No se pudo cargar la imagen de ese link: revisá que sea una foto." : "Así se va a ver en el menú."}</figcaption>
+        </figure>
+      )}
+    </div>
   );
 }
