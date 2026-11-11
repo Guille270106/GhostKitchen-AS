@@ -36,14 +36,13 @@ jobs:
       # Estos no son dependencias en el compose, pero el flujo los usa: la caché de Catálogo y el
       # mock del Grupo 4, al que Pedidos le pide la factura.
       EXTRAS: memcached comprobantes-mock
+      PLAYWRIGHT_IMAGEN: mcr.microsoft.com/playwright:v1.63.0-noble
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
 
       # Un .env descartable con claves al azar (el mismo script que en la nube). PROVIDER_BASE_URL
       # queda vacía, así Pedidos le pide la factura al mock del Grupo 4. No se imprime nada.
@@ -53,12 +52,11 @@ jobs:
       - name: Compilar y levantar el sistema
         run: docker compose up -d --build $SERVICIOS $EXTRAS
 
-      # Mientras el sistema arranca se prepara el navegador de Playwright.
-      - name: Instalar Playwright
-        working-directory: frontend
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
+      # Mientras el sistema arranca se baja la imagen oficial de Playwright: trae el navegador y
+      # todo lo que necesita, sin instalar paquetes con apt (que depende de los servidores de
+      # Ubuntu y a veces falla). La versión es la misma que @playwright/test en package.json.
+      - name: Bajar la imagen de Playwright
+        run: docker pull $PLAYWRIGHT_IMAGEN
 
       # Se espera a que todos estén healthy: cada servicio aplica sus migraciones y carga los
       # datos de ejemplo al arrancar, y Búsqueda arma su índice desde Catálogo.
@@ -80,9 +78,13 @@ jobs:
 
       # Corre aunque la de la API haya fallado (si el sistema llegó a levantarse), así se ven las dos.
       - name: Prueba de la pantalla (Playwright)
+        # --network host: el navegador llega al frontend (5173) y al gateway (8080) como en la compu.
+        # Se monta todo el repositorio porque preparar.js lee ADMIN_PASSWORD del .env de la raíz.
         if: ${{ !cancelled() && steps.listo.outcome == 'success' }}
-        working-directory: frontend
-        run: npm run test:e2e
+        run: >
+          docker run --rm --init --ipc=host --network host -e CI=true
+          -v "$PWD:/repo" -w /repo/frontend $PLAYWRIGHT_IMAGEN
+          sh -c "npm ci && npm run test:e2e"
 
       # Captura, video y traza paso a paso de lo que vio el navegador (npx playwright show-trace).
       - name: Guardar lo que vio el navegador
