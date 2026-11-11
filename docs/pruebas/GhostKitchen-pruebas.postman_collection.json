@@ -1,0 +1,3092 @@
+{
+  "info": {
+    "name": "GhostKitchen — pruebas",
+    "description": "Pruebas de la API por el gateway. Orden: 1 → 8, se puede correr entera con Run collection (delay de 2000 ms por el límite del login). Antes, completá adminPassword y apiKey con los valores del .env, y en cada corrida cambiá el número de emailCliente, emailCocina y claveConfirmacion. Cada login guarda su token solo. Actualizada el 11/11.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Usuarios y gateway",
+      "item": [
+        {
+          "name": "Registro",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/auth/registro",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "auth",
+                "registro"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Ana Pérez\",\n  \"email\": \"{{emailCliente}}\",\n  \"password\": \"clave-segura-1\",\n  \"direccion\": \"Obispo Trejo 300\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 201', () => pm.expect(pm.response.code).to.be.oneOf([201]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Registro repetido (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/auth/registro",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "auth",
+                "registro"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Ana Pérez\",\n  \"email\": \"{{emailCliente}}\",\n  \"password\": \"clave-segura-1\",\n  \"direccion\": \"Obispo Trejo 300\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 409', () => pm.expect(pm.response.code).to.be.oneOf([409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Registro sin dirección (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/auth/registro",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "auth",
+                "registro"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Ana Pérez\",\n  \"email\": \"otra@test.com\",\n  \"password\": \"clave-segura-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 400', () => pm.expect(pm.response.code).to.be.oneOf([400]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/auth/login",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailCliente}}\",\n  \"password\": \"clave-segura-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respuesta 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));",
+                  "pm.collectionVariables.set('tokenCliente', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login con clave mala (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/auth/login",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailCliente}}\",\n  \"password\": \"otra-clave-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 401', () => pm.expect(pm.response.code).to.be.oneOf([401]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/auth/login",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin.nueva-cordoba@ghostkitchen.dev\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "La contraseña es ADMIN_PASSWORD del .env: cargala en la variable adminPassword."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respuesta 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));",
+                  "pm.collectionVariables.set('tokenAdmin', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear cuenta cocina",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/admin/cuentas-cocina",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "admin",
+                "cuentas-cocina"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cocinaId\": \"{{cocina}}\",\n  \"nombre\": \"Cocina NC\",\n  \"email\": \"{{emailCocina}}\",\n  \"password\": \"clave-cocina-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenAdmin}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "409 si ya la creaste antes: está bien, seguí con el login."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 201/409', () => pm.expect(pm.response.code).to.be.oneOf([201,409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cuenta cocina de otra localidad (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/admin/cuentas-cocina",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "admin",
+                "cuentas-cocina"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cocinaId\": \"cerro\",\n  \"nombre\": \"Cocina Cerro\",\n  \"email\": \"otra.cocina@test.com\",\n  \"password\": \"clave-cocina-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenAdmin}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 403', () => pm.expect(pm.response.code).to.be.oneOf([403]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login cocina",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/auth/login",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailCocina}}\",\n  \"password\": \"clave-cocina-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respuesta 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));",
+                  "pm.collectionVariables.set('tokenCocina', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sin token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/carrito",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "carrito"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 401', () => pm.expect(pm.response.code).to.be.oneOf([401]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Catálogo",
+      "item": [
+        {
+          "name": "Cocinas (mirar X-Instancia)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocinas",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocinas"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('trae X-Instancia', () => pm.expect(pm.response.headers.get('X-Instancia')).to.match(/catalogo-/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Menú de la cocina",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocinas/{{cocina}}/platos",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocinas",
+                "{{cocina}}",
+                "platos"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detalle de plato",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/platos/{{plato}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "platos",
+                "{{plato}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mis cocinas (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/admin/cocinas",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "admin",
+                "cocinas"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenAdmin}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear cocina (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/admin/cocinas",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "admin",
+                "cocinas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Cocina Alberdi\",\n  \"direccion\": \"Colón 2500\",\n  \"ubicacion\": {\n    \"lat\": -31.405,\n    \"lng\": -64.21\n  },\n  \"tiempoEntregaMin\": 25,\n  \"tiempoEntregaMax\": 40,\n  \"costoEnvio\": 1200\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenAdmin}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "La primera vez la crea (201). En las corridas siguientes ya existe (409) y se sigue con la misma: alberdi."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 201/409', () => pm.expect(pm.response.code).to.be.oneOf([201,409]));",
+                  "// El id sale del nombre (\"Cocina Alberdi\" -> alberdi). Si ya existe de una corrida anterior (409), se sigue con esa.",
+                  "pm.collectionVariables.set('cocinaNueva', pm.response.code === 201 ? pm.response.json().id : 'alberdi');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agregar restaurante (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/admin/cocinas/{{cocinaNueva}}/restaurantes",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "admin",
+                "cocinas",
+                "{{cocinaNueva}}",
+                "restaurantes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Lomitos Don Juan\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenAdmin}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Repetilo hasta tener 5: el quinto tiene que dar 409 (máximo 4)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 201/409', () => pm.expect(pm.response.code).to.be.oneOf([201,409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pausar cocina nueva (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/admin/cocinas/{{cocinaNueva}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "admin",
+                "cocinas",
+                "{{cocinaNueva}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activa\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenAdmin}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Plato nuevo (cocina)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/cocina/restaurantes/r1/platos",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "restaurantes",
+                "r1",
+                "platos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Mega triple\",\n  \"descripcion\": \"Tres medallones\",\n  \"categoria\": \"Hamburguesas\",\n  \"precio\": 9500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCocina}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Entra inactivo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 201', () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "pm.collectionVariables.set('platoNuevo', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activar sin receta (409)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/cocina/platos/{{platoNuevo}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "platos",
+                "{{platoNuevo}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCocina}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 409', () => pm.expect(pm.response.code).to.be.oneOf([409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cambiar precio",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/cocina/platos/{{plato}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "platos",
+                "{{plato}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"precio\": 9900\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCocina}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Después pedí el menú: el precio nuevo se ve enseguida."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Búsqueda",
+      "item": [
+        {
+          "name": "Sedes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/busqueda/sedes",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "busqueda",
+                "sedes"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar hamburguesa",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/busqueda/sedes/{{cocina}}/platos?q=hamburguesa&soloDisponibles=false",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "busqueda",
+                "sedes",
+                "{{cocina}}",
+                "platos"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "hamburguesa"
+                },
+                {
+                  "key": "soloDisponibles",
+                  "value": "false"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Palabra a medias (hambur)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/busqueda/sedes/{{cocina}}/platos?q=hambur&soloDisponibles=false",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "busqueda",
+                "sedes",
+                "{{cocina}}",
+                "platos"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "hambur"
+                },
+                {
+                  "key": "soloDisponibles",
+                  "value": "false"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('encuentra algo', () => pm.expect(pm.response.json().total).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filtro y orden",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/busqueda/sedes/{{cocina}}/platos?categoria=Hamburguesas&orden=precio_asc&soloDisponibles=false",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "busqueda",
+                "sedes",
+                "{{cocina}}",
+                "platos"
+              ],
+              "query": [
+                {
+                  "key": "categoria",
+                  "value": "Hamburguesas"
+                },
+                {
+                  "key": "orden",
+                  "value": "precio_asc"
+                },
+                {
+                  "key": "soloDisponibles",
+                  "value": "false"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Solo con stock",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/busqueda/sedes/{{cocina}}/platos?q=hamburguesa",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "busqueda",
+                "sedes",
+                "{{cocina}}",
+                "platos"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "hamburguesa"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "API publicada con clave",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/public/v1/sedes",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "public",
+                "v1",
+                "sedes"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "API publicada sin clave (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/public/v1/sedes",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "public",
+                "v1",
+                "sedes"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 401', () => pm.expect(pm.response.code).to.be.oneOf([401]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Inventario (cocina)",
+      "item": [
+        {
+          "name": "Crear ingrediente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/cocina/ingredientes",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "ingredientes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Pan de hamburguesa\",\n  \"unidad\": \"unidad\",\n  \"stockInicial\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 201', () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "pm.collectionVariables.set('ingrediente', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ingrediente inválido (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/cocina/ingredientes",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "ingredientes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"\",\n  \"unidad\": \"unidad\",\n  \"stockInicial\": -1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 400', () => pm.expect(pm.response.code).to.be.oneOf([400]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar ingredientes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocina/ingredientes",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "ingredientes"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ver ingrediente",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocina/ingredientes/{{ingrediente}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "ingredientes",
+                "{{ingrediente}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Receta del plato",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/cocina/platos/{{plato}}/receta",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "platos",
+                "{{plato}}",
+                "receta"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"ingredienteId\": \"{{ingrediente}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Receta del plato nuevo",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/cocina/platos/{{platoNuevo}}/receta",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "platos",
+                "{{platoNuevo}}",
+                "receta"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"ingredienteId\": \"{{ingrediente}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Después volvé a 'Activar sin receta' en Catálogo: ahora tiene que dar 200."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ver receta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocina/platos/{{plato}}/receta",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "platos",
+                "{{plato}}",
+                "receta"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Recetas de la cocina",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocina/recetas",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "recetas"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reponer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/cocina/ingredientes/{{ingrediente}}/reposiciones",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "ingredientes",
+                "{{ingrediente}}",
+                "reposiciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cantidad\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Merma",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/cocina/ingredientes/{{ingrediente}}/mermas",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "ingredientes",
+                "{{ingrediente}}",
+                "mermas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cantidad\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Merma mayor al stock",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/cocina/ingredientes/{{ingrediente}}/mermas",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "ingredientes",
+                "{{ingrediente}}",
+                "mermas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cantidad\": 100000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 409/400/422', () => pm.expect(pm.response.code).to.be.oneOf([409,400,422]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Como admin (403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocina/ingredientes",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "ingredientes"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenAdmin}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 403', () => pm.expect(pm.response.code).to.be.oneOf([403]));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{tokenCocina}}",
+            "type": "string"
+          }
+        ]
+      },
+      "description": "Todo con la cuenta Cocina. El admin recibe 403."
+    },
+    {
+      "name": "5. Pedidos (cliente)",
+      "item": [
+        {
+          "name": "Ver carrito",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/carrito",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "carrito"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agregar plato",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/carrito/items",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "carrito",
+                "items"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"platoId\": \"{{plato}}\",\n  \"cantidad\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Plato de otra cocina (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/carrito/items",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "carrito",
+                "items"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"platoId\": \"p17\",\n  \"cantidad\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "p17 es de Cerro."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 409', () => pm.expect(pm.response.code).to.be.oneOf([409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sin stock (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/carrito/items",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "carrito",
+                "items"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"platoId\": \"p3\",\n  \"cantidad\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Veggie burger (p3): su medallón de lentejas arranca con 3 unidades en Nueva Córdoba, así que 10 no alcanzan. Más de 50 da 400 (cantidad máxima por plato)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cambiar cantidad",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/carrito/items/{{plato}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "carrito",
+                "items",
+                "{{plato}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cantidad\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirmar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{claveConfirmacion}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/pedidos",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "pedidos"
+              ]
+            },
+            "description": "Manda la dirección de entrega (variable direccion). Antes de cada pedido nuevo, cambiá la variable claveConfirmacion (por ejemplo, sumale un número). Con Inventario caído responde 202: 'Estamos confirmando tu pedido'.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direccionEntrega\": \"{{direccion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 201/202', () => pm.expect(pm.response.code).to.be.oneOf([201,202]));",
+                  "const j = pm.response.json(); if (j.id) pm.collectionVariables.set('pedido', j.id); if (j.pedido && j.pedido.id) pm.collectionVariables.set('pedido', j.pedido.id);",
+                  "pm.test('el pedido trae la dirección de entrega', () => { if (pm.response.code === 201) pm.expect((j.pedido || j).direccionEntrega).to.eql(pm.collectionVariables.get('direccion')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirmar otra vez, misma clave",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{claveConfirmacion}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/pedidos",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "pedidos"
+              ]
+            },
+            "description": "Tiene que devolver el mismo pedido, no uno nuevo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direccionEntrega\": \"{{direccion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200,201,202]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirmar sin clave (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/pedidos",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "pedidos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direccionEntrega\": \"{{direccion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 400', () => pm.response.to.have.status(400));",
+                  "pm.test('code IDEMPOTENCY_KEY_INVALIDA', () => pm.expect(pm.response.json().code).to.eql('IDEMPOTENCY_KEY_INVALIDA'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirmar sin dirección (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "sin-direccion-{{$timestamp}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direccionEntrega\": \"   \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base}}/pedidos",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "pedidos"
+              ]
+            },
+            "description": "Dirección vacía o solo espacios: no se crea nada."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 400', () => pm.response.to.have.status(400));",
+                  "pm.test('code DIRECCION_INVALIDA', () => pm.expect(pm.response.json().code).to.eql('DIRECCION_INVALIDA'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mis pedidos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/pedidos",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "pedidos"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Un pedido",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/pedidos/{{pedido}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "pedidos",
+                "{{pedido}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Vaciar carrito",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/carrito",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "carrito"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200/204', () => pm.expect(pm.response.code).to.be.oneOf([200,204]));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{tokenCliente}}",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "6. Pedidos (cocina y admin)",
+      "item": [
+        {
+          "name": "Pedidos de mi cocina",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocina/pedidos?estado=RECIBIDO",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "pedidos"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "RECIBIDO"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aceptar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocina/pedidos/{{pedido}}/aceptar",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "pedidos",
+                "{{pedido}}",
+                "aceptar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rechazar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocina/pedidos/{{pedido}}/rechazar",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "pedidos",
+                "{{pedido}}",
+                "rechazar"
+              ]
+            },
+            "description": "Usalo con otro pedido: rechaza solo uno RECIBIDO."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200/409', () => pm.expect(pm.response.code).to.be.oneOf([200,409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Avanzar 1 (en preparacion)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocina/pedidos/{{pedido}}/avanzar",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "pedidos",
+                "{{pedido}}",
+                "avanzar"
+              ]
+            },
+            "description": "Cada avanzar mueve el pedido un paso: Aceptado → En preparación → Listo → En camino."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.response.to.have.status(200));",
+                  "pm.test('queda en EN_PREPARACION', () => { const j = pm.response.json(); pm.expect((j.pedido || j).estado).to.eql('EN_PREPARACION'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Avanzar 2 (listo)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocina/pedidos/{{pedido}}/avanzar",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "pedidos",
+                "{{pedido}}",
+                "avanzar"
+              ]
+            },
+            "description": "Cada avanzar mueve el pedido un paso: Aceptado → En preparación → Listo → En camino."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.response.to.have.status(200));",
+                  "pm.test('queda en LISTO', () => { const j = pm.response.json(); pm.expect((j.pedido || j).estado).to.eql('LISTO'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Avanzar 3 (en camino)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocina/pedidos/{{pedido}}/avanzar",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "pedidos",
+                "{{pedido}}",
+                "avanzar"
+              ]
+            },
+            "description": "Cada avanzar mueve el pedido un paso: Aceptado → En preparación → Listo → En camino."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.response.to.have.status(200));",
+                  "pm.test('queda en EN_CAMINO', () => { const j = pm.response.json(); pm.expect((j.pedido || j).estado).to.eql('EN_CAMINO'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lo recibí",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/pedidos/{{pedido}}/entregado",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "pedidos",
+                "{{pedido}}",
+                "entregado"
+              ]
+            },
+            "description": "Lo confirma el cliente (por eso usa su token), cuando el pedido está En camino.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCliente}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.response.to.have.status(200));",
+                  "pm.test('queda ENTREGADO', () => { const j = pm.response.json(); pm.expect((j.pedido || j).estado).to.eql('ENTREGADO'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Métricas del admin",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/admin/metricas?cocinaId={{cocina}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "admin",
+                "metricas"
+              ],
+              "query": [
+                {
+                  "key": "cocinaId",
+                  "value": "{{cocina}}"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenAdmin}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Métricas de otra localidad (403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/admin/metricas?cocinaId=cerro",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "admin",
+                "metricas"
+              ],
+              "query": [
+                {
+                  "key": "cocinaId",
+                  "value": "cerro"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenAdmin}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 403', () => pm.expect(pm.response.code).to.be.oneOf([403]));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{tokenCocina}}",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "7. Errores y casos borde",
+      "item": [
+        {
+          "name": "Ruta inexistente (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/no-existe",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "no-existe"
+              ]
+            },
+            "description": "El gateway responde 404 en JSON, igual que los otros errores.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 404', () => pm.response.to.have.status(404));",
+                  "pm.test('code NO_ENCONTRADO', () => pm.expect(pm.response.json().code).to.eql('NO_ENCONTRADO'));",
+                  "pm.test('formato Problem Details', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json'));",
+                  "pm.test('trae correlationId', () => pm.expect(pm.response.json().correlationId).to.be.a('string'));",
+                  "pm.test('headers de seguridad', () => { pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.eql('nosniff'); pm.expect(pm.response.headers.get('X-Frame-Options')).to.eql('DENY'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ruta interna desde afuera (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/internal/cocinas",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "internal",
+                "cocinas"
+              ]
+            },
+            "description": "Las rutas /internal de los servicios no se publican.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 404', () => pm.response.to.have.status(404));",
+                  "pm.test('code NO_ENCONTRADO', () => pm.expect(pm.response.json().code).to.eql('NO_ENCONTRADO'));",
+                  "pm.test('headers de seguridad', () => { pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.eql('nosniff'); pm.expect(pm.response.headers.get('X-Frame-Options')).to.eql('DENY'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Health del gateway",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/health",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Responde sin consultar a ningún servicio.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.response.to.have.status(200));",
+                  "pm.test('headers de seguridad', () => { pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.eql('nosniff'); pm.expect(pm.response.headers.get('X-Frame-Options')).to.eql('DENY'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sede más cercana",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/busqueda/sedes/cercana?lat=-31.4241&lng=-64.1863",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "busqueda",
+                "sedes",
+                "cercana"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "-31.4241"
+                },
+                {
+                  "key": "lng",
+                  "value": "-64.1863"
+                }
+              ]
+            },
+            "description": "Lo que usa el buscador de zona del frontend (Búsqueda decide la cocina).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.response.to.have.status(200));",
+                  "pm.test('trae sede y distancia', () => { const j = pm.response.json(); pm.expect(j.sede.id).to.be.a('string'); pm.expect(j.distanciaKm).to.be.a('number'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sede sin cobertura (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/busqueda/sedes/cercana?lat=-34.6037&lng=-58.3816",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "busqueda",
+                "sedes",
+                "cercana"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "-34.6037"
+                },
+                {
+                  "key": "lng",
+                  "value": "-58.3816"
+                }
+              ]
+            },
+            "description": "Buenos Aires: ninguna cocina a 25 km o menos (RN24).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 404', () => pm.response.to.have.status(404));",
+                  "pm.test('code SIN_COBERTURA', () => pm.expect(pm.response.json().code).to.eql('SIN_COBERTURA'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "JSON roto (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/auth/login",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Un cuerpo mal armado tiene que dar 400 en JSON, nunca 500.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"ana@test.com\", ",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 400', () => pm.response.to.have.status(400));",
+                  "pm.test('formato Problem Details', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json'));",
+                  "pm.test('trae correlationId', () => pm.expect(pm.response.json().correlationId).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Método equivocado",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocinas",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocinas"
+              ]
+            },
+            "description": "Nadie puede borrar cocinas por esta ruta: error claro en JSON, nunca 500.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('error 4xx', () => pm.expect(pm.response.code).to.be.within(400,499));",
+                  "pm.test('formato JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('json'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rol equivocado: cliente en ruta de cocina (403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/cocina/pedidos",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "cocina",
+                "pedidos"
+              ]
+            },
+            "description": "Con el token del cliente.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCliente}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 403', () => pm.response.to.have.status(403));",
+                  "pm.test('formato Problem Details', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json'));",
+                  "pm.test('trae correlationId', () => pm.expect(pm.response.json().correlationId).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token inventado (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/pedidos",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "pedidos"
+              ]
+            },
+            "description": "Un token que no firmó Usuarios.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4Iiwicm9sIjoiYWRtaW4ifQ.firma-falsa",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 401', () => pm.response.to.have.status(401));",
+                  "pm.test('code NO_AUTENTICADO', () => pm.expect(pm.response.json().code).to.eql('NO_AUTENTICADO'));",
+                  "pm.test('formato Problem Details', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json'));",
+                  "pm.test('trae correlationId', () => pm.expect(pm.response.json().correlationId).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Cancelar un pedido",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{tokenCliente}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Agregar plato (para cancelar)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/carrito/items",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "carrito",
+                "items"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"platoId\": \"{{plato}}\",\n  \"cantidad\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirmar otro pedido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{claveConfirmacion}}-cancelar"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/pedidos",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "pedidos"
+              ]
+            },
+            "description": "Un segundo pedido, solo para probar la cancelación.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direccionEntrega\": \"{{direccion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json(); pm.collectionVariables.set('pedidoCancelar', (j.pedido || j).id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancelar (está Recibido)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/pedidos/{{pedidoCancelar}}/cancelar",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "pedidos",
+                "{{pedidoCancelar}}",
+                "cancelar"
+              ]
+            },
+            "description": "El cliente puede cancelar mientras la cocina no lo aceptó. Los ingredientes reservados vuelven al stock."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 200', () => pm.response.to.have.status(200));",
+                  "pm.test('queda CANCELADO', () => { const j = pm.response.json(); pm.expect((j.pedido || j).estado).to.eql('CANCELADO'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancelar otra vez (409)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base}}/pedidos/{{pedidoCancelar}}/cancelar",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "pedidos",
+                "{{pedidoCancelar}}",
+                "cancelar"
+              ]
+            },
+            "description": "Un pedido cancelado no cambia más."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('estado 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "gateway",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "base",
+      "value": "http://localhost:8080/api/v1"
+    },
+    {
+      "key": "adminPassword",
+      "value": ""
+    },
+    {
+      "key": "apiKey",
+      "value": ""
+    },
+    {
+      "key": "emailCliente",
+      "value": "ana.prueba1@test.com"
+    },
+    {
+      "key": "emailCocina",
+      "value": "cocina.prueba1@test.com"
+    },
+    {
+      "key": "cocina",
+      "value": "nueva-cordoba"
+    },
+    {
+      "key": "plato",
+      "value": "p1"
+    },
+    {
+      "key": "claveConfirmacion",
+      "value": "pedido-prueba-1"
+    },
+    {
+      "key": "tokenAdmin",
+      "value": ""
+    },
+    {
+      "key": "tokenCocina",
+      "value": ""
+    },
+    {
+      "key": "tokenCliente",
+      "value": ""
+    },
+    {
+      "key": "cocinaNueva",
+      "value": ""
+    },
+    {
+      "key": "platoNuevo",
+      "value": ""
+    },
+    {
+      "key": "ingrediente",
+      "value": ""
+    },
+    {
+      "key": "pedido",
+      "value": ""
+    },
+    {
+      "key": "direccion",
+      "value": "Obispo Trejo 242, 3°B"
+    },
+    {
+      "key": "pedidoCancelar",
+      "value": ""
+    }
+  ]
+}
