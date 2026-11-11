@@ -20,6 +20,9 @@ type ConfirmacionesMock struct {
 	fallaAlCompletar bool
 }
 
+// direccionPrueba es la dirección de entrega que mandan los tests al confirmar.
+const direccionPrueba = "Obispo Trejo 242"
+
 func (m *ConfirmacionesMock) Iniciar(_ context.Context, c domain.Confirmacion) (domain.Confirmacion, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -133,7 +136,7 @@ func entornoConfirmacion(t *testing.T) (ConfirmacionService, *ConfirmacionesMock
 
 func TestConfirmarCreaElPedidoYVaciaElCarrito(t *testing.T) {
 	svc, _, consumo, carritos, pedidos := entornoConfirmacion(t)
-	r, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1")
+	r, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1", direccionPrueba)
 	if err != nil || r.Pedido == nil {
 		t.Fatal(err, r)
 	}
@@ -150,11 +153,11 @@ func TestConfirmarCreaElPedidoYVaciaElCarrito(t *testing.T) {
 
 func TestDobleClicConLaMismaClaveEsUnSoloPedido(t *testing.T) {
 	svc, _, consumo, _, pedidos := entornoConfirmacion(t)
-	r1, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1")
+	r1, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1", direccionPrueba)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r2, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1")
+	r2, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1", direccionPrueba)
 	if err != nil || r2.Pedido == nil || r2.Pedido.ID != r1.Pedido.ID {
 		t.Fatal("la misma clave devuelve el mismo pedido:", err, r2)
 	}
@@ -170,7 +173,7 @@ func TestDosClavesALaVezConfirmanUnaSolaVez(t *testing.T) {
 		wg.Add(1)
 		go func(clave string) {
 			defer wg.Done()
-			_, _ = svc.Confirmar(context.Background(), clienteConfirma, clave)
+			_, _ = svc.Confirmar(context.Background(), clienteConfirma, clave, direccionPrueba)
 		}(clave)
 	}
 	wg.Wait()
@@ -184,7 +187,7 @@ func TestInventarioCaidoRespondeEstamosConfirmandoYDespuesSeRecupera(t *testing.
 	consumo.err = domain.ErrInventarioCaido
 
 	// 1. Inventario no contesta: no decimos que falló, queda EN_CURSO (la API responde 202).
-	r, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1")
+	r, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1", direccionPrueba)
 	if err != nil || r.Pedido != nil || r.Confirmacion.Estado != domain.ConfirmacionEnCurso {
 		t.Fatal(err, r)
 	}
@@ -209,7 +212,7 @@ func TestInventarioCaidoRespondeEstamosConfirmandoYDespuesSeRecupera(t *testing.
 	}
 
 	// 3. Si el cliente vuelve a apretar con la misma clave, recibe el pedido.
-	r, err = svc.Confirmar(context.Background(), clienteConfirma, "clave-1")
+	r, err = svc.Confirmar(context.Background(), clienteConfirma, "clave-1", direccionPrueba)
 	if err != nil || r.Pedido == nil {
 		t.Fatal(err, r)
 	}
@@ -218,7 +221,7 @@ func TestInventarioCaidoRespondeEstamosConfirmandoYDespuesSeRecupera(t *testing.
 func TestReservaVencidaFallaYVaciaElCarrito(t *testing.T) {
 	svc, _, consumo, carritos, pedidos := entornoConfirmacion(t)
 	consumo.err = domain.ErrCarritoVencido
-	if _, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1"); !errors.Is(err, domain.ErrCarritoVencido) {
+	if _, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1", direccionPrueba); !errors.Is(err, domain.ErrCarritoVencido) {
 		t.Fatal(err)
 	}
 	if consumo.llamadas != 1 {
@@ -228,7 +231,7 @@ func TestReservaVencidaFallaYVaciaElCarrito(t *testing.T) {
 		t.Fatal("sin pedido y con el carrito vacío")
 	}
 	// La misma clave sigue diciendo lo mismo.
-	if _, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1"); !errors.Is(err, domain.ErrCarritoVencido) {
+	if _, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1", direccionPrueba); !errors.Is(err, domain.ErrCarritoVencido) {
 		t.Fatal(err)
 	}
 }
@@ -236,7 +239,7 @@ func TestReservaVencidaFallaYVaciaElCarrito(t *testing.T) {
 func TestSiFallaGuardarElPedidoNoSeDevuelveNadaYSeReintenta(t *testing.T) {
 	svc, confirmaciones, consumo, _, pedidos := entornoConfirmacion(t)
 	confirmaciones.fallaAlCompletar = true
-	r, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1")
+	r, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1", direccionPrueba)
 	if err != nil || r.Pedido != nil {
 		t.Fatal(err, r)
 	}
@@ -254,11 +257,11 @@ func TestSiFallaGuardarElPedidoNoSeDevuelveNadaYSeReintenta(t *testing.T) {
 
 func TestNoSeConfirmaSinClaveOConElCarritoVacio(t *testing.T) {
 	svc, _, _, _, _ := entornoConfirmacion(t)
-	if _, err := svc.Confirmar(context.Background(), clienteConfirma, ""); !errors.Is(err, domain.ErrClaveInvalida) {
+	if _, err := svc.Confirmar(context.Background(), clienteConfirma, "", direccionPrueba); !errors.Is(err, domain.ErrClaveInvalida) {
 		t.Fatal(err)
 	}
 	otro := domain.Actor{UsuarioID: "u-otro", Email: "otro@ejemplo.com", Rol: domain.RolCliente}
-	if _, err := svc.Confirmar(context.Background(), otro, "clave-1"); !errors.Is(err, domain.ErrCarritoVacio) {
+	if _, err := svc.Confirmar(context.Background(), otro, "clave-1", direccionPrueba); !errors.Is(err, domain.ErrCarritoVacio) {
 		t.Fatal(err)
 	}
 }
@@ -282,7 +285,7 @@ func TestElPedidoGuardaElEnvioDelMomentoDeConfirmar(t *testing.T) {
 	svc, _, _, _, pedidos := entornoConfirmacion(t)
 	envios := &EnviosMock{tarifa: 1300}
 	svc.Envios = envios
-	r, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1")
+	r, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1", direccionPrueba)
 	if err != nil || r.Pedido == nil {
 		t.Fatal(err, r)
 	}
@@ -302,7 +305,7 @@ func TestElPedidoGuardaElEnvioDelMomentoDeConfirmar(t *testing.T) {
 func TestSinTarifaDeEnvioNoSeConfirmaNada(t *testing.T) {
 	svc, _, consumo, carritos, pedidos := entornoConfirmacion(t)
 	svc.Envios = &EnviosMock{caido: true}
-	if _, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1"); !errors.Is(err, domain.ErrCatalogoCaido) {
+	if _, err := svc.Confirmar(context.Background(), clienteConfirma, "clave-1", direccionPrueba); !errors.Is(err, domain.ErrCatalogoCaido) {
 		t.Fatal("tenía que avisar que Catálogo no está:", err)
 	}
 	if len(pedidos.pedidos) != 0 || consumo.llamadas != 0 || len(carritos.carritos["u-cliente"].Items) == 0 {

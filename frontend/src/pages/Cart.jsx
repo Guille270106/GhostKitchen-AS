@@ -10,6 +10,7 @@ import EmptyState from "../components/common/EmptyState";
 import GhostLogo from "../components/common/GhostLogo";
 import Icon from "../components/common/Icon";
 import { useCart } from "../context/CartContext";
+import { useSession } from "../context/SessionContext";
 import { useToast } from "../context/ToastContext";
 
 import "../styles/cart.css";
@@ -19,6 +20,9 @@ function Cart() {
   const { notify } = useToast();
   const navigate = useNavigate();
   const [working, setWorking] = useState(false);
+  const { user } = useSession();
+  // Se propone la dirección de la cuenta; el cliente la puede cambiar solo para este pedido.
+  const [direccion, setDireccion] = useState(() => user?.direccion || "");
 
   const run = async (action) => {
     setWorking(true);
@@ -67,7 +71,7 @@ function Cart() {
 
   const confirmar = () =>
     run(async () => {
-      const pedido = await confirmCart();
+      const pedido = await confirmCart({ direccion });
       if (pedido.confirmando) {
         notify("Estamos confirmando tu pedido. Te avisamos por mail apenas quede listo.", "mail");
       } else {
@@ -138,7 +142,7 @@ function Cart() {
             </>
           )}
         </section>
-        <OrderSummary cart={cart} onConfirm={confirmar} loading={working} disabled={vencido} />
+        <OrderSummary cart={cart} direccion={direccion} onDireccion={setDireccion} onConfirm={confirmar} loading={working} disabled={vencido} />
       </div>
     </main>
   );

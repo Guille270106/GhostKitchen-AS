@@ -57,6 +57,7 @@ export function getCurrentUser() {
       rol: String(payload.rol || "").toUpperCase(),
       localidadId: perfil.localidadId || null,
       localidad: perfil.localidad || null, // la del admin ("Nueva Córdoba")
+      direccion: perfil.direccion || "", // la del cliente, cargada al registrarse
       cocinaId: payload.cocina || null,
       expiresAt,
       token,

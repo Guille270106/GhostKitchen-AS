@@ -223,3 +223,52 @@ func crearPedidoConEnvio(t *testing.T, db *sql.DB, repo adapter.PedidosMySQL, en
 	})
 	return p
 }
+
+// La dirección de entrega se guarda con el pedido y la ven el detalle y la lista de la cocina.
+// Un pedido sin dirección (los anteriores a la migración 000012) se lee con la dirección vacía.
+func TestMySQLElPedidoGuardaSuDireccion(t *testing.T) {
+	db := conectar(t)
+	repo := adapter.PedidosMySQL{DB: db}
+	cliente := domain.Actor{UsuarioID: "u-" + uuid.NewString()[:8], Rol: domain.RolCliente}
+	cocina := "dir-" + uuid.NewString()[:8]
+	crear := func(direccion string) domain.Pedido {
+		t.Helper()
+		p, err := domain.NuevoPedido(uuid.NewString(), cliente, "cliente@ejemplo.com", cocina,
+			[]domain.Item{{PlatoID: "p17", Nombre: "Burger", RestauranteID: "r5", PrecioUnitario: 12000, Cantidad: 1}}, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		p.DireccionEntrega = direccion
+		if err := repo.Crear(context.Background(), p); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			db.Exec("DELETE FROM pedido_historial WHERE pedido_id=?", p.ID)
+			db.Exec("DELETE FROM pedido_item WHERE pedido_id=?", p.ID)
+			db.Exec("DELETE FROM pedido WHERE id=?", p.ID)
+		})
+		return p
+	}
+	con := crear("Obispo Trejo 242, 3°B — timbre \"Pérez\"")
+	sin := crear("")
+
+	if leido, err := repo.Obtener(context.Background(), con.ID); err != nil || leido.DireccionEntrega != con.DireccionEntrega {
+		t.Fatalf("detalle: %q, %v", leido.DireccionEntrega, err)
+	}
+	if leido, err := repo.Obtener(context.Background(), sin.ID); err != nil || leido.DireccionEntrega != "" {
+		t.Fatalf("sin dirección: %q, %v", leido.DireccionEntrega, err)
+	}
+	var nulo sql.NullString
+	if err := db.QueryRow("SELECT direccion_entrega FROM pedido WHERE id=?", sin.ID).Scan(&nulo); err != nil || nulo.Valid {
+		t.Fatal("sin dirección se guarda NULL, no texto vacío:", nulo, err)
+	}
+	lista, err := repo.Listar(context.Background(), ports.FiltroPedidos{CocinaID: cocina, Pagina: 1, PorPagina: 20})
+	if err != nil || len(lista) != 2 {
+		t.Fatal(err, lista)
+	}
+	for _, p := range lista {
+		if quiero := map[string]string{con.ID: con.DireccionEntrega, sin.ID: ""}[p.ID]; p.DireccionEntrega != quiero {
+			t.Fatalf("lista de la cocina: %q, esperaba %q", p.DireccionEntrega, quiero)
+		}
+	}
+}

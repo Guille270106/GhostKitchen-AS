@@ -37,17 +37,22 @@ type ConfirmacionService struct {
 	Envios ports.Envios
 }
 
-// Confirmar es lo que pasa cuando el cliente aprieta "Confirmar pedido".
-func (s ConfirmacionService) Confirmar(ctx context.Context, actor domain.Actor, clave string) (ResultadoConfirmacion, error) {
+// Confirmar es lo que pasa cuando el cliente aprieta "Confirmar pedido". direccion es adónde
+// se lleva el pedido; se guarda con el pedido para que la cocina la vea.
+func (s ConfirmacionService) Confirmar(ctx context.Context, actor domain.Actor, clave, direccion string) (ResultadoConfirmacion, error) {
 	if err := validarCliente(actor); err != nil {
 		return ResultadoConfirmacion{}, err
 	}
 	if !domain.ClaveValida(clave) {
 		return ResultadoConfirmacion{}, domain.ErrClaveInvalida
 	}
+	direccion, err := domain.NormalizarDireccion(direccion)
+	if err != nil {
+		return ResultadoConfirmacion{}, err
+	}
 
 	var conf domain.Confirmacion
-	err := s.Carritos.ConBloqueo(ctx, actor.UsuarioID, func(ctx context.Context) error {
+	err = s.Carritos.ConBloqueo(ctx, actor.UsuarioID, func(ctx context.Context) error {
 		pendiente, err := s.Carritos.CambioPendiente(ctx, actor.UsuarioID)
 		if err != nil {
 			return err
@@ -55,7 +60,7 @@ func (s ConfirmacionService) Confirmar(ctx context.Context, actor domain.Actor, 
 		if pendiente != nil {
 			return domain.ErrCarritoModificado
 		}
-		conf, err = s.iniciarConfirmacion(ctx, actor, clave)
+		conf, err = s.iniciarConfirmacion(ctx, actor, clave, direccion)
 		return err
 	})
 	if err != nil {
@@ -64,9 +69,9 @@ func (s ConfirmacionService) Confirmar(ctx context.Context, actor domain.Actor, 
 	return s.avanzar(ctx, conf)
 }
 
-func (s ConfirmacionService) iniciarConfirmacion(ctx context.Context, actor domain.Actor, clave string) (domain.Confirmacion, error) {
+func (s ConfirmacionService) iniciarConfirmacion(ctx context.Context, actor domain.Actor, clave, direccion string) (domain.Confirmacion, error) {
 	// 1. ¿Ya usó esta clave? (doble clic o reintento del navegador): devolvemos esa misma
-	//    confirmación y no creamos otro pedido.
+	//    confirmación y no creamos otro pedido (con la dirección de la primera vez).
 	existente, err := s.Repo.BuscarPorClave(ctx, actor.UsuarioID, clave)
 	if err == nil {
 		return existente, nil
@@ -84,6 +89,7 @@ func (s ConfirmacionService) iniciarConfirmacion(ctx context.Context, actor doma
 	if err != nil {
 		return domain.Confirmacion{}, err
 	}
+	nueva.DireccionEntrega = direccion
 
 	// 2b. El envío que se cobra: la tarifa de la cocina ahora. Si Catálogo no contesta, todavía no
 	//     se hizo nada (ni se descontó stock): se responde que no está disponible.

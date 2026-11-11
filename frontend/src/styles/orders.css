@@ -60,3 +60,7 @@
   .history-row button { grid-column: 2 / 4; justify-content: flex-start; padding: 0; }
   .history-detail { padding-left: 18px; }
 }
+
+/* Dirección de entrega del pedido en curso. */
+.order-address { display: flex; align-items: center; gap: 5px; margin-top: 4px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.order-address svg { flex: 0 0 auto; color: var(--red); }

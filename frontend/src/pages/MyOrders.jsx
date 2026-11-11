@@ -98,6 +98,7 @@ function MyOrders() {
                         {item.cantidad}× {item.nombre} <span>{formatPrice(item.precio * item.cantidad)}</span>
                       </p>
                     ))}
+                    {pedido.direccion && <p className="muted">Dirección de entrega: {pedido.direccion}</p>}
                     {pedido.comprobante?.numero && <p className="muted">Factura {pedido.comprobante.numero}</p>}
                   </div>
                 )}

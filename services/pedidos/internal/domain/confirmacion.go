@@ -36,22 +36,25 @@ var (
 // Confirmacion es una confirmación de pedido en curso o terminada. Guarda una copia del
 // carrito, así el pedido se puede crear aunque el carrito cambie o el servicio se reinicie.
 type Confirmacion struct {
-	ID           string             `json:"id"`
-	ClienteID    string             `json:"-"`
-	ClienteEmail string             `json:"-"`
-	Clave        string             `json:"-"` // la Idempotency-Key que mandó el cliente
-	CarritoID    string             `json:"-"`
-	ReservaID    string             `json:"-"`
-	CocinaID     string             `json:"cocinaId"`
-	PedidoID     string             `json:"pedidoId,omitempty"`
-	Items        []Item             `json:"-"`
+	ID           string `json:"id"`
+	ClienteID    string `json:"-"`
+	ClienteEmail string `json:"-"`
+	Clave        string `json:"-"` // la Idempotency-Key que mandó el cliente
+	CarritoID    string `json:"-"`
+	ReservaID    string `json:"-"`
+	CocinaID     string `json:"cocinaId"`
+	PedidoID     string `json:"pedidoId,omitempty"`
+	Items        []Item `json:"-"`
 	// CostoEnvio es la tarifa de la cocina al momento de confirmar. Se guarda acá para que el
 	// pedido tenga el mismo envío aunque lo cree después el proceso de recuperación.
 	CostoEnvio *int64 `json:"-"`
-	Estado       EstadoConfirmacion `json:"estado"`
-	Paso         PasoConfirmacion   `json:"-"`
-	Motivo       string             `json:"motivo,omitempty"`
-	CreadaEn     time.Time          `json:"creadaEn"`
+	// DireccionEntrega es adónde se lleva el pedido. La manda el cliente al confirmar (viene
+	// completada con la de su cuenta y la puede cambiar). Vacía en confirmaciones anteriores.
+	DireccionEntrega string             `json:"-"`
+	Estado           EstadoConfirmacion `json:"estado"`
+	Paso             PasoConfirmacion   `json:"-"`
+	Motivo           string             `json:"motivo,omitempty"`
+	CreadaEn         time.Time          `json:"creadaEn"`
 }
 
 // NuevaConfirmacion arranca la saga a partir del carrito del cliente.
@@ -99,6 +102,7 @@ func (c Confirmacion) CrearPedido(ahora time.Time) (Pedido, error) {
 		return Pedido{}, err
 	}
 	p.FijarEnvio(c.CostoEnvio)
+	p.DireccionEntrega = c.DireccionEntrega
 	return p, nil
 }
 
