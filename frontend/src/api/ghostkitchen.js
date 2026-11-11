@@ -470,6 +470,11 @@ export async function addToCart(platoId) {
   const carrito = await pedir("POST", "/carrito/items", {
     cuerpo: { platoId, cantidad: 1 },
     headers: { "Idempotency-Key": clave },
+  }).catch((error) => {
+    if (error.status === 409 && error.code === "CARRITO_MODIFICADO") {
+      throw new ApiError("Estamos confirmando tu pedido. Cuando termine, podés armar uno nuevo.", error.code, error.status);
+    }
+    throw error;
   });
   avisarCambio();
   return carritoParaPantallas(carrito);
