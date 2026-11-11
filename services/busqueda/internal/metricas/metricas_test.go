@@ -7,7 +7,34 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+func TestRegistrarBusqueda(t *testing.T) {
+	leer := func(nombre string) float64 {
+		t.Helper()
+		familias, err := prometheus.DefaultGatherer.Gather()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, familia := range familias {
+			if familia.GetName() == nombre {
+				if len(familia.Metric) != 1 || len(familia.Metric[0].Label) != 0 {
+					t.Fatal("la métrica no debe tener etiquetas")
+				}
+				return familia.Metric[0].GetCounter().GetValue()
+			}
+		}
+		t.Fatalf("falta %s", nombre)
+		return 0
+	}
+	total, vacias := leer("busqueda_consultas_total"), leer("busqueda_sin_resultados_total")
+	RegistrarBusqueda(0)
+	RegistrarBusqueda(10)
+	if leer("busqueda_consultas_total")-total != 2 || leer("busqueda_sin_resultados_total")-vacias != 1 {
+		t.Fatal("conteo incorrecto")
+	}
+}
 
 // Cuenta por plantilla de ruta (sin el id real), con el código de respuesta, también cuando
 // el handler entra en panic; y no cuenta las lecturas de /metrics.

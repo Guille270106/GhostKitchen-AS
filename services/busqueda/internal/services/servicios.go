@@ -11,6 +11,7 @@ import (
 
 	"ghostkitchen/busqueda/internal/domain"
 	"ghostkitchen/busqueda/internal/geo"
+	"ghostkitchen/busqueda/internal/metricas"
 	"ghostkitchen/busqueda/internal/repositories"
 )
 
@@ -82,6 +83,7 @@ func (b *Busqueda) BuscarPlatos(ctx context.Context, f domain.FiltroPlatos) (Res
 	if platos == nil {
 		platos = []domain.Plato{}
 	}
+	metricas.RegistrarBusqueda(total)
 	return ResultadoPlatos{
 		Sede:        sede.Ref(),
 		Items:       platos,

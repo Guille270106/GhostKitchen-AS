@@ -26,6 +26,14 @@ import (
 const Ruta = "/metrics"
 
 var (
+	busquedas = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "busqueda_consultas_total",
+		Help: "Búsquedas de platos completadas correctamente.",
+	})
+	sinResultados = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "busqueda_sin_resultados_total",
+		Help: "Búsquedas de platos completadas con total cero, sin datos del usuario.",
+	})
 	solicitudes = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_requests_total",
 		Help: "Solicitudes HTTP atendidas, por método, ruta y código de respuesta.",
@@ -39,6 +47,14 @@ var (
 		Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.3, 0.5, 1, 2, 3, 5},
 	}, []string{"method", "route"})
 )
+
+// RegistrarBusqueda cuenta resultados exitosos; una página vacía no implica total cero.
+func RegistrarBusqueda(total int) {
+	busquedas.Inc()
+	if total == 0 {
+		sinResultados.Inc()
+	}
+}
 
 // Middleware cuenta y mide cada solicitud. Va primero (antes de gin.Recovery), así una
 // solicitud que termina en panic igual cuenta como 500.
