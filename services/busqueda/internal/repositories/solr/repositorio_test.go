@@ -109,7 +109,7 @@ func TestParametrosBusqueda(t *testing.T) {
 		RestauranteID: "r1", PrecioMax: 15000, SoloDisponibles: true, Orden: domain.OrdenPrecioDesc,
 		Pagina: 3, TamPagina: 10,
 	})
-	if p.Get("defType") != "edismax" || p.Get("q") != `+burger +(doble OR doble*)` || p.Get("mm") != "1" {
+	if p.Get("defType") != "edismax" || p.Get("q") != `+(burger OR burger~1) +(doble OR doble* OR dobl~1)` || p.Get("mm") != "1" {
 		t.Fatalf("texto mal armado: %v", p)
 	}
 	fq := strings.Join(p["fq"], " | ")
@@ -126,13 +126,13 @@ func TestParametrosBusqueda(t *testing.T) {
 
 func TestLaUltimaPalabraTambienEsPrefijo(t *testing.T) {
 	casos := map[string]string{
-		"hambur":       "+(hambur OR hambur*)",
-		"Doble hambúr": "+doble +(hambúr OR hambúr*)",
-		"ha":           "+ha",            // muy corta: sería casi todo
-		"pan *":        "+(pan OR pan*)", // los signos no cuentan
-		"a-b":          "+a +b",          // dos palabras
-		"pollo OR (":   "+pollo +or",     // "OR" es una palabra, no un operador
-		"**":           "*:*",            // solo signos: como sin texto
+		"hambur":       "+(hambur OR hambur* OR hambur~1)",
+		"Doble hambúr": "+(doble OR dobl~1) +(hambúr OR hambúr* OR hambur~1)",
+		"ha":           "+ha",                    // muy corta: sería casi todo
+		"pan *":        "+(pan OR pan*)",         // los signos no cuentan
+		"a-b":          "+a +b",                  // dos palabras
+		"pollo OR (":   "+(pollo OR poll~1) +or", // "OR" es una palabra, no un operador
+		"**":           "*:*",                    // solo signos: como sin texto
 	}
 	for entrada, quiero := range casos {
 		if got := ParametrosBusqueda(domain.FiltroPlatos{SedeID: "x", Texto: entrada, Pagina: 1, TamPagina: 1}).Get("q"); got != quiero {
@@ -143,7 +143,7 @@ func TestLaUltimaPalabraTambienEsPrefijo(t *testing.T) {
 
 func TestParametrosBusquedaSinTextoNiFiltros(t *testing.T) {
 	p := ParametrosBusqueda(domain.FiltroPlatos{SedeID: "cerro", Pagina: 1, TamPagina: 20})
-	if p.Get("q") != "*:*" || p.Get("defType") != "" || p.Get("sort") != "score desc,id asc" || len(p["fq"]) != 2 {
+	if p.Get("q") != "*:*" || p.Get("defType") != "edismax" || p.Get("sort") != "score desc,id asc" || len(p["fq"]) != 2 {
 		t.Fatalf("%v", p)
 	}
 }
@@ -283,5 +283,20 @@ func TestPrepararEsquemaNoTocaTextGKAlDia(t *testing.T) {
 	alDia := `{"name":"text_gk","analyzer":{"filters":[{"name":"lowercase"},{"name":"asciiFolding"},{"name":"spanishLightStem"}]}}`
 	if posts := postsDeEsquema(t, alDia); len(posts) != 0 {
 		t.Fatalf("no tenía que cambiar nada: %v", posts)
+	}
+}
+
+func TestDisponibilidadSoloAportaEnRelevancia(t *testing.T) {
+	for _, orden := range []domain.Orden{"", domain.OrdenPrecioAsc, domain.OrdenPrecioDesc} {
+		p := ParametrosBusqueda(domain.FiltroPlatos{Orden: orden, Pagina: 1, TamPagina: 10})
+		if orden == "" && p.Get("bq") != "disponible:true^2" {
+			t.Fatal(p)
+		}
+		if orden != "" && p.Get("bq") != "" {
+			t.Fatal(p)
+		}
+		if strings.Contains(strings.Join(p["fq"], " "), "disponible:true") {
+			t.Fatal("el boost no debe filtrar", p)
+		}
 	}
 }

@@ -67,3 +67,24 @@ func TestContieneConPrefijo(t *testing.T) {
 		}
 	}
 }
+
+func TestTyposConPrefijo(t *testing.T) {
+	for _, c := range []struct {
+		texto, consulta string
+		quiere          bool
+	}{
+		{"Sorrentinos", "sorentinos", true},
+		{"Sorrentinos", "sorrenttinos", true},
+		{"Sorrentinos", "sorrantinos", true},
+		{"Sorrentinos", "sorret ninos", false},
+		{"Hamburguesa", "hambur", true},
+		{"Sorrentinos de pollo", "sorentinos pol", true},
+		{"Pan", "paz", false},
+		{"Sorrentinos", "sxxentinos", false},
+		{"Pollo", "pollozz", false},
+	} {
+		if got := ContieneConPrefijo(c.texto, c.consulta); got != c.quiere {
+			t.Errorf("%q en %q: %v, esperaba %v", c.consulta, c.texto, got, c.quiere)
+		}
+	}
+}

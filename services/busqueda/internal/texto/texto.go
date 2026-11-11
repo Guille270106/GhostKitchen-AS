@@ -81,26 +81,55 @@ func Contiene(texto, consulta string) bool {
 // palabra. Con menos letras, "ha" encontraría casi todo.
 const MinPrefijo = 3
 
-// ContieneConPrefijo es Contiene, pero la última palabra de la consulta también vale si es el
-// comienzo de una palabra del texto: "hambur" encuentra "Hamburguesa". Es lo que hace Solr con
-// la consulta que arma ParametrosBusqueda ("hambur OR hambur*"): el comodín se compara con
-// las palabras ya reducidas a su raíz, sin quitarle nada a lo escrito.
+// MinDifuso evita ampliar palabras cortas a términos sin relación.
+const MinDifuso = 4
+
+// ContieneConPrefijo exige todas las palabras y conserva prefijos en la última.
+// La alternativa difusa compara raíces, igual que la consulta enviada a Solr.
 func ContieneConPrefijo(texto, consulta string) bool {
-	palabras := strings.FieldsFunc(consulta, func(r rune) bool {
+	palabras := strings.FieldsFunc(strings.ToLower(consulta), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	})
-	if len(palabras) == 0 {
-		return true
-	}
-	ultima := sinAcentos(strings.ToLower(palabras[len(palabras)-1]))
-	if !Contiene(texto, strings.Join(palabras[:len(palabras)-1], " ")) {
-		return false
-	}
-	raiz := Raiz(ultima)
-	for _, t := range Terminos(texto) {
-		if t == raiz || (len([]rune(ultima)) >= MinPrefijo && strings.HasPrefix(t, ultima)) {
-			return true
+	terminos := Terminos(texto)
+	for i, palabra := range palabras {
+		normal := sinAcentos(palabra)
+		raiz := Raiz(normal)
+		coincide := false
+		for _, t := range terminos {
+			if t == raiz || (i == len(palabras)-1 && len([]rune(palabra)) >= MinPrefijo && strings.HasPrefix(t, normal)) ||
+				(len([]rune(palabra)) >= MinDifuso && unaEdicion(raiz, t)) {
+				coincide = true
+				break
+			}
+		}
+		if !coincide {
+			return false
 		}
 	}
-	return false
+	return true
+}
+
+// unaEdicion admite una inserción, eliminación, sustitución o transposición adyacente.
+func unaEdicion(a, b string) bool {
+	x, y := []rune(a), []rune(b)
+	if len(x)-len(y) > 1 || len(y)-len(x) > 1 {
+		return false
+	}
+	i := 0
+	for i < len(x) && i < len(y) && x[i] == y[i] {
+		i++
+	}
+	if i == len(x) || i == len(y) {
+		return true
+	}
+	if len(x) == len(y) {
+		if string(x[i+1:]) == string(y[i+1:]) {
+			return true
+		}
+		return i+1 < len(x) && x[i] == y[i+1] && x[i+1] == y[i] && string(x[i+2:]) == string(y[i+2:])
+	}
+	if len(x) > len(y) {
+		return string(x[i+1:]) == string(y[i:])
+	}
+	return string(x[i:]) == string(y[i+1:])
 }

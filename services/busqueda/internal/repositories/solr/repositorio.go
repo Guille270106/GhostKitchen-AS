@@ -218,6 +218,8 @@ func ParametrosBusqueda(f domain.FiltroPlatos) url.Values {
 	case domain.OrdenPrecioDesc:
 		p.Set("sort", "precio desc,id asc")
 	default:
+		p.Set("defType", "edismax")
+		p.Set("bq", "disponible:true^2")
 		p.Set("sort", "score desc,id asc")
 	}
 	p.Set("start", strconv.Itoa((f.Pagina-1)*f.TamPagina))
@@ -503,6 +505,8 @@ func leerPunto(s string) (domain.Ubicacion, error) {
 // frontend). Va "hambur OR hambur*" y no solo "hambur*" porque el comodín no pasa por la raíz en
 // español: "hamburguesas*" no encontraría "hamburgues", que es lo que guarda el índice. La
 // palabra entera sí.
+// Las palabras de al menos 4 letras admiten además una edición sobre la raíz indexada;
+// se conserva la alternativa exacta para mantener el análisis normal de Solr.
 func consultaTexto(t string) string {
 	palabras := strings.FieldsFunc(strings.ToLower(t), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
@@ -513,9 +517,17 @@ func consultaTexto(t string) string {
 	partes := make([]string, len(palabras))
 	for i, w := range palabras {
 		partes[i] = "+" + w
+		if len([]rune(w)) >= texto.MinDifuso {
+			partes[i] = "+(" + w + " OR " + texto.Terminos(w)[0] + "~1)"
+		}
 	}
 	if ultima := palabras[len(palabras)-1]; len([]rune(ultima)) >= texto.MinPrefijo {
-		partes[len(partes)-1] = "+(" + ultima + " OR " + ultima + "*)"
+		alternativas := ultima + " OR " + ultima + "*"
+		if len([]rune(ultima)) >= texto.MinDifuso {
+			// Los términos difusos no pasan por el stemmer: usar la raíz del índice.
+			alternativas += " OR " + texto.Terminos(ultima)[0] + "~1"
+		}
+		partes[len(partes)-1] = "+(" + alternativas + ")"
 	}
 	return strings.Join(partes, " ")
 }
