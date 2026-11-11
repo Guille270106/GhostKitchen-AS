@@ -82,7 +82,7 @@ Es una prueba **controlada**: se rompe una pieza a la vez, en un entorno local i
 
 | | |
 | --- | --- |
-| Entorno | Todo el sistema en Docker Compose, con Notificaciones (`docker compose --profile notificaciones up -d --build`), desde `develop` |
+| Entorno | Todo el sistema en Docker Compose (`docker compose up -d --build`), desde `develop`. Pedidos usa el mock del Grupo 4 durante toda la jornada, aunque el `.env` apunte a su servicio real, para no generarle facturas de prueba |
 | Cómo se rompe | `docker compose stop <servicio>` y, al terminar cada caso, `docker compose start <servicio>` |
 | Quién hace de usuario | El script [`scripts/fallas/jornada.mjs`](../scripts/fallas/jornada.mjs): prepara una cocina con un plato (receta de 2 unidades y stock 20) y un cliente, y usa la API por el gateway, igual que el frontend |
 | Qué se mira | El código y el tiempo de cada respuesta, el stock en Inventario, el outbox de Pedidos (MySQL), las colas de RabbitMQ, los mails en Mailpit y las alertas de Prometheus. En Grafana se ven en vivo los paneles "Servicios arriba", "Mensajes esperando en cada cola", "Mensajes en las DLQ" y "Alertas activas" |
@@ -165,7 +165,7 @@ Es una prueba **controlada**: se rompe una pieza a la vez, en un entorno local i
 | --- | --- | --- | --- |
 | 1 | **Un mail que cae en la DLQ no se vuelve a mandar solo.** Queda guardado, pero el cliente no recibe ese aviso hasta que alguien lo reprocese | Un corte de correo de más de ~3 min deja avisos sin enviar | Un comando para reprocesar la DLQ (mover los mensajes de `notificaciones.mailer.dlq` a la cola principal) y anotarlo como paso de la alerta `MensajesEnDLQ` |
 | 2 | **La alerta `ServicioCaido` tarda ~1 min 30 s** en dispararse: espera 1 minuto caído (para no avisar por un reinicio) más lo que tarda Prometheus en volver a mirar | Es un buen equilibrio para un trabajo práctico, pero en producción convendría avisar antes de un minuto y medio | Evaluar bajar la espera a 30 s o mirar más seguido; medirlo contra los reinicios normales |
-| 3 | **Una corrida cortada a la mitad dejó servicios apagados**: la primera prueba se interrumpió de un día para el otro y la siguiente encontró el correo apagado | Una prueba de fallas tiene que dejar todo como lo encontró, aunque se corte | **Ya corregido:** el script prende todo y espera a que esté sano antes de empezar. Si se corta, `docker compose --profile notificaciones up -d` lo deja como antes |
+| 3 | **Una corrida cortada a la mitad dejó servicios apagados**: la primera prueba se interrumpió de un día para el otro y la siguiente encontró el correo apagado | Una prueba de fallas tiene que dejar todo como lo encontró, aunque se corte | **Ya corregido:** el script prende todo y espera a que esté sano antes de empezar. Si se corta, `docker compose up -d` lo deja como antes (también vuelve a poner a Pedidos con el proveedor del `.env`) |
 | 4 | **RabbitMQ tarda ~30 s en arrancar** y recién ahí salen los avisos acumulados | No afecta a los pedidos (para eso está el outbox), solo al momento en que llega el mail | Ninguna por ahora: es el tiempo normal de arranque del broker |
 | 5 | **El proveedor caído no se ve en el monitoreo.** Ninguna alerta ni panel muestra que las facturas quedaron pendientes: solo se ve en el detalle de cada pedido | Si el Grupo 4 se cae un día entero, nadie se entera hasta que un cliente reclame la factura | Una métrica de Pedidos con las facturas pendientes, un panel en Grafana y una alerta si hay pendientes por más de 10 minutos |
 

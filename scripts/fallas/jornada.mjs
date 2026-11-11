@@ -12,9 +12,11 @@
 // Tarda unos 10 minutos. Al final deja todo prendido de nuevo. Lee ADMIN_PASSWORD, la clave de
 // MySQL de Pedidos y el usuario de RabbitMQ del .env (no los imprime).
 //
-// El paso 4 apaga el mock del proveedor. Si el .env apunta al servicio real del Grupo 4
-// (PROVIDER_BASE_URL completa), apagar el mock no cambiaría nada: por eso, solo durante ese paso,
-// Pedidos se reinicia apuntando al mock y al terminar vuelve a quedar como dice el .env.
+// Toda la jornada usa el mock del proveedor. Si el .env apunta al servicio real del Grupo 4
+// (PROVIDER_BASE_URL completa), Pedidos se reinicia apuntando al mock antes de empezar y vuelve a
+// quedar como dice el .env al terminar. Así los pedidos de prueba no generan facturas en el
+// sistema del Grupo 4, y en el paso 4 apagar el mock sí deja a Pedidos sin proveedor.
+// Si la jornada se corta a la mitad, `docker compose up -d` deja todo como dice el .env.
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
@@ -101,6 +103,27 @@ try {
 }
 await hasta(async () => (await fetch("http://localhost:8025/api/v1/messages?limit=1")).ok, 60);
 log("todo prendido");
+
+// Reinicia Pedidos con las variables del proveedor que se le pasen (o las del .env si no se pasa
+// nada) y espera a que vuelva a estar sano. Las variables del proceso le ganan al .env en Compose.
+async function reiniciarPedidos(variables, aviso) {
+  try {
+    execSync("docker compose up -d --wait pedidos", { stdio: "ignore", env: { ...process.env, ...variables } });
+  } catch { /* --wait puede avisar por un trabajo ya terminado: se sigue igual */ }
+  // Según la versión, Compose devuelve un objeto JSON por línea o una lista.
+  const sano = () => {
+    const salida = execSync("docker compose ps --format json pedidos").toString().trim();
+    const datos = salida.startsWith("[") ? JSON.parse(salida)[0] : JSON.parse(salida.split("\n")[0] || "{}");
+    return datos?.Health === "healthy";
+  };
+  await hasta(async () => sano(), 90);
+  log(aviso);
+}
+const proveedorReal = Boolean(env.PROVIDER_BASE_URL);
+if (proveedorReal) {
+  await reiniciarPedidos({ PROVIDER_BASE_URL: "http://comprobantes-mock:4010", PROVIDER_API_KEY: "clave-del-mock" },
+    "el .env apunta al proveedor real: durante la jornada Pedidos usa el mock");
+}
 let r = await pedir("POST", "/auth/login", { cuerpo: { email: "admin.cerro@ghostkitchen.dev", password: env.ADMIN_PASSWORD } });
 const admin = r.json.token;
 const cocinaEmail = `cocina.fallas.${marca}@ghostkitchen.dev`;
@@ -215,20 +238,6 @@ docker("start", "mailpit");
 
 // =====================================================================================
 console.log("\n== 4. Proveedor caído (Grupo 4, factura) ==");
-// Reinicia Pedidos con las variables del proveedor que se le pasen (o las del .env si no se pasa nada)
-// y espera a que vuelva a atender.
-async function reiniciarPedidos(variables, aviso) {
-  try {
-    execSync("docker compose up -d --wait pedidos", { stdio: "ignore", env: { ...process.env, ...variables } });
-  } catch { /* --wait puede avisar por un trabajo ya terminado: se sigue igual */ }
-  await hasta(async () => (await pedir("GET", "/carrito", { token: cliente })).estado === 200, 90);
-  log(aviso);
-}
-const proveedorReal = Boolean(env.PROVIDER_BASE_URL);
-if (proveedorReal) {
-  await reiniciarPedidos({ PROVIDER_BASE_URL: "http://comprobantes-mock:4010", PROVIDER_API_KEY: "clave-del-mock" },
-    "el .env apunta al proveedor real: para este paso Pedidos usa el mock");
-}
 docker("stop", "comprobantes-mock");
 await agregar(1);
 r = await confirmar(`fallas-${marca}-4`);
@@ -241,10 +250,10 @@ docker("start", "comprobantes-mock");
 const tFactura = await hasta(async () => (await pedir("GET", `/pedidos/${pedido4}`, { token: cliente })).json?.comprobante?.estado === "EMITIDO", 60);
 r = await pedir("GET", `/pedidos/${pedido4}`, { token: cliente });
 revisar(tFactura !== null, `al volver el proveedor, la factura sale sola en ${tFactura} s: ${r.json?.comprobante?.numero}`, r.texto);
-if (proveedorReal) await reiniciarPedidos({}, "Pedidos vuelve a usar el proveedor del .env");
 
 // =====================================================================================
 console.log("\n== Al final ==");
+if (proveedorReal) await reiniciarPedidos({}, "Pedidos vuelve a usar el proveedor del .env");
 const a3 = await alertas();
 revisar(!a3.some((a) => a.startsWith("MuchosErrores5xx") && a.endsWith("firing")), `sin la alerta de muchos errores 5xx (alertas ahora: ${a3.join(", ") || "ninguna"})`);
 r = await pedir("GET", "/cocinas");
