@@ -96,7 +96,7 @@ p { margin-top: 0; }
 .dish-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,.1); }
 .dish-image { position: relative; height: 160px; overflow: hidden; background: var(--canvas); }
 .dish-image img { height: 100%; object-fit: cover; }
-.dish-placeholder { height: 100%; background: var(--canvas); }
+.dish-placeholder { height: 100%; display: grid; place-items: center; background: repeating-linear-gradient(135deg, var(--canvas) 0 12px, #eceef1 12px 24px); color: #b4b9c1; }
 .dish-tag, .sold-label { position: absolute; top: 8px; left: 8px; background: var(--red); color: white; padding: 3px 7px; border-radius: 3px; font-size: 11px; font-weight: 700; }
 .dish-tag.low { background: var(--amber); left: auto; right: 8px; }
 .sold-label { inset: 50% auto auto 50%; transform: translate(-50%, -50%); background: var(--ink); white-space: nowrap; font-size: 12px; padding: 5px 10px; }

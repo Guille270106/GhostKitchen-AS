@@ -9,7 +9,14 @@ function DishCard({ plato, preview = false }) {
   return (
     <article className={`dish-card ${plato.sinStock ? "sold-out" : ""}`}>
       <div className="dish-image">
-        {plato.foto ? <img src={plato.foto} alt={plato.nombre} loading="lazy" /> : <div className="dish-placeholder" />}
+        {plato.foto ? (
+          <img src={plato.foto} alt={plato.nombre} loading="lazy" />
+        ) : (
+          // Sin foto del plato: un recuadro neutro, nunca la foto de otra comida.
+          <div className="dish-placeholder" aria-hidden="true">
+            <Icon name="utensils" size={30} />
+          </div>
+        )}
         {plato.destacado && !plato.sinStock && <span className="dish-tag">{plato.destacado}</span>}
         {pocas && <span className="dish-tag low">Quedan {plato.unidadesDisponibles}</span>}
         {plato.sinStock && <span className="sold-label">Sin stock</span>}
