@@ -467,7 +467,7 @@ Solo el gateway y las herramientas de monitoreo quedan accesibles desde fuera de
 | Balanceo | Catálogo con 2 copias detrás de NGINX, que se reparten las solicitudes por turnos. Si una copia falla 3 veces en 10 s, NGINX deja de mandarle tráfico un rato (`max_fails`, `fail_timeout`). El reparto se ve en Grafana. | [ADR-012](adr/ADR-012-balanceo-de-carga.md) |
 | Monitoreo | Logs JSON con el mismo identificador en cada paso, trazas en Jaeger, métricas en Prometheus, un tablero en Grafana y alertas por errores, servicios caídos, búsqueda lenta, índice atrasado y mensajes en la DLQ. | [ADR-011](adr/ADR-011-observabilidad.md) |
 | Seguridad | Contraseñas con bcrypt, que nunca se devuelven. Token firmado con una clave que no está en el repo. Límite de solicitudes en NGINX. | ADR-001 / ADR-005 |
-| Pruebas | Unitarias de las reglas con Go; integración contra MySQL, MongoDB, Memcached y RabbitMQ reales en Docker; contrato del proveedor y de nuestra API; carga con k6. Nos propusimos un 70 % de cobertura en las reglas. | [ADR-013](adr/ADR-013-capacidad-y-costos.md) |
+| Pruebas | Unitarias de las reglas con Go; integración contra MySQL, MongoDB, Memcached y RabbitMQ reales en Docker; contrato del proveedor y de nuestra API; pruebas de punta a punta de la API y de la pantalla; carga con k6. Las reglas de negocio de cada servicio superan el 70 % de cobertura, medido en cada pull request (sección 12.2). | [ADR-013](adr/ADR-013-capacidad-y-costos.md) |
 
 ### 12.1 Monitoreo: qué podemos ver
 
@@ -489,8 +489,19 @@ Prometheus reúne los números y Grafana los muestra en un tablero. Los logs JSO
 El enunciado pide pruebas unitarias, integración con una dependencia real y carga con resultados analizados. Para la carga elegimos k6 ([ADR-013](adr/ADR-013-capacidad-y-costos.md)).
 
 - **Unitarias:** con los tests de Go (`go test`) probamos las reglas sin levantar todo el sistema: no reservar cantidades negativas, no avanzar estados inválidos, validar roles y calcular la distancia entre dos puntos. Las interfaces de la arquitectura hexagonal permiten reemplazar dependencias durante estas pruebas.
+- **Cobertura de las reglas:** en cada pull request, GitHub Actions mide qué parte de las reglas de negocio ejecutan los tests unitarios, y el job falla si algún servicio baja del 70 % que nos fijamos (SPEC, sección 10). Medimos los paquetes que tienen las reglas, dominio y casos de uso (ADR-002), y no todo el servicio: el arranque, la configuración, las trazas y los adaptadores a las bases y a RabbitMQ no tienen reglas, y los adaptadores se prueban contra la dependencia real en los tests de integración. Se cuenta también lo que se ejecuta desde los tests de otro paquete (`-coverpkg`), por ejemplo los casos de uso que se prueban a través de los handlers HTTP. El cálculo está en `scripts/cobertura/reglas.mjs` y el detalle por paquete queda en el resumen de cada job. Resultado al 11/11/2026:
+
+  | Servicio | Paquetes con reglas | Cobertura |
+  | --- | --- | --- |
+  | Usuarios | `domain`, `services` | 92,9 % |
+  | Catálogo | `domain`, `services` | 92,5 % |
+  | Búsqueda | `domain`, `services`, `texto`, `geo` | 96,6 % |
+  | Inventario | `domain`, `application` | 99,4 % |
+  | Pedidos | `domain`, `application` | 90,0 % |
+  | Notificaciones | `evento.go` y `mailpit.go` (armar el mail a partir del evento) | 82,5 % |
 - **Integración:** levantamos las dependencias de prueba con Docker Compose y probamos cada servicio contra una base o RabbitMQ real, con datos separados. Por ejemplo, dos solicitudes intentan reservar el último plato y solo una lo consigue; un evento repetido no vuelve a aplicar su efecto.
 - **Contrato:** comprobamos que lo que mandamos al proveedor respeta su OpenAPI (contra su mock), y que nuestra API publicada respeta el nuestro en cada pull request.
+- **De punta a punta:** en cada pull request se levanta todo el sistema y se recorre el flujo principal dos veces: por la API (`services/pedidos/testdata/e2e.mjs`) y en un navegador con Playwright (`frontend/e2e`), desde que el cliente busca un plato hasta que la cocina acepta el pedido.
 - **Carga:** con k6 mandamos solicitudes concurrentes y registramos cantidad, tiempos de respuesta, errores y el recurso que limita la capacidad. Comparamos Catálogo con y sin caché, con una y dos copias, y la caída de una copia. Los escenarios están en `tests/carga/` y los resultados en el ADR-013.
 - **Fallas controladas:** apagamos Inventario, RabbitMQ, el correo y el proveedor, comprobamos la respuesta al usuario y la recuperación, y registramos el resultado en el [POSTMORTEM](POSTMORTEM.md).
 
