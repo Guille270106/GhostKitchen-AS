@@ -237,14 +237,17 @@ services:
     restart: unless-stopped
 
 
-  # G14: frontend (React + Vite) en modo desarrollo, en http://localhost:5173. Le pide todo al
-  # gateway por /api: Vite reenvía esas solicitudes a GATEWAY_URL (frontend/vite.config.js).
+  # Frontend (React + Vite) compilado para producción y servido por NGINX, en
+  # http://localhost:5173. Le pide todo al gateway por /api (frontend/nginx.conf).
   frontend:
     build: ./frontend
-    environment:
-      GATEWAY_URL: http://gateway:8080
     ports:
       - "5173:5173"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5173/"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
     depends_on:
       - gateway
     restart: unless-stopped
@@ -256,8 +259,15 @@ services:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./gateway/proxy-comun.conf:/etc/nginx/proxy-comun.conf:ro
       - ./gateway/identidad.conf:/etc/nginx/identidad.conf:ro
+      - ./gateway/seguridad.conf:/etc/nginx/seguridad.conf:ro
     ports:
       - "8080:8080"
+    # /health responde sin consultar a ningún servicio: dice si NGINX está vivo.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
     depends_on:
       busqueda:
         condition: service_healthy

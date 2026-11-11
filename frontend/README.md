@@ -27,13 +27,14 @@ src/
 
 ## Cómo correrlo
 
-Con todo el sistema:
+**En Docker (versión de producción).** La imagen compila con `npm run build` y **NGINX** sirve los archivos de `dist/` (`Dockerfile` en dos etapas y `nginx.conf`). NGINX le pasa `/api` al gateway, guarda en caché los archivos de `/assets/` (llevan un hash en el nombre) y no guarda `index.html`. Si se recarga una página interna (por ejemplo `/cocina/inventario`), devuelve `index.html` y la ruta la resuelve React.
 
 ```bash
-docker compose up -d --build frontend
+docker compose build frontend
+docker compose up -d frontend
 ```
 
-Solo el frontend, con el resto del sistema en Docker:
+**Para trabajar en la compu (desarrollo), sin Docker para el frontend.** Con el resto del sistema en Docker, el servidor de Vite recarga los cambios al instante. Es el mismo de siempre:
 
 ```bash
 cd frontend
@@ -47,7 +48,7 @@ npm run lint
 | Pantalla | Función de `ghostkitchen.js` | Backend |
 | --- | --- | --- |
 | Elegir la sede, encabezado | `getCocinas` | Catálogo `GET /api/v1/cocinas` |
-| Sugerir la sede por zona | `buscarZonas` | Las zonas son datos fijos (`data/visual.js`); la cocina más cercana se calcula con la ubicación que da Catálogo |
+| Sugerir la sede por zona | `buscarZonas` | Los barrios son una lista fija (`data/visual.js`) que solo da la coordenada; la cocina más cercana la calcula Búsqueda (`GET /api/v1/busqueda/sedes/cercana`), con la cobertura de 25 km. Sin cobertura o con Búsqueda caída, el barrio queda sin cocina |
 | Inicio: platos destacados | `getPlatosDestacados` | Búsqueda `GET /api/v1/busqueda/sedes/{sede}/platos` |
 | Buscar platos y filtros | `searchPlatos`, `autocompletePlatos` | Búsqueda (dos consultas: resultados con filtros, y opciones de filtro con solo el texto) |
 | Detalle de una cocina | `getCocinaById` | Catálogo (cocina y menú) + Búsqueda (qué platos tienen stock). Si Búsqueda no contesta, el menú se muestra igual |

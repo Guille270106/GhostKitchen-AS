@@ -364,32 +364,34 @@ export async function searchPlatos(filters = {}) {
 
 const normalizar = (texto) => String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-// Distancia en km entre dos puntos (fórmula de haversine), la misma que usa Búsqueda.
-function distanciaKm(a, b) {
-  const rad = (g) => (g * Math.PI) / 180;
-  const dLat = rad(b.lat - a.lat);
-  const dLng = rad(b.lng - a.lng);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
-  return 6371 * 2 * Math.asin(Math.sqrt(Math.min(1, Math.max(0, h))));
+// Cocina más cercana a un punto: la decide Búsqueda (GET /v1/sedes/cercana), que aplica la
+// cobertura de 25 km. Si no hay ninguna cocina a 25 km o menos responde 404 SIN_COBERTURA, y si
+// Búsqueda no contesta, error: en los dos casos no hay cocina para mostrar (null). La pantalla
+// dice "Todavía no tenemos cocinas activas cerca"; nunca se inventa una cocina.
+async function cocinaCercana(lat, lng) {
+  try {
+    const r = await pedir("GET", `/busqueda/sedes/cercana?lat=${lat}&lng=${lng}`);
+    if (!r?.sede) return null;
+    return { id: r.sede.id, nombre: r.sede.nombre, localidadId: r.sede.id, distanciaKm: Math.round(r.distanciaKm * 10) / 10 };
+  } catch {
+    return null;
+  }
 }
 
-// Zonas que coinciden con lo escrito, cada una con su cocina activa más cercana (HU03). Las
-// zonas son datos fijos de la pantalla; las cocinas y su ubicación vienen de Catálogo.
+// Zonas que coinciden con lo escrito, cada una con su cocina más cercana (HU03). La lista de
+// barrios es fija y solo sirve para pasar del nombre a una coordenada; qué cocina queda más cerca
+// lo calcula Búsqueda, una consulta por barrio sugerido (6 como mucho, en paralelo).
 export async function buscarZonas(q, limit = 6) {
   const termino = normalizar(q);
   if (termino.length < 2) return [];
-  const cocinas = (await getCocinas()).filter((c) => c.activa && Number.isFinite(c.lat) && Number.isFinite(c.lng));
-  return zonas
+  const sugeridas = zonas
     .map((z) => ({ zona: z, nombre: normalizar(z.nombre) }))
     .filter(({ nombre }) => nombre.includes(termino))
     .sort((a, b) => Number(b.nombre.startsWith(termino)) - Number(a.nombre.startsWith(termino)) || a.nombre.localeCompare(b.nombre))
     .slice(0, limit)
-    .map(({ zona }) => {
-      const [cercana] = cocinas
-        .map((c) => ({ ...c, distanciaKm: Math.round(distanciaKm(zona, c) * 10) / 10 }))
-        .sort((a, b) => a.distanciaKm - b.distanciaKm);
-      return { ...zona, cocina: cercana ? { id: cercana.id, nombre: cercana.nombre, localidadId: cercana.localidadId, distanciaKm: cercana.distanciaKm } : null };
-    });
+    .map(({ zona }) => zona);
+  const cocinas = await Promise.all(sugeridas.map((z) => cocinaCercana(z.lat, z.lng)));
+  return sugeridas.map((zona, i) => ({ ...zona, cocina: cocinas[i] }));
 }
 
 // ---------------------------------------------------------------------------

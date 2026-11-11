@@ -110,8 +110,3 @@ export const MAX_RESTAURANTES = 4;
 
 // Cuentas para probar el sistema. Las contraseñas no están acá: son las del .env
 // (ADMIN_PASSWORD) o las que se eligieron al crear cada cuenta.
-export const CUENTAS_DEMO = [
-  { rol: "Admin (Nueva Córdoba)", email: "admin.nueva-cordoba@ghostkitchen.dev" },
-  { rol: "Admin (Cerro)", email: "admin.cerro@ghostkitchen.dev" },
-  { rol: "Cocina Nueva Córdoba", email: "cocina.nc@ghostkitchen.dev" },
-];

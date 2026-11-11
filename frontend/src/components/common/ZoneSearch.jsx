@@ -19,7 +19,7 @@ function ZoneSearch({ onSelect, placeholder = "Escribí tu barrio o ciudad", ini
         setResultados(lista);
         setActivo(0);
       }
-    }, 150);
+    }, 250); // espera a que se deje de escribir: no consulta a Búsqueda en cada tecla
     return () => {
       vigente = false;
       window.clearTimeout(timer);
