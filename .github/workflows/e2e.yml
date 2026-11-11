@@ -73,10 +73,9 @@ jobs:
           docker compose ps -a
           exit 1
 
-      - name: Prueba de la API
-        run: node services/pedidos/testdata/e2e.mjs
-
-      # Corre aunque la de la API haya fallado (si el sistema llegó a levantarse), así se ven las dos.
+      # Va primero porque sus logins pasan por el frontend sin poder reintentar, y el gateway deja
+      # 10 por minuto por IP (en GitHub todas las pruebas salen de la misma). La de la API reintenta
+      # si le toca un 429.
       - name: Prueba de la pantalla (Playwright)
         # --network host: el navegador llega al frontend (5173) y al gateway (8080) como en la compu.
         # Se monta todo el repositorio porque preparar.js lee ADMIN_PASSWORD del .env de la raíz.
@@ -85,6 +84,11 @@ jobs:
           docker run --rm --init --ipc=host --network host -e CI=true
           -v "$PWD:/repo" -w /repo/frontend $PLAYWRIGHT_IMAGEN
           sh -c "npm ci && npm run test:e2e"
+
+      # Corre aunque la de la pantalla haya fallado (si el sistema llegó a levantarse), así se ven las dos.
+      - name: Prueba de la API
+        if: ${{ !cancelled() && steps.listo.outcome == 'success' }}
+        run: node services/pedidos/testdata/e2e.mjs
 
       # Captura, video y traza paso a paso de lo que vio el navegador (npx playwright show-trace).
       - name: Guardar lo que vio el navegador

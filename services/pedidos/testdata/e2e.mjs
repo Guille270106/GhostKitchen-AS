@@ -24,7 +24,13 @@ async function pedir(metodo, ruta, { token, cuerpo, headers = {} } = {}) {
   const h = { ...headers };
   if (token) h.Authorization = "Bearer " + token;
   if (cuerpo !== undefined) h["Content-Type"] = "application/json";
-  const r = await fetch(API + ruta, { method: metodo, headers: h, body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo) });
+  let r = await fetch(API + ruta, { method: metodo, headers: h, body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo) });
+  // El gateway deja 10 logins o registros por minuto por IP: si otra prueba los gastó, se espera
+  // a que se libere uno (1 cada 6 s) y se reintenta.
+  for (let i = 0; r.status === 429 && i < 6; i++) {
+    await esperar(7000);
+    r = await fetch(API + ruta, { method: metodo, headers: h, body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo) });
+  }
   const texto = await r.text();
   let json = null;
   try { json = JSON.parse(texto); } catch { /* sin cuerpo */ }
