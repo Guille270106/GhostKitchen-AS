@@ -3,8 +3,78 @@
 - **Fecha:** 2026-11-10
 - **Responsable:** Lucía Rucci
 - **Qué se probó:** apagar a propósito, de a una, las dependencias que pueden fallar en el flujo de un pedido —Inventario, RabbitMQ, el correo y el grupo proveedor— y comprobar que el sistema se comporta como prometen el [ADR-010](adr/ADR-010-resiliencia.md) (resiliencia), el [ADR-005](adr/ADR-005-comunicacion-entre-servicios.md) (mensajes y outbox) y el [ADR-009](adr/ADR-009-consumo-del-proveedor.md) (proveedor).
-- **Resultado:** **el comportamiento fue el esperado en las cuatro fallas.** Ningún pedido se perdió, ningún stock se inventó ni se descontó dos veces, ninguna respuesta tardó más de 3 s y nunca se disparó la alerta de errores 5xx. Quedan tres mejoras anotadas al final.
+- **Resultado:** **el comportamiento fue el esperado en las cuatro fallas.** Ningún pedido se perdió, ningún stock se inventó ni se descontó dos veces, ninguna respuesta tardó más de 3 s y nunca se disparó la alerta de errores 5xx. Quedan tres mejoras pendientes, anotadas al final.
 - **Evidencia:** la salida completa, con los tiempos de cada paso, está en [`docs/jornada-de-fallas/salida.txt`](jornada-de-fallas/salida.txt).
+
+## Resumen
+
+Las seis partes que pide el informe, en corto. El detalle de cada falla está más abajo y la salida completa, en [`salida.txt`](jornada-de-fallas/salida.txt).
+
+### Impacto
+
+| Falla | Qué no se pudo hacer | Qué siguió funcionando | Datos perdidos o duplicados |
+| --- | --- | --- | --- |
+| Inventario caído (dos cortes: 93 s y 10 s) | Agregar platos al carrito: `503` en 1,6 s | Confirmar (`202 "Estamos confirmando tu pedido"`), cancelar, navegar y ver los pedidos | Ninguno: el stock se descontó una sola vez (20 → 18) y la devolución se aplicó al volver |
+| RabbitMQ caído (89 s) | Nada para el usuario: los mails llegaron unos 2 min tarde | Confirmar y aceptar pedidos | Ninguno: los 2 avisos esperaron en el outbox |
+| Correo caído (un corte de 22 s y otro de 3 min) | Los mails se demoraron, y uno quedó en la DLQ sin enviar | Todo el flujo de pedidos | Ninguno se perdió: el aviso que no se pudo mandar quedó guardado en la DLQ |
+| Proveedor caído (17 s) | La factura quedó pendiente | Confirmar pedidos sin esperar al proveedor | Ninguno: la factura salió una sola vez |
+
+### Línea temporal
+
+Minutos desde que empezó la jornada (10/11/2026; duró 8 min 39 s).
+
+| Momento | Qué pasó |
+| --- | --- |
+| 00:11 | Todo prendido; una cocina con un plato (receta de 2 unidades, stock 20) y un cliente |
+| 00:13 | **Se apaga Inventario** |
+| 00:15 | Agregar al carrito responde `503` en 1,6 s |
+| 00:17 | Confirmar responde `202 "Estamos confirmando tu pedido"` en 2,1 s |
+| 01:44 | Se dispara la alerta `ServicioCaido(inventario)` |
+| 01:46 | Vuelve Inventario |
+| 01:59 | La confirmación se completa sola; el stock pasa de 20 a 18 |
+| 02:01 | Se apaga Inventario otra vez; cancelar responde `200` en 27 ms y la devolución queda pendiente |
+| 02:11 | Vuelve Inventario; a las 02:14 el stock vuelve a 20 |
+| 02:17 | **Se apaga RabbitMQ**; confirmar y aceptar siguen andando; 2 avisos esperan en el outbox |
+| 03:44 | Se dispara la alerta `ServicioCaido(rabbitmq)` |
+| 03:46 | Vuelve RabbitMQ; a las 04:21 el outbox está vacío y a las 04:24 llegan los 2 mails |
+| 04:26 | **Se apaga el correo** (corte corto); la cocina avanza el pedido igual |
+| 04:48 | Vuelve el correo; a las 05:12 llega el mail pendiente por el reintento |
+| 05:14 | **Se apaga el correo** (corte largo); la cocina marca el pedido `LISTO` |
+| 08:12 | Se agotan los reintentos: el aviso pasa a la DLQ; la alerta `MensajesEnDLQ` queda `pending` |
+| 08:13 | Vuelve el correo |
+| 08:15 | **Se apaga el proveedor**; confirmar responde `201` en 0,1 s y la factura queda pendiente |
+| 08:32 | Vuelve el proveedor; a las 08:39 sale la factura `B-0001-00000042` |
+| 08:39 | Fin: todo responde y no se disparó la alerta de errores 5xx |
+
+### Detección
+
+| Falla | Cómo nos enteramos | Cuánto tardó |
+| --- | --- | --- |
+| Inventario, RabbitMQ | Alerta `ServicioCaido` (Prometheus) y el panel "Servicios arriba" de Grafana en rojo | 91 s y 82 s: la alerta espera 1 minuto caído, para no avisar por un reinicio, más lo que tarda Prometheus en volver a mirar |
+| Correo | Panel "Mails por resultado" (aparecen `reintento` y después `dlq`), panel "Mensajes en las DLQ" y alerta `MensajesEnDLQ` | El panel, desde el primer reintento (unos 5 s). La alerta se dispara cuando el aviso lleva 5 minutos en la DLQ |
+| Proveedor | **No hay alerta.** Solo se ve en el detalle del pedido, con la factura `PENDIENTE` | — (ver la mejora 5) |
+
+### Respuesta
+
+No hizo falta ninguna intervención manual: en los cuatro casos el sistema se recuperó solo al volver la pieza caída. Lo único manual fue prenderla de nuevo, que es parte de la prueba.
+
+- **Inventario:** la confirmación quedó `EN_CURSO`. Pedidos la retomó cada 10 s con la misma `Idempotency-Key` hasta completarla, y mandó la devolución pendiente.
+- **RabbitMQ:** Pedidos guardó los avisos en el outbox y los publicó en orden al reconectarse.
+- **Correo:** Notificaciones reintentó con espera creciente (5 s, 30 s y 2 min) y, al agotar los intentos, mandó el aviso a la DLQ.
+- **Proveedor:** la factura quedó pendiente y Pedidos la volvió a pedir cada 10 s, siempre con la misma clave, hasta emitirla.
+
+### Causa
+
+Las cuatro caídas fueron **provocadas** con `docker compose stop`, una por vez, para comprobar los mecanismos del [ADR-010](adr/ADR-010-resiliencia.md). Lo que interesa es por qué el sistema se comportó bien o mal en cada caso:
+
+- **Por qué no se perdió ni se duplicó nada:** cada efecto (descontar, devolver, avisar, facturar) se anota en la misma transacción que el cambio que lo provoca, y se reintenta con la misma clave hasta confirmarse.
+- **Por qué un aviso quedó sin enviar:** la DLQ guarda el mensaje, pero nada lo vuelve a mandar solo cuando el correo vuelve (mejora 1).
+- **Por qué la detección tardó más de un minuto:** la alerta espera 1 minuto a propósito (mejora 2).
+- **Por qué el proveedor caído no avisa:** Prometheus no mira al proveedor ni cuenta las facturas pendientes (mejora 5).
+
+### Acciones de mejora
+
+Están en [Qué aprendimos y qué mejorar](#qué-aprendimos-y-qué-mejorar), con el motivo de cada una. Quedan pendientes la 1 (reprocesar la DLQ), la 2 (bajar la espera de la alerta) y la 5 (alerta de facturas pendientes). La 3 ya está corregida.
 
 ## Cómo se hizo
 
@@ -97,6 +167,7 @@ Es una prueba **controlada**: se rompe una pieza a la vez, en un entorno local i
 | 2 | **La alerta `ServicioCaido` tarda ~1 min 30 s** en dispararse: espera 1 minuto caído (para no avisar por un reinicio) más lo que tarda Prometheus en volver a mirar | Es un buen equilibrio para un trabajo práctico, pero en producción convendría avisar antes de un minuto y medio | Evaluar bajar la espera a 30 s o mirar más seguido; medirlo contra los reinicios normales |
 | 3 | **Una corrida cortada a la mitad dejó servicios apagados**: la primera prueba se interrumpió de un día para el otro y la siguiente encontró el correo apagado | Una prueba de fallas tiene que dejar todo como lo encontró, aunque se corte | **Ya corregido:** el script prende todo y espera a que esté sano antes de empezar. Si se corta, `docker compose --profile notificaciones up -d` lo deja como antes |
 | 4 | **RabbitMQ tarda ~30 s en arrancar** y recién ahí salen los avisos acumulados | No afecta a los pedidos (para eso está el outbox), solo al momento en que llega el mail | Ninguna por ahora: es el tiempo normal de arranque del broker |
+| 5 | **El proveedor caído no se ve en el monitoreo.** Ninguna alerta ni panel muestra que las facturas quedaron pendientes: solo se ve en el detalle de cada pedido | Si el Grupo 4 se cae un día entero, nadie se entera hasta que un cliente reclame la factura | Una métrica de Pedidos con las facturas pendientes, un panel en Grafana y una alerta si hay pendientes por más de 10 minutos |
 
 ## Qué no se probó en esta jornada
 
