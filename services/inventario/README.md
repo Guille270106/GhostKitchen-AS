@@ -90,7 +90,9 @@ El frontend entra por `/api/v1` a través del gateway; las rutas que usa Pedidos
 | `GET /platos/disponibilidad` | Búsqueda | Reconstruir el índice |
 | `GET /health` · `GET /ready` · `GET /metrics` | Docker y Prometheus | Rutas técnicas |
 
-**Permisos:** solo la cuenta Cocina administra el inventario, y solo el de su cocina (la que viene en el token verificado por el gateway, nunca una que mande el cliente). El admin recibe `403`; un recurso de otra cocina, `404`.
+**Permisos:** solo la cuenta Cocina administra el inventario, y solo el de su cocina (la que viene en el token verificado por el gateway, nunca una que mande el cliente). El admin recibe `403`; un recurso de otra cocina, `404`. Es `404` y no `403` a propósito: para una cocina, los ingredientes y platos de otra no existen, y así la respuesta no confirma que ese id es de alguien más. Vale también adentro de una receta: si uno de sus ingredientes es de otra cocina, se rechaza la receta entera con `404 NO_ENCONTRADO` y la anterior queda como estaba.
+
+**Mermas y reposiciones:** una merma no puede bajar el stock por debajo de lo reservado. Si pide más que el disponible (total menos reservado), responde `409 SIN_STOCK` y no cambia nada. `409 STOCK_EXCEDIDO` es otra cosa: una reposición tan grande que el total superaría el máximo que se puede guardar.
 
 ### Ingredientes
 
