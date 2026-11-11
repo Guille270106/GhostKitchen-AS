@@ -38,7 +38,7 @@ function Home() {
         <div className="container hero-content">
           <h1>Pedí de varios restaurantes en un solo envío</h1>
           <p>Estás pidiendo en {sede?.nombre || "tu sede"}. Combiná {sede ? sede.marcas.map((m) => m.nombre).join(", ") : "sus restaurantes"} en el mismo pedido.</p>
-          <SearchBox onSearch={(q) => navigate(q ? `/buscar?q=${encodeURIComponent(q)}` : "/buscar")} />
+          <SearchBox onSearch={(q) => navigate(q ? `/buscar?q=${encodeURIComponent(q)}` : "/buscar")} onCategoria={buscarCategoria} />
           <p className="hero-note">
             <Icon name="pin" size={15} /> {sede ? `${sede.nombre} · ${sede.direccion}` : "Buscando tu cocina"} ·{" "}
             <button type="button" className="link-button" onClick={abrirSelectorSede}>

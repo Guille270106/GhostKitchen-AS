@@ -74,7 +74,12 @@ function Search() {
                 : "Buscando…"}
           </p>
         </div>
-        <SearchBox key={filtros.q} initialValue={filtros.q} onSearch={(q) => update({ q })} />
+        <SearchBox
+          key={filtros.q}
+          initialValue={filtros.q}
+          onSearch={(q) => update({ q })}
+          onCategoria={(c) => update({ q: "", categoria: c.esEtiqueta ? "" : c.id, etiqueta: c.esEtiqueta ? c.id : "" })}
+        />
       </div>
 
       <div className="results-layout">
