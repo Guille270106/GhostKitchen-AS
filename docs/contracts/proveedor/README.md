@@ -6,8 +6,8 @@ Lo que **consumimos** de otro grupo ([ADR-009](../../adr/ADR-009-consumo-del-pro
 | --- | --- |
 | Archivo | [`comprobantes-v1.yaml`](comprobantes-v1.yaml): copia **sin cambios** de su OpenAPI |
 | Versión | 1.1.0 |
-| De dónde | Su repositorio, `docs/contracts/comprobantes/v1/openapi.yaml`, commit `d040004` del 2026-11-07 |
-| URL pública | Todavía no la publicaron (`<COMPLETAR>` en su guía). Mientras tanto usamos su mock |
+| De dónde | Su repositorio, `docs/contracts/comprobantes/v1/openapi.yaml`, commit `d040004` del 2026-11-07. Comparado de nuevo el 2026-11-10 con el publicado: igual, salvo la URL del servidor |
+| URL pública | `https://68-211-124-251.sslip.io` (publicada el 2026-11-10). Funciona: emitió facturas reales de nuestros pedidos |
 | Quién lo usa | Pedidos, adaptador `services/pedidos/internal/adapters/proveedor` |
 
 ## Cómo lo usamos
@@ -18,10 +18,10 @@ Lo que **consumimos** de otro grupo ([ADR-009](../../adr/ADR-009-consumo-del-pro
 
 ## Su mock
 
-`docker compose` levanta `comprobantes-mock`: Prism servido desde este archivo. Responde con los ejemplos del contrato y **valida cada solicitud** contra el OpenAPI: si mandamos algo que no cumple su contrato, responde `422`. Pedidos lo usa mientras `PROVIDER_BASE_URL` del `.env` esté vacía.
+`docker compose` levanta `comprobantes-mock`: Prism servido desde este archivo. Responde con los ejemplos del contrato y **valida cada solicitud** contra el OpenAPI: si mandamos algo que no cumple su contrato, responde `422`. Pedidos lo usa si `PROVIDER_BASE_URL` del `.env` está vacía (por ejemplo, en una compu sin la clave), y el test de contrato corre siempre contra él.
 
-## Cuando publiquen su URL
+## Cómo se conecta al servicio real
 
-1. Pedir la API key una sola vez con el mail del grupo: `POST {URL}/v1/api-keys` con `{"grupo": "grupo-3-ghostkitchen", "email": "<mail del grupo>"}`. La clave llega por correo.
-2. Completar `PROVIDER_BASE_URL` y `PROVIDER_API_KEY` en el `.env` (nunca en el repo).
+1. La API key se pide una sola vez: `POST https://68-211-124-251.sslip.io/v1/api-keys` con el nombre del grupo y un mail. La clave llega a ese mail (revisar spam) y empieza con `cmp_`. Si se pierde, se pide otra con el mismo grupo y mail: la anterior sigue andando.
+2. Se completan `PROVIDER_BASE_URL=https://68-211-124-251.sslip.io` (sin `/v1`) y `PROVIDER_API_KEY` en el `.env` de cada compu, **nunca en el repo ni en un chat**, y se reinicia Pedidos (`docker compose up -d pedidos`).
 3. Si publican una versión nueva del contrato, reemplazar `comprobantes-v1.yaml` y correr el test de contrato: avisa si algo dejó de ser compatible.
