@@ -17,7 +17,7 @@ import (
 // TopeCuerpo es el tamaño máximo de un cuerpo JSON. Un registro ocupa menos de 1 KB.
 const TopeCuerpo = 16 << 10
 
-// registrarRutasAuth suma las rutas de cuentas propias. El gateway las publica en /api/v1 (G9).
+// registrarRutasAuth suma las rutas de cuentas propias. El gateway las publica en /api/v1.
 func registrarRutasAuth(r *gin.Engine, svc *services.Usuarios) {
 	r.POST("/auth/registro", func(c *gin.Context) {
 		var d struct {
@@ -40,7 +40,7 @@ func registrarRutasAuth(r *gin.Engine, svc *services.Usuarios) {
 		c.JSON(http.StatusCreated, u) // PasswordHash tiene json:"-": nunca sale
 	})
 
-	// Login de los tres roles (HU02). El cierre de sesión lo hace el frontend descartando el
+	// Login de los tres roles. El cierre de sesión lo hace el frontend descartando el
 	// token: no hay ruta de logout porque el token no se guarda en el servidor.
 	r.POST("/auth/login", func(c *gin.Context) {
 		var d struct {
@@ -59,7 +59,7 @@ func registrarRutasAuth(r *gin.Engine, svc *services.Usuarios) {
 		c.JSON(http.StatusOK, sesion)
 	})
 
-	// Verificación para el gateway (auth_request, G9). Responde 204 sin cuerpo y la identidad
+	// Verificación para el gateway (auth_request). Responde 204 sin cuerpo y la identidad
 	// en headers, que el gateway copia hacia los servicios. Con un token que no sirve, 401.
 	r.GET("/auth/verify", func(c *gin.Context) {
 		id, ok := identidad(c, svc)
@@ -127,7 +127,7 @@ func responderError(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrDatosInvalidos):
 		problema(c, http.StatusBadRequest, "DATOS_INVALIDOS", motivo(err))
 	case errors.Is(err, services.ErrCredencialesInvalidas):
-		// El mismo mensaje si no existe el correo o si la contraseña está mal (HU02).
+		// El mismo mensaje si no existe el correo o si la contraseña está mal.
 		problema(c, http.StatusUnauthorized, "CREDENCIALES_INVALIDAS", "Correo o contraseña incorrectos")
 	case errors.Is(err, services.ErrSinPermiso):
 		problema(c, http.StatusForbidden, "SIN_PERMISO", "Solo un admin puede crear cuentas Cocina")
@@ -139,7 +139,7 @@ func responderError(c *gin.Context, err error) {
 		c.Header("Retry-After", "5")
 		problema(c, http.StatusServiceUnavailable, "CATALOGO_NO_DISPONIBLE", "No se pudo comprobar la cocina; probá de nuevo en unos segundos")
 	case errors.Is(err, domain.ErrEmailRepetido):
-		// No se dice nada de la otra cuenta (HU01).
+		// No se dice nada de la otra cuenta.
 		problema(c, http.StatusConflict, "EMAIL_REPETIDO", "Ya existe una cuenta con ese correo")
 	case errors.Is(err, domain.ErrNoEncontrado):
 		problema(c, http.StatusNotFound, "NO_ENCONTRADO", "Recurso no encontrado")

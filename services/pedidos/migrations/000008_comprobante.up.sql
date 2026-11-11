@@ -1,4 +1,4 @@
--- Factura del pedido (L15): la emite el grupo proveedor (Grupo 4, API de comprobantes) y se la
+-- Factura del pedido: la emite el grupo proveedor (Grupo 4, API de comprobantes) y se la
 -- manda por correo al cliente. Se anota PENDIENTE en la MISMA transacción que crea el pedido; un
 -- proceso en segundo plano la pide y reintenta si el proveedor no contesta. El pedido nunca
 -- espera a la factura (ADR-009).

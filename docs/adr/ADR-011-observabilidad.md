@@ -35,6 +35,7 @@ Una línea JSON por solicitud, con los mismos campos en todos los servicios:
 - **`correlation_id`**: identificador de negocio. Lo manda el cliente en `X-Correlation-Id` o lo genera el gateway; viaja entre servicios y en los mensajes ([ADR-005](ADR-005-comunicacion-entre-servicios.md)), y se devuelve en la respuesta. Sirve para que el otro grupo nos diga "falló la solicitud X".
 - **`trace_id`**: identificador técnico de la traza. Une cada log con su traza en Jaeger.
 - **`ruta`** es la plantilla (`/v1/sedes/:sedeId/platos`), sin parámetros ni cuerpo. **No** se registran coordenadas, textos de búsqueda, API keys, tokens ni contraseñas.
+- **Las piezas que no programamos siguen la misma regla.** El NGINX del frontend registra método, ruta **sin la query** (ahí viajan el texto buscado y las coordenadas), estado y duración, sin Referer. Solr corre con `SOLR_LOG_LEVEL=WARN`: no anota cada búsqueda con sus parámetros, solo advertencias y errores. Lo comprobamos buscando un texto inventado y una dirección: no aparecen en `docker compose logs`.
 - Errores: nivel `ERROR` para respuestas 5xx, con el detalle técnico; el usuario solo ve el Problem Details.
 - Por ahora se consultan con `docker compose logs` y se filtran por `correlation_id` o `trace_id`. Para la nube, el proveedor elegido o Loki (se decide al desplegar).
 

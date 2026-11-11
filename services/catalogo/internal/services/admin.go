@@ -13,7 +13,7 @@ import (
 	"ghostkitchen/catalogo/internal/repositories"
 )
 
-// Admin es quien pide el cambio: lo que el gateway verificó en su token (G9).
+// Admin es quien pide el cambio: lo que el gateway verificó en su token.
 type Admin struct {
 	UsuarioID string
 	Rol       string
@@ -48,7 +48,7 @@ func (a Admin) valido() error {
 func mismaLocalidad(a, b string) bool { return domain.Clave(a) == domain.Clave(b) }
 
 // CocinasDelAdmin devuelve todas las cocinas de la localidad del admin, activas o no, con
-// todos sus restaurantes (HU14). Las de otra localidad no se ven.
+// todos sus restaurantes. Las de otra localidad no se ven.
 func (s *AdminCatalogo) CocinasDelAdmin(ctx context.Context, admin Admin) ([]domain.Cocina, error) {
 	if err := admin.valido(); err != nil {
 		return nil, err
@@ -66,7 +66,7 @@ func (s *AdminCatalogo) CocinasDelAdmin(ctx context.Context, admin Admin) ([]dom
 	return suyas, nil
 }
 
-// CrearCocina da de alta una cocina en la localidad del admin (HU14). La localidad no viene
+// CrearCocina da de alta una cocina en la localidad del admin. La localidad no viene
 // del pedido: es la del admin, así nadie crea cocinas en otra localidad.
 func (s *AdminCatalogo) CrearCocina(ctx context.Context, admin Admin, datos domain.CambiosCocina) (domain.Cocina, error) {
 	if err := admin.valido(); err != nil {
@@ -90,12 +90,12 @@ func (s *AdminCatalogo) CrearCocina(ctx context.Context, admin Admin, datos doma
 	return c, nil
 }
 
-// ModificarCocina cambia datos de una cocina de su localidad, o la desactiva (HU14, RN19).
+// ModificarCocina cambia datos de una cocina de su localidad, o la desactiva.
 func (s *AdminCatalogo) ModificarCocina(ctx context.Context, admin Admin, id string, cambios domain.CambiosCocina) (domain.Cocina, error) {
 	return s.cambiar(ctx, admin, id, func(c *domain.Cocina) error { return c.Aplicar(cambios) })
 }
 
-// AgregarRestaurante suma una marca a una cocina de su localidad (HU16, RN20).
+// AgregarRestaurante suma una marca a una cocina de su localidad.
 func (s *AdminCatalogo) AgregarRestaurante(ctx context.Context, admin Admin, cocinaID, nombre string) (domain.Restaurante, error) {
 	r := domain.Restaurante{ID: "r-" + strings.ReplaceAll(uuid.NewString(), "-", "")[:10], Nombre: nombre, Activo: true}
 	c, err := s.cambiar(ctx, admin, cocinaID, func(c *domain.Cocina) error { return c.AgregarRestaurante(r) })
@@ -105,7 +105,7 @@ func (s *AdminCatalogo) AgregarRestaurante(ctx context.Context, admin Admin, coc
 	return c.Restaurantes[len(c.Restaurantes)-1], nil
 }
 
-// ModificarRestaurante renombra, desactiva o reactiva una marca (HU16, RN19).
+// ModificarRestaurante renombra, desactiva o reactiva una marca.
 func (s *AdminCatalogo) ModificarRestaurante(ctx context.Context, admin Admin, cocinaID, id string, cambios domain.CambiosRestaurante) (domain.Restaurante, error) {
 	var r domain.Restaurante
 	_, err := s.cambiar(ctx, admin, cocinaID, func(c *domain.Cocina) error {

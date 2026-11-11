@@ -1,5 +1,5 @@
 -- Referencias iniciales de las cuatro cocinas del seed de Catálogo.
--- La actualización por eventos se implementa en V12.
+-- Se mantiene al día con los mensajes cocina.* de Catálogo.
 CREATE TABLE cocina_ref (
  id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
  activa BOOLEAN NOT NULL,

@@ -1,4 +1,4 @@
-// Test de contrato de nuestra API publicada (L21, ADR-008).
+// Test de contrato de nuestra API publicada (ADR-008).
 //
 // Le pide cada operación del contrato (docs/contracts/v1/openapi.yaml) a nuestra API real:
 //   - por el proxy de Prism (contrato-proxy), que compara cada respuesta con el OpenAPI: si no lo

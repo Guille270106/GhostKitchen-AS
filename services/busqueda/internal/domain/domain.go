@@ -40,7 +40,7 @@ type Sede struct {
 	Restaurantes     []Referencia `json:"restaurantes"`
 	Activa           bool         `json:"-"`
 
-	// Lo que sigue no se publica: lo usa el lector de mensajes (G15).
+	// Lo que sigue no se publica: lo usa el lector de mensajes.
 	// RestaurantesInactivos guarda los restaurantes desactivados, para saber el nombre y el
 	// estado del restaurante de un plato cuando llega su mensaje.
 	RestaurantesInactivos []Referencia `json:"-"`
@@ -68,9 +68,9 @@ type Plato struct {
 	ActualizadoEn time.Time  `json:"actualizadoEn"`
 	Activo        bool       `json:"-"`
 
-	// Lo que sigue no se publica: lo usa el lector de mensajes (G15).
+	// Lo que sigue no se publica: lo usa el lector de mensajes.
 	//
-	// Activo es la suma de tres cosas: el plato, su restaurante y su cocina activos (RN19).
+	// Activo es la suma de tres cosas: el plato, su restaurante y su cocina activos.
 	// PlatoActivo guarda solo lo del plato, para recalcular Activo cuando cambia la cocina.
 	PlatoActivo bool `json:"-"`
 	// TieneReceta lo informa Inventario: un plato sin receta nunca figura disponible.

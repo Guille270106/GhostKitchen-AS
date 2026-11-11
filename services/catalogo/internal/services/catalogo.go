@@ -2,7 +2,7 @@
 //
 // Es la capa del medio (ADR-002): no conoce HTTP ni MongoDB. Recibe un
 // repositories.Repositorio (una interfaz) por el constructor; main le pasa el de MongoDB
-// y los tests, uno en memoria. Acá se decide qué se publica: solo lo activo (RN19).
+// y los tests, uno en memoria. Acá se decide qué se publica: solo lo activo.
 package services
 
 import (
@@ -52,7 +52,7 @@ func (s *Catalogo) ObtenerCocina(ctx context.Context, id string) (domain.Cocina,
 	return c, nil
 }
 
-// Menu devuelve los platos activos de una cocina activa, solo de sus restaurantes activos (RN19).
+// Menu devuelve los platos activos de una cocina activa, solo de sus restaurantes activos.
 func (s *Catalogo) Menu(ctx context.Context, cocinaID string) (domain.Cocina, []domain.Plato, error) {
 	c, err := s.ObtenerCocina(ctx, cocinaID)
 	if err != nil {
@@ -75,7 +75,7 @@ func (s *Catalogo) Menu(ctx context.Context, cocinaID string) (domain.Cocina, []
 	return c, menu, nil
 }
 
-// ObtenerPlato devuelve un plato activo de un restaurante activo de una cocina activa (RN19).
+// ObtenerPlato devuelve un plato activo de un restaurante activo de una cocina activa.
 // Si se desactiva la cocina o el restaurante, sus platos dejan de mostrarse aunque cada
 // plato siga marcado como activo: mismo criterio que Menu.
 func (s *Catalogo) ObtenerPlato(ctx context.Context, id string) (domain.Plato, error) {

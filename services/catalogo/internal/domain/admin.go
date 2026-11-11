@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-// Errores de las escrituras del admin (HU14, HU16).
+// Errores de las escrituras del admin.
 var (
 	ErrDatosInvalidos          = errors.New("datos inválidos")
 	ErrSinPermiso              = errors.New("solo un admin puede administrar cocinas")
@@ -80,9 +80,9 @@ func (c Cocina) Validar() error {
 	return nil
 }
 
-// AgregarRestaurante suma una marca a la cocina (HU16). Rechaza la quinta y un nombre que
-// ya esté en la cocina, aunque cambien mayúsculas o acentos (RN20). Los desactivados también
-// cuentan: no se borran (RN19), así que siguen ocupando su lugar y su nombre.
+// AgregarRestaurante suma una marca a la cocina. Rechaza la quinta y un nombre que
+// ya esté en la cocina, aunque cambien mayúsculas o acentos. Los desactivados también
+// cuentan: no se borran, así que siguen ocupando su lugar y su nombre.
 func (c *Cocina) AgregarRestaurante(r Restaurante) error {
 	r.Nombre = strings.TrimSpace(r.Nombre)
 	if err := validarNombreRestaurante(r.Nombre); err != nil {

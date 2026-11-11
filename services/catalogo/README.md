@@ -11,18 +11,20 @@ MongoDB (catalogo_db) ──> Catálogo ──GET /internal/cocinas, /internal/p
                               └──────── GET /api/v1/cocinas, /api/v1/platos/{id} (frontend, por el gateway)
 ```
 
-Búsqueda reconstruye el índice al arrancar y cuando se le pide `POST /internal/reindexar`. Cuando exista RabbitMQ, los cambios van a llegar solos con los mensajes `cocina.*` y `plato.*`.
+Búsqueda reconstruye el índice al arrancar y cuando se le pide `POST /internal/reindexar`. Además, cada alta o cambio de una cocina o un plato se guarda en el outbox de Catálogo junto con el dato y sale por RabbitMQ (`cocina.*`, `plato.*`): Búsqueda e Inventario lo aplican solos, en segundos.
 
-**Probar que el dato viene de MongoDB** (con `docker compose up --build` corriendo y las claves de tu `.env`):
+**Probar el recorrido de un cambio** (con todo levantado). Se cambia el precio como lo hace la cocina desde "Menú", no tocando MongoDB a mano: así pasa por las reglas, la versión del plato, el outbox y la invalidación de la caché. En Git Bash:
 
-```powershell
-# 1. Cambiar el precio de un plato directamente en MongoDB
-docker compose exec mongo mongosh -u root -p <MONGO_ROOT_PASSWORD> --quiet --eval "db.getSiblingDB('catalogo_db').platos.updateOne({_id:'p1'},{`$set:{precio:15000}})"
-# 2. Pedirle a Búsqueda que vuelva a armar su índice
-docker compose exec busqueda wget -qO- --post-data= http://127.0.0.1:8083/internal/reindexar
-# 3. El cambio se ve en Catálogo y en la API publicada
-curl.exe http://localhost:8080/api/v1/platos/p1
-curl.exe -H "X-API-Key: <clave>" http://localhost:8080/public/v1/platos/p1
+```bash
+# 1. Entrar como la cocina de Nueva Córdoba (dueña del plato p1)
+TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login -H "Content-Type: application/json" \
+  -d '{"email":"cocina.nueva-cordoba@ghostkitchen.dev","password":"<contraseña de la cocina>"}' | sed -E 's/.*"token":"([^"]+)".*/\1/')
+# 2. Cambiar el precio
+curl -X PATCH http://localhost:8080/api/v1/cocina/platos/p1 -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{"precio":15000}'
+# 3. Catálogo lo muestra enseguida (la caché se invalida) y la búsqueda en menos de 5 s
+curl http://localhost:8080/api/v1/platos/p1
+curl http://localhost:8080/api/v1/busqueda/platos/p1
 ```
 
 También se puede mirar la base con MongoDB Compass en `mongodb://root:<MONGO_ROOT_PASSWORD>@localhost:27017/?directConnection=true`. El `directConnection=true` hace falta porque MongoDB corre como replica set: sin él, Compass le pregunta al replica set por sus miembros, recibe `mongo:27017` (el nombre dentro de Docker) y no lo encuentra desde la compu.

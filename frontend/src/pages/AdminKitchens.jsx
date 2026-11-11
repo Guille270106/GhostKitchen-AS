@@ -18,7 +18,7 @@ import "../styles/admin.css";
 
 const COCINA_VACIA = { nombre: "", direccion: "", zonaId: "", envio: "1200", tiempoMin: "25", tiempoMax: "40", email: "", password: "" };
 
-// Panel del admin de cocina (HU14, HU15, HU16): las cocinas de su localidad, sus restaurantes
+// Panel del admin de cocina: las cocinas de su localidad, sus restaurantes
 // y la cuenta con la que cada cocina entra a trabajar. Catálogo y Usuarios controlan que sea
 // admin y que todo quede en su localidad.
 function AdminKitchens() {

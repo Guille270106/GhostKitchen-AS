@@ -2,7 +2,6 @@
 package handlers
 
 import (
-	"ghostkitchen/usuarios/internal/trazas"
 	"context"
 	"log/slog"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 
 	"ghostkitchen/usuarios/internal/metricas"
 	"ghostkitchen/usuarios/internal/services"
+	"ghostkitchen/usuarios/internal/trazas"
 )
 
 // PlazoSolicitud es el máximo que puede tardar una solicitud adentro del servicio (ADR-005).
@@ -28,7 +28,7 @@ var correlacionValida = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
 func Nuevo(svc *services.Usuarios, log *slog.Logger) *gin.Engine {
 	r := gin.New()
 	r.Use(metricas.Middleware(), trazas.Middleware(), gin.Recovery(), registrar(log))
-	r.GET(metricas.Ruta, metricas.Handler()) // G19: Prometheus
+	r.GET(metricas.Ruta, metricas.Handler()) // Prometheus
 
 	// Vivo: el proceso responde. No mira la base, para que Docker no lo reinicie si MySQL cae.
 	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"estado": "ok"}) })
@@ -61,13 +61,15 @@ func registrar(log *slog.Logger) gin.HandlerFunc {
 		}
 		c.Set("cid", cid)
 		c.Header("X-Correlation-Id", cid)
+		trazas.MarcarCorrelacion(c.Request.Context(), cid) // para buscar la traza en Jaeger por este id
 		ctx, cancel := context.WithTimeout(c.Request.Context(), PlazoSolicitud)
 		defer cancel()
 		c.Request = c.Request.WithContext(ctx)
 
 		inicio := time.Now()
 		c.Next()
-		log.Info("solicitud", "servicio", "usuarios", "correlation_id", cid,
+		traceID, spanID := trazas.IDs(c.Request.Context())
+		log.Info("solicitud", "servicio", "usuarios", "correlation_id", cid, "trace_id", traceID, "span_id", spanID,
 			"ruta", c.FullPath(), "metodo", c.Request.Method,
 			"estado", c.Writer.Status(), "duracion_ms", time.Since(inicio).Milliseconds())
 	}

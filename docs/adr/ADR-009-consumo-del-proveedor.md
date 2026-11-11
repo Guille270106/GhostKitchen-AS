@@ -16,7 +16,7 @@ La cátedra nos asignó la **API de comprobantes del Grupo 4** (agencia de viaje
 - respuestas `201` / `200` (emitida), `400` / `409` / `422` (rechazada), `401`, `429` y `503`;
 - su recomendación: esperar hasta 5 s, reintentar 2 o 3 veces con la misma clave, y que una falla suya **no bloquee nuestra compra**.
 
-Es un sistema que **no controlamos**: puede cambiar, ponerse lento o caerse sin avisarnos, y todavía no publicó su URL pública.
+Es un sistema que **no controlamos**: puede cambiar, ponerse lento o caerse sin avisarnos.
 
 ## Decisión
 

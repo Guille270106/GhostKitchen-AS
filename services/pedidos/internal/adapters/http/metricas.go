@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// MetricasController atiende la pantalla de métricas del admin (HU22, G21).
+// MetricasController atiende la pantalla de métricas del admin.
 type MetricasController struct {
 	Service application.MetricasService
 }

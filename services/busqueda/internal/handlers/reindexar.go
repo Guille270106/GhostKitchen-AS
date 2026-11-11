@@ -36,7 +36,7 @@ type Reindexar struct {
 }
 
 // NuevoReindexar crea el handler. Si excl es nil (no hay CATALOGO_URL), la ruta responde 409.
-// La misma Exclusiva la usa el arranque: nunca corren dos reconstrucciones a la vez (G22).
+// La misma Exclusiva la usa el arranque: nunca corren dos reconstrucciones a la vez.
 func NuevoReindexar(excl *indexer.Exclusiva) *Reindexar {
 	return &Reindexar{excl: excl}
 }
@@ -52,7 +52,7 @@ type problemaReindexar struct {
 	Parcial *indexer.Resultado `json:"parcial,omitempty"`
 }
 
-// reindexar corre la reconstrucción con su propio contexto (G22): si quien la pidió corta la
+// reindexar corre la reconstrucción con su propio contexto: si quien la pidió corta la
 // conexión, no se interrumpe a mitad, y tiene su propio plazo. Conserva el correlation_id,
 // así se sigue en los logs de Búsqueda, Catálogo e Inventario.
 //

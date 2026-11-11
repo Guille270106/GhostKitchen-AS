@@ -1,5 +1,5 @@
 // Package clients habla con otros servicios por HTTP. Catálogo le pregunta a Inventario si un
-// plato tiene receta antes de publicarlo (RN18): las recetas son de Inventario (ADR-001).
+// plato tiene receta antes de publicarlo: las recetas son de Inventario (ADR-001).
 package clients
 
 import (

@@ -13,7 +13,7 @@ import (
 	"ghostkitchen/inventario/internal/domain"
 )
 
-// V8 atraviesa HTTP -> aplicación -> MySQL. Cada participante tiene su propio
+// La prueba atraviesa HTTP -> aplicación -> MySQL. Cada participante tiene su propio
 // carrito y clave: no es una prueba de deduplicación de la misma solicitud.
 func TestV8UltimoPlato200Solicitudes(t *testing.T) {
 	f := prepararReservas(t) // Omite sin TEST_MYSQL=1; requiere el entorno descartable.
@@ -163,6 +163,6 @@ func TestV8UltimoPlato200Solicitudes(t *testing.T) {
 	if t.Failed() {
 		return
 	}
-	t.Logf("V8: %d solicitudes HTTP, 1 reserva exitosa, %d SIN_STOCK, 0 errores técnicos, 0 reservas parciales, 0 sobreventas; duración=%s", participantes, sinStock, duracion.Round(time.Millisecond))
+	t.Logf("%d solicitudes HTTP, 1 reserva exitosa, %d SIN_STOCK, 0 errores técnicos, 0 reservas parciales, 0 sobreventas; duración=%s", participantes, sinStock, duracion.Round(time.Millisecond))
 	t.Log("MySQL: reservado=2 y 1; disponible=998 y 0; una reserva, un plato y dos detalles de ingredientes")
 }

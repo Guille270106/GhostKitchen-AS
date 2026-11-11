@@ -40,10 +40,10 @@ func main() {
 }
 
 // correr arma y levanta el servicio. Devuelve el error en vez de llamar a os.Exit: así se
-// ejecutan los defer antes de salir, entre ellos el que manda a Jaeger las últimas trazas (L22).
+// ejecutan los defer antes de salir, entre ellos el que manda a Jaeger las últimas trazas.
 func correr() error {
 	cfg := config.Cargar()
-	// Cada línea de log lleva la copia (catalogo-1 o catalogo-2), y cada respuesta también (G17).
+	// Cada línea de log lleva la copia (catalogo-1 o catalogo-2), y cada respuesta también.
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("servicio", "catalogo", "instancia", cfg.Instancia)
 	middleware.Instancia = cfg.Instancia
 
@@ -82,9 +82,9 @@ func correr() error {
 	repo := repomongo.Nuevo(cliente, cfg.MongoBase)
 	go prepararBase(ctx, log, repo, cfg.SeedAlIniciar)
 
-	// Publicador del outbox (G13): manda a RabbitMQ los eventos que cada escritura guardó junto
+	// Publicador del outbox: manda a RabbitMQ los eventos que cada escritura guardó junto
 	// con su cambio. Sin RABBITMQ_URL los eventos se siguen guardando y salen cuando se configure.
-	// Con 2 copias (G17), publica una sola (PUBLICAR_OUTBOX=true solo en catalogo-1): si
+	// Con 2 copias, publica una sola (PUBLICAR_OUTBOX=true solo en catalogo-1): si
 	// publicaran las dos, el mismo evento saldría dos veces y en otro orden. Las dos escriben en
 	// el mismo outbox, así que los cambios hechos en cualquiera de las copias salen igual.
 	switch {
@@ -97,7 +97,7 @@ func correr() error {
 		go pub.Correr(ctx)
 	}
 
-	// Caché (G16, ADR-007). Las lecturas públicas pasan por el decorator de Memcached. Las
+	// Caché (ADR-007). Las lecturas públicas pasan por el decorator de Memcached. Las
 	// escrituras también pasan por él para invalidar; pero las lecturas que deciden algo (la
 	// cocina o el plato que se va a modificar) van directo a MongoDB, la fuente de verdad.
 	var lecturas repositories.Repositorio = repo

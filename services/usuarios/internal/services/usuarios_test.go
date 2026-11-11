@@ -80,7 +80,7 @@ func TestRegistrarCreaUnClienteConHash(t *testing.T) {
 		t.Fatal("el hash guardado tiene que ser el bcrypt de la contraseña")
 	}
 	if guardado.Localidad != "" || guardado.CocinaAsignadaID != "" {
-		t.Fatal("un cliente no tiene localidad ni cocina asignada (RN22)")
+		t.Fatal("un cliente no tiene localidad ni cocina asignada")
 	}
 }
 
@@ -135,7 +135,7 @@ func TestLogin(t *testing.T) {
 		t.Fatalf("el token del login tiene que verificar: %+v %v", id, err)
 	}
 
-	// Mismo error si el correo no existe o si la contraseña está mal (HU02).
+	// Mismo error si el correo no existe o si la contraseña está mal.
 	if _, err := svc.Login(context.Background(), "ana@mail.com", "otra-clave"); !errors.Is(err, ErrCredencialesInvalidas) {
 		t.Fatalf("contraseña mal: %v", err)
 	}

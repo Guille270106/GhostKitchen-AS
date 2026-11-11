@@ -82,8 +82,8 @@ func TestRecorridoCompletoHastaEntregado(t *testing.T) {
 			t.Fatalf("paso %d: estado %s, cambio %+v", i, p.Estado, c)
 		}
 	}
-	if len(p.Historial) != 6 || !p.Estado.Final() {
-		t.Fatalf("historial %d, final %v", len(p.Historial), p.Estado.Final())
+	if len(p.Historial) != 6 || p.Estado != EstadoEntregado {
+		t.Fatalf("historial %d, estado %s", len(p.Historial), p.Estado)
 	}
 	if _, err := p.Avanzar(cocina, ahora); !errors.Is(err, ErrTransicionInvalida) {
 		t.Fatal("un pedido entregado no avanza más:", err)

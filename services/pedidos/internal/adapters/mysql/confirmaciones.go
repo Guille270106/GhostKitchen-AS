@@ -86,7 +86,7 @@ func (repo ConfirmacionesMySQL) Completar(ctx context.Context, c domain.Confirma
 		return err
 	}
 
-	// 2b. Y anotamos su factura como pendiente: la pide otro proceso al proveedor (L15).
+	// 2b. Y anotamos su factura como pendiente: la pide otro proceso al proveedor.
 	if err := anotarComprobante(ctx, tx, p.ID, time.Now().UTC()); err != nil {
 		return err
 	}

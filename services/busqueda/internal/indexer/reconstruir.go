@@ -3,7 +3,7 @@
 // Tiene dos caminos que usan las mismas reglas (aplicar.go):
 //   - la reconstrucción completa desde Catálogo e Inventario (al arrancar y con
 //     POST /internal/reindexar), en reconstruir.go;
-//   - los mensajes cocina.*, plato.* y disponibilidad.cambiada (G15), en eventos.go. El que
+//   - los mensajes cocina.*, plato.* y disponibilidad.cambiada, en eventos.go. El que
 //     los recibe de RabbitMQ es el paquete mensajeria.
 //
 // Es la segunda entrada del servicio, al lado de los handlers HTTP (ADR-002): no atiende a
@@ -42,7 +42,7 @@ type FuenteDisponibilidad interface {
 
 // Reconstructor arma el índice con los datos de Catálogo y de Inventario.
 //
-// Desde G15 no reemplaza los documentos a ciegas: aplica cada cocina, plato y disponibilidad
+// No reemplaza los documentos a ciegas: aplica cada cocina, plato y disponibilidad
 // con las mismas reglas que los mensajes (Aplicador). Así puede correr a la vez que el lector
 // de mensajes sin volver atrás un cambio más nuevo, y no borra la disponibilidad que mandó
 // Inventario cuando guarda los datos de Catálogo.

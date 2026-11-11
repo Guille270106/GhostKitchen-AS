@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// Estado de la factura del pedido, que emite el grupo proveedor (L15).
+// Estado de la factura del pedido, que emite el grupo proveedor.
 type EstadoComprobante string
 
 const (

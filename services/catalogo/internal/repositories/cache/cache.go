@@ -32,7 +32,7 @@ import (
 // TTL de cada clave (ADR-007): 60 s, con ±10 % al azar para que no venzan todas juntas.
 const TTL = 60 * time.Second
 
-// usos cuenta en /metrics (G19) cada lectura de la caché, por tipo de clave (cocinas, cocina,
+// usos cuenta en /metrics cada lectura de la caché, por tipo de clave (cocinas, cocina,
 // menu, plato) y resultado: acierto (estaba), fallo (no estaba: se leyó de MongoDB) o error
 // (Memcached no respondió). Es lo que mide si la caché sirve (ADR-007, punto 6).
 var usos = promauto.NewCounterVec(prometheus.CounterOpts{

@@ -10,7 +10,7 @@ import (
 )
 
 // Aplicador guarda en el índice un cambio de Catálogo o de Inventario sin pisar datos más
-// nuevos (G15). Lo usan el lector de mensajes y la reconstrucción, que pueden correr a la vez:
+// nuevos. Lo usan el lector de mensajes y la reconstrucción, que pueden correr a la vez:
 // cada cambio se hace sobre lo último guardado (repositories.Actualizador).
 //
 // Reglas (ADR-005, README de Búsqueda):
@@ -18,7 +18,7 @@ import (
 //     (versión de la cocina o del plato), Inventario la disponibilidad (su contador por plato).
 //   - Un cambio con una versión menor que la guardada es viejo y se ignora. Con la misma
 //     versión se vuelve a escribir lo mismo: un mensaje repetido no cambia nada.
-//   - Un plato se muestra solo si él, su restaurante y su cocina están activos (RN19).
+//   - Un plato se muestra solo si él, su restaurante y su cocina están activos.
 type Aplicador struct {
 	idx repositories.Actualizador
 }
@@ -169,7 +169,7 @@ func sedeDeCatalogo(c clients.CocinaCatalogo) domain.Sede {
 }
 
 // conSede copia en el plato el nombre de su cocina y de su restaurante, y decide si se
-// muestra: el plato, su restaurante y su cocina tienen que estar activos (RN19). Un
+// muestra: el plato, su restaurante y su cocina tienen que estar activos. Un
 // restaurante que la cocina no tiene cuenta como inactivo.
 func conSede(p domain.Plato, s domain.Sede) domain.Plato {
 	p.Sede = s.Ref()

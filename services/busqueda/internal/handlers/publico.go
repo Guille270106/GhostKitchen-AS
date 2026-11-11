@@ -223,7 +223,7 @@ type consultaEntrada struct {
 	IncluirDarkKitchen *bool               `json:"incluirDarkKitchen"`
 }
 
-// leerConsultaProximidad valida el cuerpo según RN26: exactamente un objeto JSON,
+// leerConsultaProximidad valida el cuerpo según el contrato: exactamente un objeto JSON,
 // sin campos extra, sin listas y con tipos correctos (un booleano como texto es error).
 func leerConsultaProximidad(w http.ResponseWriter, r *http.Request) (services.ConsultaProximidad, []ErrorParametro, bool) {
 	cuerpo := http.MaxBytesReader(w, r.Body, MaxCuerpoProximidad)

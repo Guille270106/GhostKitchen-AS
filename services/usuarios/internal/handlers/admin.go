@@ -8,9 +8,9 @@ import (
 	"ghostkitchen/usuarios/internal/services"
 )
 
-// registrarRutasAdmin suma las rutas del admin. El gateway las publica en /api/v1 (G9).
+// registrarRutasAdmin suma las rutas del admin. El gateway las publica en /api/v1.
 func registrarRutasAdmin(r *gin.Engine, svc *services.Usuarios) {
-	// HU15: el admin crea la cuenta de una cocina de su localidad.
+	// El admin crea la cuenta de una cocina de su localidad.
 	r.POST("/admin/cuentas-cocina", func(c *gin.Context) {
 		admin, ok := identidad(c, svc)
 		if !ok {

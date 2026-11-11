@@ -63,7 +63,7 @@ export function setup() {
     email: 'admin.cerro@ghostkitchen.dev', password: __ENV.ADMIN_PASSWORD,
   }), 200, 'login admin');
   exigir(pedir('POST', `${gateway}/admin/cuentas-cocina`, {
-    nombre: 'Cocina V19', email: emailCocina, password, cocinaId: 'cerro',
+    nombre: 'Cocina carga', email: emailCocina, password, cocinaId: 'cerro',
   }, admin.token), 201, 'crear cuenta Cocina');
   const cocina = exigir(pedir('POST', `${gateway}/auth/login`, {
     email: emailCocina, password,
@@ -73,7 +73,7 @@ export function setup() {
   if (!plato) fail('No se encontró un plato activo del seed de Cerro');
 
   const ingrediente = exigir(pedir('POST', `${gateway}/cocina/ingredientes`, {
-    nombre: `Stock V19 ${sufijo}`, unidad: 'unidades', stockInicial: capacidad,
+    nombre: `Stock carga ${sufijo}`, unidad: 'unidades', stockInicial: capacidad,
   }, cocina), 201, 'crear ingrediente');
   exigir(pedir('PUT', `${gateway}/cocina/platos/${plato.id}/receta`, {
     items: [{ ingredienteId: ingrediente.id, cantidad: 1 }],
@@ -84,7 +84,7 @@ export function setup() {
   const tokens = Array.from({ length: participantes }, (_, i) => {
     const email = `cliente-v19-${sufijo}-${i}@example.test`;
     exigir(pedir('POST', `${usuarios}/auth/registro`, {
-      nombre: 'Cliente V19', email, password, direccion: 'Obispo Trejo 323',
+      nombre: 'Cliente carga', email, password, direccion: 'Obispo Trejo 323',
     }), 201, 'registrar cliente');
     return exigir(pedir('POST', `${usuarios}/auth/login`, { email, password }), 200, 'login cliente').token;
   });

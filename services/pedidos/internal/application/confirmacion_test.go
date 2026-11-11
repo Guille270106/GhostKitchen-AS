@@ -125,7 +125,7 @@ var clienteConfirma = domain.Actor{UsuarioID: "u-cliente", Email: "cliente@ejemp
 func entornoConfirmacion(t *testing.T) (ConfirmacionService, *ConfirmacionesMock, *ConsumoMock, *CarritosMock, *PedidosMock) {
 	t.Helper()
 	carritoSvc, carritos, _ := carritoEntorno()
-	if _, err := carritoSvc.AgregarPlato(context.Background(), clienteConfirma, "p17", 2); err != nil {
+	if _, err := carritoSvc.AgregarPlato(context.Background(), clienteConfirma, "p17", 2, ""); err != nil {
 		t.Fatal(err)
 	}
 	pedidos := &PedidosMock{pedidos: map[string]domain.Pedido{}}

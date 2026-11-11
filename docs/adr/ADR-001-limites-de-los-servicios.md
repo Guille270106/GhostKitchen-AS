@@ -45,7 +45,7 @@ El **gateway** no guarda datos del negocio. Las API keys de los grupos que nos c
 1. **Nadie entra a la base de otro.** Si un servicio necesita un dato ajeno, lo pide por API o lo recibe por un mensaje.
 2. **Las referencias entre servicios usan IDs** (`cocina_id`, `plato_id`, `pedido_id`), sin claves foráneas entre bases. Las respuestas y eventos también incluyen los datos necesarios para cada flujo. El servicio dueño valida los identificadores.
 3. **Las recetas están en Inventario.** Catálogo dice *qué se vende y cuánto sale*; Inventario dice *con qué se hace y si alcanza*. Así, reservar es una sola operación en una sola base.
-4. **El pedido guarda una copia** del nombre, el precio y el restaurante de cada plato, y del mail del cliente. Si después cambia el precio, el pedido queda con lo que pagó el cliente, y Notificaciones no tiene que preguntarle a Usuarios.
+4. **El pedido guarda una copia** del nombre, el precio y el restaurante de cada plato, del costo de envío, del mail del cliente y de la dirección de entrega. Si después cambia el precio o la tarifa, el pedido queda con lo que pagó el cliente, y Notificaciones no tiene que preguntarle a Usuarios.
 5. **El stock lo decide solo Inventario.** Búsqueda muestra si un plato está disponible, pero es orientativo.
 6. **El gateway verifica quién es el usuario; cada servicio decide qué puede hacer.**
 7. **Al grupo proveedor lo llama Pedidos**, nunca el frontend ni el gateway.
@@ -72,8 +72,10 @@ Separar los datos obliga a que algunos servicios guarden **copias** de datos aje
 
 | Copia | Quién la guarda | De quién es el dato | Cómo se actualiza | Si la copia está atrasada… |
 | --- | --- | --- | --- | --- |
-| Nombre y precio del plato, nombre del restaurante | Pedidos (en cada ítem) | Catálogo | Se copia **una vez**, al agregar al carrito | Es lo que queremos: el pedido conserva el precio que vio el cliente |
+| Nombre y precio del plato | Pedidos (en cada ítem) | Catálogo | Se copia **una vez**, al agregar al carrito | Es lo que queremos: el pedido conserva el precio que vio el cliente |
+| Nombre de cada restaurante y costo de envío | Pedidos (en cada pedido) | Catálogo | Se leen de Catálogo **al confirmar**, sin caché | El pedido conserva la tarifa que se cobró; si el admin la cambia después, los pedidos ya hechos no cambian |
 | Mail del cliente | Pedidos (en cada pedido) | Usuarios | Viene en el token al confirmar | El mail va al correo que tenía al pedir |
+| Dirección de entrega | Pedidos (en cada pedido) | Usuarios (la del perfil) | **No se copia del perfil:** el cliente la manda al confirmar. El frontend propone la de su cuenta y la deja cambiar | No hay atraso posible: es un dato del pedido, no de la cuenta. Así se puede pedir a otro lugar, y la cocina ve a dónde despachar sin consultar a Usuarios. Es un dato personal: no va a logs, trazas ni eventos |
 | Localidad de la cocina | Pedidos (en cada pedido) | Catálogo | Se copia al crear el pedido, junto con los datos de los platos | Las métricas del admin usan la localidad que tenía la cocina cuando se hizo el pedido |
 | Localidad de cada cocina | Inventario | Catálogo | Mensajes `cocina.*` | Inventario valida referencias; los permisos operativos se basan en la cocina asignada al rol Cocina y la pertenencia del recurso |
 | De qué cocina es cada plato | Inventario | Catálogo | Mensajes `plato.*` | No se puede cargar la receta de ese plato hasta que llegue |

@@ -2,7 +2,6 @@
 package catalogo
 
 import (
-	"ghostkitchen/pedidos/internal/trazas"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +11,7 @@ import (
 
 	"ghostkitchen/pedidos/internal/adapters/correlacion"
 	"ghostkitchen/pedidos/internal/domain"
+	"ghostkitchen/pedidos/internal/trazas"
 )
 
 // CatalogoHTTP le pregunta a Catálogo por HTTP (dentro de la red de Docker).

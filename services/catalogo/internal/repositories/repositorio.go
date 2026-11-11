@@ -33,7 +33,7 @@ type Repositorio interface {
 	Ping(ctx context.Context) error
 }
 
-// Escritor son las escrituras del admin y de la cocina sobre Catálogo (G11, G12).
+// Escritor son las escrituras del admin y de la cocina sobre Catálogo.
 //
 // Las cocinas se cambian con concurrencia optimista: el servicio lee la cocina, aplica las
 // reglas del dominio (4 restaurantes, sin repetir) y guarda la cocina entera solo si su
@@ -41,7 +41,7 @@ type Repositorio interface {
 // guarda nada (domain.ErrConflicto) y el servicio vuelve a empezar con la versión nueva.
 // Así dos admins que agregan el quinto restaurante a la vez no pueden pasar los dos.
 type Escritor interface {
-	// CrearCocina guarda una cocina nueva y su evento en el outbox, juntos (G13). Si el id ya
+	// CrearCocina guarda una cocina nueva y su evento en el outbox, juntos. Si el id ya
 	// existe, domain.ErrYaExiste y no se guarda ninguno de los dos.
 	CrearCocina(ctx context.Context, c domain.Cocina, ev domain.Evento) error
 	// ReemplazarCocina guarda c y su evento solo si la versión guardada es versionAnterior.
@@ -49,7 +49,7 @@ type Escritor interface {
 	ReemplazarCocina(ctx context.Context, c domain.Cocina, versionAnterior int64, ev domain.Evento) error
 }
 
-// EscritorPlatos son las escrituras de la cuenta Cocina sobre sus platos (G12). Mismo
+// EscritorPlatos son las escrituras de la cuenta Cocina sobre sus platos. Mismo
 // criterio que las cocinas: concurrencia optimista con la versión del plato.
 type EscritorPlatos interface {
 	// ListarPlatosDeCocinaTodos devuelve todos los platos de una cocina, activos o no.

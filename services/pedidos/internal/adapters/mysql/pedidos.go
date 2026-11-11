@@ -53,7 +53,7 @@ func insertarPedido(ctx context.Context, tx *sql.Tx, p domain.Pedido) error {
 		}
 	}
 
-	// 3. La primera entrada del historial (RECIBIDO) y su mensaje en el outbox (L13).
+	// 3. La primera entrada del historial (RECIBIDO) y su mensaje en el outbox.
 	for _, c := range p.Historial {
 		if err := insertarHistorial(ctx, tx, p.ID, c); err != nil {
 			return err
@@ -120,8 +120,13 @@ func (repo PedidosMySQL) Obtener(ctx context.Context, id string) (domain.Pedido,
 		c.EstadoAnterior = domain.Estado(anterior.String)
 		p.Historial = append(p.Historial, c)
 	}
+	// Si la conexión se corta a mitad de la lectura, Next devuelve false sin avisar: hay que
+	// preguntar el error, si no el pedido saldría con el historial incompleto.
+	if err := historial.Err(); err != nil {
+		return domain.Pedido{}, err
+	}
 
-	// 4. Cómo va su factura (L15), si la tiene.
+	// 4. Cómo va su factura, si la tiene.
 	var estado string
 	var numero sql.NullString
 	err = repo.DB.QueryRowContext(ctx, `SELECT estado,numero FROM comprobante WHERE pedido_id=?`, id).Scan(&estado, &numero)
@@ -238,7 +243,7 @@ func (repo PedidosMySQL) GuardarCambio(ctx context.Context, p domain.Pedido, c d
 	}
 
 	// 3. Si se canceló (el cliente lo canceló o la cocina lo rechazó), anotamos que hay que
-	//    devolver los ingredientes. Va en la misma transacción: o queda todo o nada (L10).
+	//    devolver los ingredientes. Va en la misma transacción: o queda todo o nada.
 	if c.EstadoNuevo == domain.EstadoCancelado {
 		if err := anotarDevolucion(ctx, tx, p.ID, c.OcurridoEn); err != nil {
 			return err

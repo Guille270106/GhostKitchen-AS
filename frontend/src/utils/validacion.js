@@ -9,12 +9,12 @@
 
 const MAIL = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)*\.[^\s@.]{2,}$/;
 
-export function mailValido(texto) {
+function mailValido(texto) {
   return MAIL.test(String(texto).trim());
 }
 
 // Qué decir según qué falló. Se arma con los datos del propio campo (mínimo, máximo, largo).
-export function mensajePara(campo) {
+function mensajePara(campo) {
   const v = campo.validity;
   if (v.valueMissing) {
     return campo.tagName === "SELECT" ? "Elegí una opción." : "Completá este campo.";

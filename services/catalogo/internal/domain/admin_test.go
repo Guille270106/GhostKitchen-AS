@@ -48,7 +48,7 @@ func TestCuatroRestaurantesSinRepetir(t *testing.T) {
 		}
 	}
 	if err := c.AgregarRestaurante(Restaurante{ID: "e", Nombre: "Otro"}); !errors.Is(err, ErrCocinaLlena) {
-		t.Fatalf("el quinto tiene que rechazarse (RN20): %v", err)
+		t.Fatalf("el quinto tiene que rechazarse: %v", err)
 	}
 
 	c2 := cocinaValida()
@@ -68,7 +68,7 @@ func TestDesactivadoSigueOcupandoLugarYNombre(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := c.AgregarRestaurante(Restaurante{ID: "b", Nombre: "Mostaza"}); !errors.Is(err, ErrRestauranteRepetido) {
-		t.Fatalf("un restaurante desactivado no se borra (RN19): su nombre sigue ocupado: %v", err)
+		t.Fatalf("un restaurante desactivado no se borra: su nombre sigue ocupado: %v", err)
 	}
 }
 

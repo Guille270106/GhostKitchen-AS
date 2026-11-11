@@ -1,4 +1,4 @@
-// Package mensajeria publica en RabbitMQ los eventos que Catálogo guardó en su outbox (G13).
+// Package mensajeria publica en RabbitMQ los eventos que Catálogo guardó en su outbox.
 //
 // El publicador lee los eventos pendientes de la base, los manda al exchange
 // ghostkitchen.events y los marca como enviados recién cuando RabbitMQ confirma que los

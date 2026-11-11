@@ -42,9 +42,6 @@ func siguienteDeCocina(actual Estado) (Estado, bool) {
 	}
 }
 
-// Final indica si el pedido ya no puede cambiar.
-func (e Estado) Final() bool { return e == EstadoEntregado || e == EstadoCancelado }
-
 // EstadoValido dice si el texto es uno de los estados del pedido (sirve para filtrar listas).
 func EstadoValido(e Estado) bool {
 	switch e {
@@ -79,7 +76,7 @@ type Actor struct {
 	Email     string // X-Usuario-Email: se copia en el pedido para el mail de Notificaciones
 	Rol       string
 	CocinaID  string
-	Localidad string // X-Localidad: la del admin, para las métricas de sus cocinas (G21)
+	Localidad string // X-Localidad: la del admin, para las métricas de sus cocinas
 }
 
 // Validar exige la identidad mínima: sin usuario o sin rol, el pedido no viene del gateway.
@@ -138,7 +135,7 @@ type Pedido struct {
 	CreadoEn         time.Time      `json:"creadoEn"`
 	ActualizadoEn    time.Time      `json:"actualizadoEn"`
 	Historial        []CambioEstado `json:"historial,omitempty"`
-	// Comprobante es cómo va la factura (L15). Solo viene en el detalle del pedido.
+	// Comprobante es cómo va la factura. Solo viene en el detalle del pedido.
 	Comprobante *Comprobante `json:"comprobante,omitempty"`
 }
 

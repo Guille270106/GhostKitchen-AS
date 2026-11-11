@@ -267,7 +267,7 @@ type registroOutbox struct {
 
 // enTransaccion corre el cambio y guarda el evento en la misma transacción de MongoDB
 // (patrón outbox, ADR-005): o se guardan los dos, o ninguno. Por eso MongoDB corre como
-// replica set (G10): sin eso no hay transacciones.
+// replica set: sin eso no hay transacciones.
 //
 // WithTransaction reintenta sola si la transacción choca con otra (errores transitorios);
 // un error nuestro (ErrConflicto, clave duplicada) la cancela y se devuelve tal cual.

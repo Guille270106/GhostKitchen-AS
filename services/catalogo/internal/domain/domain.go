@@ -24,7 +24,7 @@ type Restaurante struct {
 	Activo bool   `json:"activo" bson:"activo"`
 }
 
-// MaxRestaurantes por cocina (RN20).
+// MaxRestaurantes por cocina.
 const MaxRestaurantes = 4
 
 // Cocina es una cocina fantasma con sus restaurantes adentro (se leen siempre juntos).

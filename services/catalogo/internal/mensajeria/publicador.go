@@ -32,7 +32,7 @@ func NuevoPublicador(outbox repositories.Outbox, conectar func() (Canal, error),
 }
 
 // Correr publica hasta que se cancele ctx. Busca pendientes cada Intervalo (con 500 ms, un
-// cambio llega a Búsqueda bastante antes de los 5 s de RN21).
+// cambio llega a Búsqueda bastante antes de los 5 s aceptados).
 //
 // Si RabbitMQ falla, cierra el canal y espera cada vez más (1 s, 2 s, 4 s… hasta EsperaMax)
 // antes de reconectar, para no insistir sobre un broker caído. Los eventos se mandan en el

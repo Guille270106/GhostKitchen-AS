@@ -135,7 +135,7 @@
   .cocina-selector, .estado-select { width: 100%; }
 }
 
-/* G21: iniciales chicas de cada restaurante (los colores están en cart.css, L17), restaurante
+/* Iniciales chicas de cada restaurante (los colores están en cart.css), restaurante
    pausado, y dos campos en la misma fila del formulario de la cocina nueva. */
 .brand-avatar.small { width: 32px; height: 32px; font-size: 11px; }
 .brand-list li > div { flex: 1; min-width: 0; }

@@ -1,4 +1,4 @@
-# Tests de las alertas (G20). Se corren con promtool, sin levantar nada:
+# Tests de las alertas. Se corren con promtool, sin levantar nada:
 #   docker run --rm -v "${PWD}/infra/prometheus:/p" --entrypoint promtool prom/prometheus:v2.54.1 test rules /p/alertas_test.yml
 rule_files:
   - alertas.yml

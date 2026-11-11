@@ -1,4 +1,4 @@
-# Caddy en la nube (L19): HTTPS automático para la API publicada.
+# Caddy en la nube: HTTPS automático para la API publicada.
 # Saca solo el certificado de Let's Encrypt para DOMINIO_PUBLICO (por eso necesita los puertos 80
 # y 443 abiertos) y lo renueva solo. Detrás está el gateway, que verifica la API key y el límite
 # de uso. Solo se publica /public (la API para otros grupos) y /health: lo demás responde 404.

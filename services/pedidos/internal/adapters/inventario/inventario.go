@@ -1,9 +1,8 @@
 // Package inventario es el adaptador de salida hacia Inventario. Implementa ports.Inventario.
-// Usa las rutas internas de reservas (V7): no pasan por el gateway.
+// Usa las rutas internas de reservas: no pasan por el gateway.
 package inventario
 
 import (
-	"ghostkitchen/pedidos/internal/trazas"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -14,6 +13,7 @@ import (
 	"ghostkitchen/pedidos/internal/adapters/correlacion"
 	"ghostkitchen/pedidos/internal/domain"
 	"ghostkitchen/pedidos/internal/ports"
+	"ghostkitchen/pedidos/internal/trazas"
 	"github.com/sony/gobreaker"
 )
 
@@ -56,7 +56,7 @@ func NuevoBreaker(nombre string) *gobreaker.CircuitBreaker {
 	})
 }
 
-// Consumir descuenta la reserva para el pedido (V10 de Inventario). Pasa por el circuit
+// Consumir descuenta la reserva para el pedido. Pasa por el circuit
 // breaker; los reintentos los hace la saga con backoff, por eso acá se intenta una sola vez.
 func (i InventarioHTTP) Consumir(ctx context.Context, clave, reservaID, pedidoID string) error {
 	_, err := i.BreakerConsumo.Execute(func() (any, error) {
@@ -167,7 +167,7 @@ func (i InventarioHTTP) intentar(ctx context.Context, metodo, ruta, clave string
 }
 
 // Devolver devuelve los ingredientes que se descontaron para un pedido que después se canceló
-// (V10 de Inventario: POST /consumos/{pedidoId}/devolver). Lo llama el proceso de devoluciones,
+// (POST /consumos/{pedidoId}/devolver). Lo llama el proceso de devoluciones,
 // que reintenta en la próxima vuelta; por eso acá se intenta una sola vez.
 // Si Inventario no tiene un descuento de ese pedido (404), no hay nada que devolver.
 func (i InventarioHTTP) Devolver(ctx context.Context, clave, pedidoID string) error {

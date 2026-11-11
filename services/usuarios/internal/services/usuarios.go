@@ -45,7 +45,7 @@ func (s *Usuarios) ConCostoBcrypt(costo int) *Usuarios { s.costo = costo; return
 // Listo dice si el servicio puede atender: hoy depende solo de MySQL.
 func (s *Usuarios) Listo(ctx context.Context) error { return s.repo.Listo(ctx) }
 
-// DatosRegistro es lo que manda la persona al registrarse (HU01). No pide localidad (RN22).
+// DatosRegistro es lo que manda la persona al registrarse. No pide localidad.
 type DatosRegistro struct {
 	Nombre    string
 	Email     string
@@ -53,8 +53,8 @@ type DatosRegistro struct {
 	Direccion string
 }
 
-// Registrar crea una cuenta de cliente (HU01). Solo se registran clientes: las cuentas Cocina
-// las crea un admin (G8) y los admins se cargan al iniciar el sistema.
+// Registrar crea una cuenta de cliente. Solo se registran clientes: las cuentas Cocina
+// las crea un admin y los admins se cargan al iniciar el sistema.
 //
 // Si el correo ya existe devuelve domain.ErrEmailRepetido, sin decir nada de la otra cuenta.
 // La contraseña sale de acá solo como hash bcrypt.
@@ -107,7 +107,7 @@ func (s *Usuarios) guardarConHash(ctx context.Context, u domain.Usuario, passwor
 }
 
 // ErrCredencialesInvalidas es el único error del login con datos mal: no dice si el correo
-// no existe o si la contraseña está mal (HU02).
+// no existe o si la contraseña está mal.
 var ErrCredencialesInvalidas = errors.New("correo o contraseña incorrectos")
 
 // Sesion es lo que recibe la persona al entrar: el token, cuándo vence y su cuenta.
@@ -118,7 +118,7 @@ type Sesion struct {
 	Usuario domain.Usuario `json:"usuario"`
 }
 
-// Login comprueba correo y contraseña de cualquier rol y devuelve un token (HU02).
+// Login comprueba correo y contraseña de cualquier rol y devuelve un token.
 func (s *Usuarios) Login(ctx context.Context, email, password string) (Sesion, error) {
 	u, err := s.repo.PorEmail(ctx, domain.NormalizarEmail(email))
 	switch {
@@ -138,7 +138,7 @@ func (s *Usuarios) Login(ctx context.Context, email, password string) (Sesion, e
 	return Sesion{Token: token, Tipo: "Bearer", VenceEn: vence, Usuario: u}, nil
 }
 
-// Verificar valida un token para el gateway (G9).
+// Verificar valida un token para el gateway.
 func (s *Usuarios) Verificar(token string) (Identidad, error) { return s.tokens.Verificar(token) }
 
 // compararFalso hace el mismo trabajo que una comparación real contra un hash con el mismo

@@ -1,4 +1,4 @@
-// Package mensajeria recibe de RabbitMQ los mensajes que mantienen al día el índice (G15):
+// Package mensajeria recibe de RabbitMQ los mensajes que mantienen al día el índice:
 // cocina.* y plato.* de Catálogo, y disponibilidad.cambiada de Inventario, todos en la cola
 // busqueda.indexador (infra/rabbitmq/definiciones.json).
 //
@@ -24,7 +24,7 @@ import (
 	"ghostkitchen/busqueda/internal/trazas"
 )
 
-// Métricas del lector (G19, ADR-011: panel "Índice" y "Mensajería").
+// Métricas del lector (ADR-011: panel "Índice" y "Mensajería").
 var (
 	eventos = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "busqueda_eventos_total",

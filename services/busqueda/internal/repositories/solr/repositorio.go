@@ -36,7 +36,7 @@ type docCocina struct {
 	CostoEnvio       int    `json:"costo_envio"`
 	RestaurantesJSON string `json:"restaurantes_json"`
 	Activo           bool   `json:"activo"`
-	// G15
+	// Vienen con los mensajes de Catálogo: restaurantes pausados y versión de la cocina.
 	InactivosJSON   string `json:"restaurantes_inactivos_json,omitempty"`
 	VersionCatalogo int64  `json:"version_catalogo"`
 	Version         int64  `json:"_version_,omitempty"` // concurrencia optimista de Solr
@@ -59,7 +59,7 @@ type docPlato struct {
 	CocinaID          string   `json:"cocina_id"`
 	CocinaNombre      string   `json:"cocina_nombre"`
 	ActualizadoEn     string   `json:"actualizado_en"`
-	// G15. PlatoActivo es puntero porque los documentos de antes de G15 no lo tienen: en
+	// PlatoActivo es puntero porque los documentos indexados antes de los mensajes no lo tienen: en
 	// ese caso vale lo mismo que Activo.
 	PlatoActivo       *bool `json:"plato_activo,omitempty"`
 	TieneReceta       bool  `json:"tiene_receta"`
@@ -99,7 +99,7 @@ func (r *Repositorio) ObtenerSede(ctx context.Context, id string) (domain.Sede, 
 
 // SedeMasCercana le pide a Solr que ordene las cocinas activas por geodist(): la distancia
 // desde pt (el punto del cliente) hasta el campo sfield (ubicacion) de cada una, y se queda
-// con la primera. No filtra por radio: la regla de los 25 km la aplica services (RN24), que
+// con la primera. No filtra por radio: la regla de los 25 km la aplica services, que
 // así puede distinguir "no hay sedes" de "la más cercana queda lejos".
 func (r *Repositorio) SedeMasCercana(ctx context.Context, punto domain.Ubicacion) (domain.Sede, bool, error) {
 	p := url.Values{}
@@ -151,7 +151,7 @@ func (r *Repositorio) ObtenerPlato(ctx context.Context, id string) (domain.Plato
 }
 
 // Ping hace la consulta más barata posible (rows=0) en los dos cores, para ver si Solr
-// responde. Revisa los dos (G22): si se borró uno, Búsqueda no puede atender aunque el otro ande.
+// responde. Revisa los dos: si se borró uno, Búsqueda no puede atender aunque el otro ande.
 func (r *Repositorio) Ping(ctx context.Context) error {
 	p := url.Values{}
 	p.Set("q", "*:*")
@@ -456,7 +456,7 @@ func decodificarPlato(raw json.RawMessage) (domain.Plato, error) {
 	if err != nil {
 		slog.Warn("fecha de actualización de plato inválida en Solr", "plato_id", d.ID)
 	}
-	propio := d.Activo // documento de antes de G15
+	propio := d.Activo // documento indexado antes de los mensajes
 	if d.PlatoActivo != nil {
 		propio = *d.PlatoActivo
 	}
@@ -499,8 +499,8 @@ func leerPunto(s string) (domain.Ubicacion, error) {
 // como palabras y no como operadores. Cada una lleva "+": tienen que aparecer todas.
 //
 // La última, si tiene al menos 3 letras, se busca también como comienzo de palabra: así
-// "hambur" encuentra "Hamburguesa" mientras se escribe (búsqueda y sugerencias del frontend,
-// G18). Va "hambur OR hambur*" y no solo "hambur*" porque el comodín no pasa por la raíz en
+// "hambur" encuentra "Hamburguesa" mientras se escribe (búsqueda y sugerencias del
+// frontend). Va "hambur OR hambur*" y no solo "hambur*" porque el comodín no pasa por la raíz en
 // español: "hamburguesas*" no encontraría "hamburgues", que es lo que guarda el índice. La
 // palabra entera sí.
 func consultaTexto(t string) string {

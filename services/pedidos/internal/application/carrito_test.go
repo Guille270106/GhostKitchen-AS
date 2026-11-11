@@ -228,7 +228,7 @@ func carritoEntorno() (CarritoService, *CarritosMock, *InventarioMock) {
 
 func TestAgregarPlatoReservaYGuardaElPrecio(t *testing.T) {
 	svc, repo, inv := carritoEntorno()
-	c, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 2)
+	c, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 2, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestAgregarPlatoReservaYGuardaElPrecio(t *testing.T) {
 	}
 
 	// Segundo plato de otro restaurante de la misma cocina: se ajusta la misma reserva.
-	c, err = svc.AgregarPlato(context.Background(), clienteCarrito, "p21", 1)
+	c, err = svc.AgregarPlato(context.Background(), clienteCarrito, "p21", 1, "")
 	if err != nil || len(inv.reservas[c.ReservaID]) != 2 || c.Version != 2 {
 		t.Fatal(err, c)
 	}
@@ -255,7 +255,7 @@ func TestAgregarPlatoReservaYGuardaElPrecio(t *testing.T) {
 
 func TestSinStockNoCambiaElCarrito(t *testing.T) {
 	svc, repo, _ := carritoEntorno()
-	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 9); !errors.Is(err, domain.ErrSinStock) {
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 9, ""); !errors.Is(err, domain.ErrSinStock) {
 		t.Fatal(err)
 	}
 	if _, ok := repo.carritos["u-cliente"]; ok {
@@ -267,13 +267,13 @@ func TestSinStockNoCambiaElCarrito(t *testing.T) {
 // (con otros platos) no puede chocar con la clave del intento que falló.
 func TestDespuesDeSinStockSePuedeSeguirUsandoElCarrito(t *testing.T) {
 	svc, _, _ := carritoEntorno()
-	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 2); err != nil {
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 2, ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 9); !errors.Is(err, domain.ErrSinStock) {
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 9, ""); !errors.Is(err, domain.ErrSinStock) {
 		t.Fatal(err)
 	}
-	c, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p21", 1)
+	c, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p21", 1, "")
 	if err != nil || len(c.Items) != 2 {
 		t.Fatal("el carrito tiene que seguir funcionando:", err)
 	}
@@ -284,19 +284,19 @@ func TestDespuesDeSinStockSePuedeSeguirUsandoElCarrito(t *testing.T) {
 
 func TestOtraCocinaYPlatoInexistente(t *testing.T) {
 	svc, _, _ := carritoEntorno()
-	_, _ = svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1)
-	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p5", 1); !errors.Is(err, domain.ErrOtraCocina) {
+	_, _ = svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1, "")
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p5", 1, ""); !errors.Is(err, domain.ErrOtraCocina) {
 		t.Fatal(err)
 	}
-	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p999", 1); !errors.Is(err, domain.ErrPlatoNoEncontrado) {
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p999", 1, ""); !errors.Is(err, domain.ErrPlatoNoEncontrado) {
 		t.Fatal(err)
 	}
 }
 
 func TestCambiarCantidadQuitarYVaciar(t *testing.T) {
 	svc, _, inv := carritoEntorno()
-	c, _ := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1)
-	_, _ = svc.AgregarPlato(context.Background(), clienteCarrito, "p21", 1)
+	c, _ := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1, "")
+	_, _ = svc.AgregarPlato(context.Background(), clienteCarrito, "p21", 1, "")
 	reserva := c.ReservaID
 
 	c, err := svc.CambiarCantidad(context.Background(), clienteCarrito, "p17", 3)
@@ -319,9 +319,9 @@ func TestCambiarCantidadQuitarYVaciar(t *testing.T) {
 
 func TestReservaVencidaVaciaElCarrito(t *testing.T) {
 	svc, repo, inv := carritoEntorno()
-	_, _ = svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1)
+	_, _ = svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1, "")
 	inv.vencida = true
-	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p21", 1); !errors.Is(err, domain.ErrCarritoVencido) {
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p21", 1, ""); !errors.Is(err, domain.ErrCarritoVencido) {
 		t.Fatal(err)
 	}
 	if c := repo.carritos["u-cliente"]; !c.Vacio() || c.ReservaID != "" {
@@ -332,12 +332,12 @@ func TestReservaVencidaVaciaElCarrito(t *testing.T) {
 func TestDependenciasCaidasDan503SinTocarElCarrito(t *testing.T) {
 	svc, repo, inv := carritoEntorno()
 	svc.Catalogo = CatalogoMock{caido: true}
-	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1); !errors.Is(err, domain.ErrCatalogoCaido) {
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1, ""); !errors.Is(err, domain.ErrCatalogoCaido) {
 		t.Fatal(err)
 	}
 	svc.Catalogo = CatalogoMock{}
 	inv.caido = true
-	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1); !errors.Is(err, domain.ErrInventarioCaido) {
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1, ""); !errors.Is(err, domain.ErrInventarioCaido) {
 		t.Fatal(err)
 	}
 	if _, ok := repo.carritos["u-cliente"]; ok {
@@ -348,7 +348,7 @@ func TestDependenciasCaidasDan503SinTocarElCarrito(t *testing.T) {
 func TestSoloElClienteUsaElCarrito(t *testing.T) {
 	svc, _, _ := carritoEntorno()
 	cocina := domain.Actor{UsuarioID: "u-c", Rol: domain.RolCocina, CocinaID: "cerro"}
-	if _, err := svc.AgregarPlato(context.Background(), cocina, "p17", 1); !errors.Is(err, domain.ErrSinPermiso) {
+	if _, err := svc.AgregarPlato(context.Background(), cocina, "p17", 1, ""); !errors.Is(err, domain.ErrSinPermiso) {
 		t.Fatal(err)
 	}
 	if _, err := svc.Ver(context.Background(), domain.Actor{}); !errors.Is(err, domain.ErrSinIdentidad) {
@@ -358,7 +358,7 @@ func TestSoloElClienteUsaElCarrito(t *testing.T) {
 
 func TestVerMuestraElTiempoQueQueda(t *testing.T) {
 	svc, repo, _ := carritoEntorno()
-	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1); err != nil {
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1, ""); err != nil {
 		t.Fatal(err)
 	}
 	c, err := svc.Ver(context.Background(), clienteCarrito)
@@ -381,7 +381,7 @@ func TestVerMuestraElTiempoQueQueda(t *testing.T) {
 // mismo aviso otra vez (o uno de una reserva vieja) no cambia nada.
 func TestReservaVencidaVaciaElCarritoYLoMarca(t *testing.T) {
 	svc, repo, _ := carritoEntorno()
-	c, err := svc.AgregarPlato(context.Background(), clienteConfirma, "p17", 2)
+	c, err := svc.AgregarPlato(context.Background(), clienteConfirma, "p17", 2, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +402,7 @@ func TestReservaVencidaVaciaElCarritoYLoMarca(t *testing.T) {
 	}
 
 	// 3. Cuando el cliente vuelve a agregar, la marca de vencido desaparece.
-	nuevo, err := svc.AgregarPlato(context.Background(), clienteConfirma, "p17", 1)
+	nuevo, err := svc.AgregarPlato(context.Background(), clienteConfirma, "p17", 1, "")
 	if err != nil || nuevo.VencioEn != nil {
 		t.Fatal("al cambiar el carrito ya no se avisa que el anterior venció:", err, nuevo.VencioEn)
 	}
@@ -420,7 +420,7 @@ func TestReservaVencidaConDatosRotos(t *testing.T) {
 func TestSiFallaGuardarElPrimerPlatoSeLiberaLaReserva(t *testing.T) {
 	svc, repo, inv := carritoEntorno()
 	repo.fallarGuardar = true
-	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 2); err == nil {
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 2, ""); err == nil {
 		t.Fatal("tenía que fallar")
 	}
 	if len(inv.reservas) != 0 {
@@ -432,14 +432,14 @@ func TestSiFallaGuardarElPrimerPlatoSeLiberaLaReserva(t *testing.T) {
 // lo guardado (no con el plato que no se pudo agregar).
 func TestSiFallaGuardarUnCambioLaReservaVuelveALoGuardado(t *testing.T) {
 	svc, repo, inv := carritoEntorno()
-	c, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 2)
+	c, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 2, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Guardar falla (pero leer anda): Inventario ya ajustó la reserva con p21.
 	repo.fallarGuardar = true
 
-	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p21", 1); err == nil {
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p21", 1, ""); err == nil {
 		t.Fatal("tenía que fallar")
 	}
 	// La reserva tiene que coincidir con lo que quedó guardado: solo p17 x2.
@@ -451,21 +451,21 @@ func TestSiFallaGuardarUnCambioLaReservaVuelveALoGuardado(t *testing.T) {
 // Reenviar el mismo "agregar" (la misma Idempotency-Key) no suma dos veces; otro clic sí suma.
 func TestReenviarElMismoAgregarNoSumaDosVeces(t *testing.T) {
 	svc, repo, inv := carritoEntorno()
-	if _, err := svc.AgregarPlatoConClave(context.Background(), clienteCarrito, "p17", 1, "clic-1"); err != nil {
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1, "clic-1"); err != nil {
 		t.Fatal(err)
 	}
-	c, err := svc.AgregarPlatoConClave(context.Background(), clienteCarrito, "p17", 1, "clic-1")
+	c, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1, "clic-1")
 	if err != nil || len(c.Items) != 1 || c.Items[0].Cantidad != 1 {
 		t.Fatal("el reenvío volvió a sumar:", err, c)
 	}
 	if r := inv.reservas[c.ReservaID]; r[0].Cantidad != 1 {
 		t.Fatal("el reenvío volvió a reservar:", r)
 	}
-	c, err = svc.AgregarPlatoConClave(context.Background(), clienteCarrito, "p17", 1, "clic-2")
+	c, err = svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1, "clic-2")
 	if err != nil || c.Items[0].Cantidad != 2 || repo.carritos["u-cliente"].Items[0].Cantidad != 2 {
 		t.Fatal("otro clic tenía que sumar:", err, c)
 	}
-	if _, err := svc.AgregarPlatoConClave(context.Background(), clienteCarrito, "p17", 1, "con espacio"); !errors.Is(err, domain.ErrClaveInvalida) {
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1, "con espacio"); !errors.Is(err, domain.ErrClaveInvalida) {
 		t.Fatal("una clave inválida tenía que rechazarse:", err)
 	}
 }
@@ -473,7 +473,7 @@ func TestReenviarElMismoAgregarNoSumaDosVeces(t *testing.T) {
 func TestReintentarCambioCompensado(t *testing.T) {
 	svc, repo, inv := carritoEntorno()
 	ctx := context.Background()
-	c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1)
+	c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +543,7 @@ func (r *CarritosMock) ReintentarCompensacion(_ context.Context, op ports.Cambio
 func TestRecuperarCompensacionFallida(t *testing.T) {
 	ctx := context.Background()
 	svc, repo, inv := carritoEntorno()
-	c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1)
+	c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -576,10 +576,10 @@ func TestReenvioTrasRespuestaPerdidaDeInventario(t *testing.T) {
 	svc, _, inv := carritoEntorno()
 	ctx := context.Background()
 	inv.perderRespuesta = true
-	if _, err := svc.AgregarPlatoConClave(ctx, clienteCarrito, "p17", 1, "clic"); !errors.Is(err, domain.ErrInventarioCaido) {
+	if _, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1, "clic"); !errors.Is(err, domain.ErrInventarioCaido) {
 		t.Fatal(err)
 	}
-	c, err := svc.AgregarPlatoConClave(ctx, clienteCarrito, "p17", 1, "clic")
+	c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1, "clic")
 	if err != nil || len(c.Items) != 1 || c.Items[0].Cantidad != 1 {
 		t.Fatal(c, err)
 	}
@@ -596,7 +596,7 @@ func TestDosCambiosConcurrentesDelMismoCarrito(t *testing.T) {
 	for _, clave := range []string{"primero", "segundo"} {
 		go func(clave string) {
 			<-inicio
-			_, err := svc.AgregarPlatoConClave(ctx, clienteCarrito, "p17", 1, clave)
+			_, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1, clave)
 			errs <- err
 		}(clave)
 	}
@@ -617,7 +617,7 @@ func TestVaciarYQuitarUltimoConFalloAlGuardar(t *testing.T) {
 		t.Run(nombre, func(t *testing.T) {
 			ctx := context.Background()
 			svc, repo, inv := carritoEntorno()
-			c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1)
+			c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -655,11 +655,11 @@ func TestCommitConRespuestaPerdidaNoSeCompensa(t *testing.T) {
 	svc, repo, inv := carritoEntorno()
 	ctx := context.Background()
 	repo.perderCommit = true
-	if _, err := svc.AgregarPlatoConClave(ctx, clienteCarrito, "p17", 1, "clic"); err == nil {
+	if _, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1, "clic"); err == nil {
 		t.Fatal("faltó el fallo en la respuesta del commit")
 	}
 	repo.perderCommit = false
-	c, err := svc.AgregarPlatoConClave(ctx, clienteCarrito, "p17", 1, "clic")
+	c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1, "clic")
 	if err != nil || c.Items[0].Cantidad != 1 || len(inv.claves) != 1 || inv.reservas[c.ReservaID][0].Cantidad != 1 {
 		t.Fatal(c, inv.reservas, inv.claves, err)
 	}
@@ -668,11 +668,11 @@ func TestCommitConRespuestaPerdidaNoSeCompensa(t *testing.T) {
 func TestQuitarSinVaciarConFalloAlGuardar(t *testing.T) {
 	svc, repo, inv := carritoEntorno()
 	ctx := context.Background()
-	c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1)
+	c, err := svc.AgregarPlato(ctx, clienteCarrito, "p17", 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.AgregarPlato(ctx, clienteCarrito, "p21", 2); err != nil {
+	if _, err := svc.AgregarPlato(ctx, clienteCarrito, "p21", 2, ""); err != nil {
 		t.Fatal(err)
 	}
 	repo.fallarGuardar = true
@@ -694,12 +694,12 @@ func TestQuitarSinVaciarConFalloAlGuardar(t *testing.T) {
 // (otra clave), no recibir la respuesta vieja de Inventario y dejar carrito 2 / reserva 1.
 func TestReintentarDespuesDeCorregirLaReservaVuelveAAplicarla(t *testing.T) {
 	svc, repo, inv := carritoEntorno()
-	c, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1)
+	c, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	repo.fallarGuardar = true
-	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1); err == nil {
+	if _, err := svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1, ""); err == nil {
 		t.Fatal("tenía que fallar")
 	}
 	if r := inv.reservas[c.ReservaID]; r[0].Cantidad != 1 {
@@ -707,7 +707,7 @@ func TestReintentarDespuesDeCorregirLaReservaVuelveAAplicarla(t *testing.T) {
 	}
 
 	repo.fallarGuardar = false
-	c, err = svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1)
+	c, err = svc.AgregarPlato(context.Background(), clienteCarrito, "p17", 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}

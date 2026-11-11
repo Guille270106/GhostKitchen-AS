@@ -75,7 +75,7 @@ func main() {
 
 	devolucionesRepo := mysqladapter.DevolucionesMySQL{DB: db}
 
-	// Descontar y devolver stock (V10 de Inventario). Con CONSUMO_INVENTARIO=real (lo que usa
+	// Descontar y devolver stock en Inventario. Con CONSUMO_INVENTARIO=real (lo que usa
 	// docker-compose) se llama a Inventario; con "simulado" no, para probar Pedidos solo.
 	var consumo ports.Consumo = inventario.ConsumoSimulado{}
 	var devolucion ports.Devolucion = inventario.DevolucionSimulada{}
@@ -109,7 +109,7 @@ func main() {
 		httpadapter.ConfirmacionController{Service: confirmacionService},
 	)
 
-	// Métricas del admin (HU22, G21): solo lectura sobre pedido_db, y Catálogo dice qué
+	// Métricas del admin: solo lectura sobre pedido_db, y Catálogo dice qué
 	// cocinas son de su localidad.
 	httpadapter.RegistrarMetricas(router, httpadapter.MetricasController{Service: application.MetricasService{
 		Cocinas: catalogoCliente,
@@ -150,7 +150,7 @@ func main() {
 		}
 	}()
 
-	// 7. Y otro: cada 10 s le pide al grupo proveedor (Grupo 4) las facturas pendientes (L15).
+	// 7. Y otro: cada 10 s le pide al grupo proveedor (Grupo 4) las facturas pendientes.
 	//    El pedido no espera a la factura: si el proveedor está caído, quedan pendientes.
 	if url := os.Getenv("PROVIDER_BASE_URL"); url != "" {
 		comprobanteService := application.ComprobanteService{
@@ -187,7 +187,7 @@ func main() {
 		}()
 
 		// 9. Y escucha la cola pedidos.reservas: cuando Inventario avisa que una reserva venció
-		//    (reserva.vencida), el carrito se vacía y queda marcado como vencido (L14).
+		//    (reserva.vencida), el carrito se vacía y queda marcado como vencido.
 		consumidor := &rabbitmq.Consumidor{
 			URL:         url,
 			Cola:        "pedidos.reservas",

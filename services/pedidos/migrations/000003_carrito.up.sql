@@ -1,4 +1,4 @@
--- Carrito (L6). Cada cliente tiene un solo carrito activo: una fila por cliente.
+-- Carrito. Cada cliente tiene un solo carrito activo: una fila por cliente.
 -- id cambia cuando el carrito se vacía, así la próxima reserva en Inventario es otra.
 -- version sube con cada cambio y se usa igual que en pedido (control optimista).
 CREATE TABLE carrito (

@@ -7,7 +7,7 @@ CREATE TABLE plato_ref (
  UNIQUE KEY uq_plato_cocina (id,cocina_id)
 ) ENGINE=InnoDB;
 
--- Copia de identidad y estado del seed actual de Catálogo; actualización por eventos en V12.
+-- Copia de identidad y estado de los platos de Catálogo; se mantiene al día con los mensajes plato.*.
 INSERT INTO plato_ref (id,cocina_id,activo) VALUES
 ('p1','nueva-cordoba',TRUE),
 ('p2','nueva-cordoba',TRUE),
@@ -76,7 +76,7 @@ INSERT INTO plato_ref (id,cocina_id,activo) VALUES
 
 ALTER TABLE ingrediente ADD UNIQUE KEY uq_ingrediente_cocina (id,cocina_id);
 
--- La cabecera es el punto de bloqueo compartido para editar y, en V7, reservar.
+-- La cabecera es el punto de bloqueo compartido para editar y para reservar.
 CREATE TABLE receta (
  plato_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
  cocina_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,

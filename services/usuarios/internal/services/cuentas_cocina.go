@@ -30,7 +30,7 @@ var (
 	ErrCatalogoNoDisponible = errors.New("no se pudo comprobar la cocina en Catálogo")
 )
 
-// DatosCuentaCocina es lo que manda el admin para crear la cuenta de una cocina (HU15).
+// DatosCuentaCocina es lo que manda el admin para crear la cuenta de una cocina.
 type DatosCuentaCocina struct {
 	Nombre   string
 	Email    string
@@ -42,7 +42,7 @@ type DatosCuentaCocina struct {
 // ErrCatalogoNoDisponible.
 func (s *Usuarios) ConCatalogo(c Catalogo) *Usuarios { s.catalogo = c; return s }
 
-// CrearCuentaCocina crea una cuenta Cocina para una cocina de la localidad del admin (HU15).
+// CrearCuentaCocina crea una cuenta Cocina para una cocina de la localidad del admin.
 //
 // Primero se validan los datos (no cuesta nada), después se le pregunta a Catálogo y recién
 // al final se calcula el hash y se guarda. Si Catálogo no responde, no se crea la cuenta.

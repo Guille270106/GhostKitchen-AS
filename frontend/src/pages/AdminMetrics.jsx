@@ -10,7 +10,7 @@ import { formatPrice } from "../utils/formatters";
 import "../styles/workspace.css";
 import "../styles/admin.css";
 
-// Métricas del negocio de una cocina de la localidad del admin, últimos 7 días (HU22). Las
+// Métricas del negocio de una cocina de la localidad del admin, últimos 7 días. Las
 // calcula Pedidos con los pedidos guardados.
 function AdminMetrics() {
   const { cocinas, cocinaId, cocina, setCocinaId, loading: loadingCocinas } = useAdminCocina();

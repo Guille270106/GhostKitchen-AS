@@ -1,18 +1,18 @@
 # Puesta en marcha local de GhostKitchen: `docker compose up --build`
 #
-# Estado (Entrega 2):
-#   - gateway:       NGINX en el puerto 8080. Publica la capacidad en /public/v1 (API key y límite)
-#                    y las lecturas de Catálogo en /api/v1.
-#   - catalogo-1/2:  servicio Catálogo (Go + Gin), 2 copias balanceadas. Fuente de verdad de cocinas, restaurantes y platos.
-#   - mongo:         MongoDB, base catalogo_db con su propio usuario.
-#   - busqueda:      servicio Búsqueda (Go + Gin). Arma su índice desde Catálogo y atiende la capacidad publicada.
-#   - solr:          índice de Búsqueda (cores "cocinas" y "platos").
-#   - jaeger:        recibe las trazas (OpenTelemetry) del gateway y de los servicios con API. UI en el puerto 16686.
-#   - contract-mock: mock de la capacidad publicada, servido desde el contrato OpenAPI (puerto 4010).
-#   - rabbitmq:      mensajería entre servicios. Exchange ghostkitchen.events, una cola por consumidor y su DLQ.
-#                    Panel en el puerto 15672 (usuario y contraseña de RABBITMQ_USER / RABBITMQ_PASSWORD).
-# MySQL, RabbitMQ y las plantillas de migración se agregan en la ronda 1; los servicios de negocio
-# Usuarios, Inventario y Pedidos se implementan en la ronda 2.
+# Qué levanta:
+#   - frontend:        React servido por NGINX en el puerto 5173 (le pasa /api al gateway).
+#   - gateway:         NGINX en el puerto 8080. Publica la capacidad en /public/v1 (API key y límite)
+#                      y la API del frontend en /api/v1 (verifica el token con Usuarios).
+#   - usuarios, inventario, pedidos: servicios en Go + Gin con MySQL. Cada uno aplica sus migraciones al arrancar.
+#   - catalogo-1/2:    servicio Catálogo (Go + Gin), 2 copias balanceadas. Fuente de verdad de cocinas, restaurantes y platos.
+#   - busqueda:        servicio Búsqueda (Go + Gin). Arma su índice desde Catálogo e Inventario y atiende la capacidad publicada.
+#   - notificaciones:  worker que manda un mail por cada cambio de estado del pedido (Mailpit en el puerto 8025).
+#   - mysql, mongo, memcached, solr: bases, caché e índice.
+#   - rabbitmq:        mensajería entre servicios. Exchange ghostkitchen.events, una cola por consumidor y su DLQ.
+#                      Panel en el puerto 15672 (usuario y contraseña de RABBITMQ_USER / RABBITMQ_PASSWORD).
+#   - jaeger, prometheus, grafana: trazas, métricas, alertas y tablero.
+#   - comprobantes-mock, contract-mock: mocks del proveedor (Grupo 4) y de nuestra capacidad publicada.
 # Los secretos se leen del archivo .env, que no se versiona (las variables están en el README, sección "Variables del .env").
 services:
   mysql:
@@ -37,10 +37,8 @@ services:
       start_period: 20s
     restart: unless-stopped
 
-  # Plantillas ejecutables: cada trabajo usa únicamente las credenciales de su base.
-  # En ronda 2, mysql-startup será el ENTRYPOINT de cada servicio, antes de su binario.
-  # G5: igual que Inventario, aplica sus migraciones antes de arrancar HTTP. Reemplaza al
-  # trabajo usuarios-migrations. No se publica al host: entra por el gateway (G9).
+  # Igual que Inventario y Pedidos, aplica sus migraciones antes de arrancar HTTP. Reemplaza al
+  # trabajo usuarios-migrations. No se publica al host: entra por el gateway.
   usuarios:
     build:
       context: .
@@ -51,12 +49,12 @@ services:
       DB_PASSWORD: ${USUARIOS_DB_PASSWORD:?Completá USUARIOS_DB_PASSWORD en .env}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       DB_NAME: usuarios_db
-      # G7: clave para firmar los tokens (al menos 32 bytes) y cuánto duran.
+      # Clave para firmar los tokens (al menos 32 bytes) y cuánto duran.
       JWT_SECRET: ${JWT_SECRET:?Completá JWT_SECRET en .env (al menos 32 caracteres)}
       JWT_TTL_MINUTES: ${JWT_TTL_MINUTES:-120}
-      # G8: Catálogo confirma la cocina y su localidad al crear una cuenta Cocina.
+      # Catálogo confirma la cocina y su localidad al crear una cuenta Cocina.
       CATALOGO_URL: http://catalogo:8082
-      # G8: contraseña inicial de los 4 admins (uno por localidad). Sin ella no se crean.
+      # Contraseña inicial de los 4 admins (uno por localidad). Sin ella no se crean.
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       PORT: "8081"
       GIN_MODE: release
@@ -73,7 +71,7 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  # V5: aplica sus migraciones antes de arrancar HTTP, también tras cada reinicio.
+  # Aplica sus migraciones antes de arrancar HTTP, también tras cada reinicio.
   inventario:
     build:
       context: .
@@ -101,7 +99,7 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  # Pedidos (L5): aplica sus migraciones al arrancar (mysql-startup) y después atiende HTTP.
+  # Pedidos: aplica sus migraciones al arrancar (mysql-startup) y después atiende HTTP.
   # Solo expose: no se publica al host, así nadie le manda headers de identidad salteando el gateway.
   pedidos:
     build:
@@ -116,14 +114,14 @@ services:
       PORT: "8085"
       CATALOGO_URL: http://catalogo:8082        # precio y cocina del plato
       INVENTARIO_URL: http://inventario:8084    # reservas internas (no pasan por el gateway)
-      # Descontar (al confirmar) y devolver (al cancelar) stock con la V10 de Inventario:
+      # Descontar (al confirmar) y devolver (al cancelar) stock con Inventario:
       # POST /reservas/{id}/consumir y POST /consumos/{pedidoId}/devolver. Con "simulado" no llama
       # a Inventario (sirve para probar Pedidos solo).
       CONSUMO_INVENTARIO: real
-      # Mensajes pedido.estado_cambiado (L13): se guardan en el outbox y se publican en RabbitMQ.
+      # Mensajes pedido.estado_cambiado: se guardan en el outbox y se publican en RabbitMQ.
       # Si RabbitMQ está caído, Pedidos sigue atendiendo y los mensajes esperan en MySQL.
       RABBITMQ_URL: amqp://${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}:${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}@rabbitmq:5672/
-      # Facturas del pedido con el grupo proveedor (L15). Si el .env no tiene su URL, se usa su mock.
+      # Facturas del pedido con el grupo proveedor. Si el .env no tiene su URL, se usa su mock.
       PROVIDER_BASE_URL: ${PROVIDER_BASE_URL:-http://comprobantes-mock:4010}
       PROVIDER_API_KEY: ${PROVIDER_API_KEY:-clave-del-mock}
     expose:
@@ -279,7 +277,7 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # G17: Catálogo corre con 2 copias, catalogo-1 y catalogo-2, que el gateway reparte por turnos
+  # Catálogo corre con 2 copias, catalogo-1 y catalogo-2, que el gateway reparte por turnos
   # (ADR-012). Las dos leen la misma MongoDB y la misma Memcached: da igual cuál conteste.
   # Las dos responden también al nombre "catalogo" dentro de Docker (alias), así Búsqueda,
   # Usuarios y Pedidos siguen usando http://catalogo:8082 y, si una copia no contesta, Go prueba
@@ -298,11 +296,11 @@ services:
       MONGO_DB: catalogo_db
       MONGO_TIMEOUT_MS: "2000"
       SEED_AL_INICIAR: "true"
-      # G12: para activar un plato, Catálogo le pregunta a Inventario si tiene receta (RN18).
+      # Para activar un plato, Catálogo le pregunta a Inventario si tiene receta.
       INVENTARIO_URL: http://inventario:8084
-      # G13: el publicador del outbox manda cocina.* y plato.* al exchange ghostkitchen.events.
+      # El publicador del outbox manda cocina.* y plato.* al exchange ghostkitchen.events.
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
-      # G16: caché de lecturas públicas en Memcached (ADR-007). false para medir sin caché.
+      # Caché de lecturas públicas en Memcached (ADR-007). false para medir sin caché.
       CACHE_HABILITADA: ${CACHE_HABILITADA:-true}
       MEMCACHED_ADDR: memcached:11211
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
@@ -327,7 +325,7 @@ services:
       INSTANCIA: catalogo-2
       PUBLICAR_OUTBOX: "false"
 
-  # G16: caché compartida de Catálogo (ADR-007). Sin datos propios: si se reinicia, solo se
+  # Caché compartida de Catálogo (ADR-007). Sin datos propios: si se reinicia, solo se
   # pierden copias. 64 MB alcanzan de sobra para 4 cocinas y sus menús.
   memcached:
     image: memcached:1.6-alpine
@@ -337,8 +335,8 @@ services:
       - "11211"
     restart: unless-stopped
 
-  # G10: MongoDB corre como replica set de un solo nodo (rs0). Hace falta para las
-  # transacciones del outbox de Catálogo (G13): guardar el cambio y su mensaje juntos.
+  # MongoDB corre como replica set de un solo nodo (rs0). Hace falta para las
+  # transacciones del outbox de Catálogo: guardar el cambio y su mensaje juntos.
   # MongoDB solo permite transacciones en un replica set, aunque tenga un solo miembro.
   mongo:
     image: mongo:7
@@ -387,8 +385,8 @@ services:
       SOLR_URL: http://solr:8983/solr
       SOLR_TIMEOUT_MS: "2000"
       CATALOGO_URL: http://catalogo:8082
-      INVENTARIO_URL: http://inventario:8084    # disponibilidad para reconstruir el índice (G15)
-      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/   # cola busqueda.indexador (G15)
+      INVENTARIO_URL: http://inventario:8084    # disponibilidad para reconstruir el índice
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/   # cola busqueda.indexador
       PUBLIC_API_KEYS: ${PUBLIC_API_KEYS:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     expose:
@@ -410,6 +408,9 @@ services:
     command: bash -c "precreate-core cocinas; precreate-core platos; exec solr -f"
     environment:
       SOLR_HEAP: 512m
+      # Solr anota cada búsqueda con sus parámetros (el texto que escribió el cliente). Con WARN
+      # solo registra advertencias y errores: el texto buscado no queda en los logs.
+      SOLR_LOG_LEVEL: WARN
     volumes:
       - solr-data:/var/solr
     ports:
@@ -425,8 +426,8 @@ services:
       - "16686:16686"     # interfaz web para ver las trazas
     restart: unless-stopped
 
-  # Mock del grupo proveedor (Grupo 4, API de comprobantes), servido desde su contrato con Prism
-  # (L15). Valida cada solicitud contra su OpenAPI. Pedidos lo usa mientras PROVIDER_BASE_URL esté vacía.
+  # Mock del grupo proveedor (Grupo 4, API de comprobantes), servido desde su contrato con Prism.
+  # Valida cada solicitud contra su OpenAPI. Pedidos lo usa si PROVIDER_BASE_URL está vacía.
   comprobantes-mock:
     image: stoplight/prism:5
     command: mock -h 0.0.0.0 -p 4010 -m false /contrato/comprobantes-v1.yaml
@@ -435,7 +436,7 @@ services:
     expose:
       - "4010"
 
-  # Métricas y tablero (G20, ADR-011). Prometheus lee /metrics de cada servicio y evalúa las
+  # Métricas y tablero (ADR-011). Prometheus lee /metrics de cada servicio y evalúa las
   # alertas; Grafana muestra el tablero "GhostKitchen", ya cargado al arrancar.
   prometheus:
     image: prom/prometheus:v2.54.1

@@ -9,7 +9,7 @@ import (
 	"ghostkitchen/pedidos/internal/ports"
 )
 
-// MetricasService arma las métricas del negocio para el admin de cocina (HU22, G21).
+// MetricasService arma las métricas del negocio para el admin de cocina.
 type MetricasService struct {
 	Cocinas ports.Cocinas
 	Repo    ports.MetricasRepo

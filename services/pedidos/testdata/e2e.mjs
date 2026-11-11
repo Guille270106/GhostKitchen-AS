@@ -110,10 +110,10 @@ exigir(r.estado === 200, `agrega 2 platos al carrito (reserva 4 unidades; esper√
 let s = await stock();
 revisar(JSON.stringify(s).includes("4"), "Inventario: 4 unidades reservadas", JSON.stringify(s));
 
-r = await pedir("POST", "/pedidos", { token: cliente, headers: { "Idempotency-Key": `e2e-${marca}-1` } });
+r = await pedir("POST", "/pedidos", { token: cliente, cuerpo: { direccionEntrega: "Obispo Trejo 323" }, headers: { "Idempotency-Key": `e2e-${marca}-1` } });
 exigir(r.estado === 201 && r.json.estado === "RECIBIDO", "confirma: 201 y el pedido en RECIBIDO", r.estado + " " + r.texto);
 const pedido1 = r.json;
-const otraVez = await pedir("POST", "/pedidos", { token: cliente, headers: { "Idempotency-Key": `e2e-${marca}-1` } });
+const otraVez = await pedir("POST", "/pedidos", { token: cliente, cuerpo: { direccionEntrega: "Obispo Trejo 323" }, headers: { "Idempotency-Key": `e2e-${marca}-1` } });
 revisar(otraVez.estado === 201 && otraVez.json.id === pedido1.id, "doble clic con la misma clave: el mismo pedido", otraVez.estado + " " + otraVez.texto);
 s = await stock();
 const despuesDeConfirmar = JSON.stringify(s);
@@ -143,7 +143,7 @@ revisar(devuelto, "Inventario devolvi√≥ los ingredientes (en segundo plano, meno
 console.log("\n== Cocina y entrega ==");
 r = await pedir("POST", "/carrito/items", { token: cliente, cuerpo: { platoId: plato.id, cantidad: 1 } });
 exigir(r.estado === 200, "otro carrito con 1 plato", r.estado + " " + r.texto);
-r = await pedir("POST", "/pedidos", { token: cliente, headers: { "Idempotency-Key": `e2e-${marca}-2` } });
+r = await pedir("POST", "/pedidos", { token: cliente, cuerpo: { direccionEntrega: "Obispo Trejo 323" }, headers: { "Idempotency-Key": `e2e-${marca}-2` } });
 exigir(r.estado === 201, "confirma el segundo pedido", r.estado + " " + r.texto);
 const pedido2 = r.json;
 r = await pedir("POST", `/pedidos/${pedido2.id}/entregado`, { token: cliente });
