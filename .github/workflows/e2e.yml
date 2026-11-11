@@ -1,0 +1,73 @@
+# Prueba de punta a punta (services/pedidos/testdata/e2e.mjs), en cada pull request.
+#
+# Levanta el sistema como en la compu de cada uno (docker-compose.yml) y recorre el flujo entero
+# por el gateway, como el frontend: el admin crea una cuenta Cocina; la cocina crea plato,
+# ingrediente y receta; el cliente compra, confirma (Inventario descuenta) y cancela (Inventario
+# devuelve), y otro pedido llega hasta ENTREGADO. Al final revisa que los eventos lleguen a
+# RabbitMQ. Los tests de cada servicio prueban cada uno por separado; este prueba que sigan
+# funcionando juntos.
+name: Prueba de punta a punta
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths-ignore: ["**/*.md", "docs/**"]
+  push:
+    branches: [develop]
+    paths-ignore: ["**/*.md", "docs/**"]
+
+# Si se sube otro commit al mismo pull request, la corrida anterior se cancela.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # Los servicios del flujo (todos con healthcheck); sus bases, RabbitMQ y Solr arrancan solos
+      # porque dependen de ellos. El frontend, Prometheus y Grafana no hacen falta.
+      SERVICIOS: usuarios inventario pedidos notificaciones catalogo-1 catalogo-2 busqueda gateway
+      # Estos no son dependencias en el compose, pero el flujo los usa: la caché de Catálogo y el
+      # mock del Grupo 4, al que Pedidos le pide la factura.
+      EXTRAS: memcached comprobantes-mock
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Un .env descartable con claves al azar (el mismo script que en la nube). PROVIDER_BASE_URL
+      # queda vacía, así Pedidos le pide la factura al mock del Grupo 4. No se imprime nada.
+      - name: Crear el .env de prueba
+        run: sh infra/nube/crear-env.sh localhost > /dev/null
+
+      - name: Compilar y levantar el sistema
+        run: docker compose up -d --build $SERVICIOS $EXTRAS
+
+      # Se espera a que los 8 estén healthy: cada servicio aplica sus migraciones y carga los
+      # datos de ejemplo al arrancar, y Búsqueda arma su índice desde Catálogo.
+      - name: Esperar a que todo esté listo
+        run: |
+          total=$(echo $SERVICIOS | wc -w)
+          for i in $(seq 1 72); do
+            listos=$(docker compose ps --format '{{.Service}} {{.Health}}' $SERVICIOS | grep -c ' healthy$' || true)
+            if [ "$listos" -eq "$total" ]; then echo "Listos los $total servicios"; exit 0; fi
+            sleep 5
+          done
+          echo "A los 6 minutos hay $listos de $total servicios listos:"
+          docker compose ps -a
+          exit 1
+
+      - name: Correr la prueba de punta a punta
+        run: node services/pedidos/testdata/e2e.mjs
+
+      - name: Logs si falló
+        if: failure()
+        run: docker compose logs --tail 80 $SERVICIOS $EXTRAS rabbitmq
+
+      - name: Bajar todo
+        if: always()
+        run: docker compose down -v

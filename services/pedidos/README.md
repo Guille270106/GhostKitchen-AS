@@ -247,6 +247,8 @@ Necesita Node 18 o más nuevo y el `.env` completo (usa `ADMIN_PASSWORD` y el us
 
 Deja datos de prueba (cuentas `cocina.e2e…` y `cliente.e2e…`, un plato y un ingrediente "e2e", pedidos y mensajes en la cola). Un plato recién activado tarda uno o dos segundos en poder pedirse, hasta que Inventario recibe el aviso de Catálogo por RabbitMQ (consistencia eventual): el script lo espera.
 
+La misma prueba corre en GitHub Actions en cada pull request ([`.github/workflows/e2e.yml`](../../.github/workflows/e2e.yml)), con un `.env` descartable y el sistema recién levantado. Si falla, el pull request queda en rojo y el job muestra los logs de los servicios.
+
 ## Qué hace
 
 - **Carrito:** guarda los platos y cantidades que eligió el cliente, todos de **una sola cocina**. Guarda una copia del nombre, el precio y el restaurante de cada plato, y el número de la reserva que hizo Inventario.
