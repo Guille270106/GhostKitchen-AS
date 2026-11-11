@@ -506,7 +506,7 @@ El objetivo es probar las reglas importantes y explicar los resultados. Un porce
 | [ADR-006](adr/ADR-006-busqueda.md) | D6 Búsqueda | Aceptada, implementada (con mensajes) | 2 (mensajes en la final) |
 | [ADR-007](adr/ADR-007-cache.md) | D7 Caché | Aceptada, implementada y medida | 2 (medida en la final) |
 | [ADR-008](adr/ADR-008-contrato-propio.md) | D8 Lo que publicamos | Aceptada, implementada (contrato 1.1.0 sin cambios) | 1 (implementada en la 2) |
-| [ADR-009](adr/ADR-009-consumo-del-proveedor.md) | D9 Lo que consumimos | Aceptada e implementada (Grupo 4, comprobantes; hoy contra su mock) | 2 (implementada en la final) |
+| [ADR-009](adr/ADR-009-consumo-del-proveedor.md) | D9 Lo que consumimos | Aceptada e implementada (Grupo 4, comprobantes; validada contra su servicio real) | 2 (implementada en la final) |
 | [ADR-010](adr/ADR-010-resiliencia.md) | D10 Qué pasa cuando algo falla | Aceptada; implementada y validada en la jornada de fallas | 2 (validada en la final) |
 | [ADR-011](adr/ADR-011-observabilidad.md) | D11 Monitoreo | Aceptada, implementada | 2 (completa en la final) |
 | [ADR-012](adr/ADR-012-balanceo-de-carga.md) | D12 Balanceo de carga | Aceptada, implementada y validada | 2 (validada en la final) |
@@ -515,7 +515,7 @@ El objetivo es probar las reglas importantes y explicar los resultados. Un porce
 ## 14. Limitaciones conocidas
 
 - **En la nube corre solo la API publicada:** Usuarios, Inventario, Pedidos y Notificaciones corren en local. Por eso la disponibilidad que devuelve la API en la nube sale de los datos de ejemplo ([infra/nube](../infra/nube/README.md)).
-- **El grupo proveedor (Grupo 4) todavía no publicó su URL pública:** Pedidos usa su mock, servido desde su contrato, y el test de contrato corre contra ese mock ([ADR-009](adr/ADR-009-consumo-del-proveedor.md)). Cuando la publiquen, se completa el `.env` y se pide la API key.
+- **El servicio del proveedor (Grupo 4) no lo controlamos:** si se cae o cambia su contrato, las facturas quedan pendientes hasta que vuelva (el pedido nunca se frena) y el test de contrato, que corre contra la copia de su OpenAPI, avisa de un cambio incompatible recién cuando actualizamos esa copia ([ADR-009](adr/ADR-009-consumo-del-proveedor.md)).
 - **Reglas que definimos nosotras**, porque el enunciado no las fija: los pedidos los recibe la cocina (y no cada restaurante), los 10 minutos de la reserva no se reinician al agregar platos y el cliente puede cancelar mientras el pedido está RECIBIDO ([SPEC](../SPEC.md)).
 - **Usuarios es una pieza crítica:** el gateway le pregunta en cada solicitud con login. Si se cae, nadie puede usar las funciones privadas. La alternativa sería que NGINX verifique el token por su cuenta, pero eso requiere un módulo extra o un gateway propio.
 - **NGINX gratuito solo detecta una copia caída cuando le fallan los pedidos** (no la revisa por su cuenta cada tanto; eso es de la versión paga).

@@ -1,6 +1,6 @@
 # ADR-009 — Lo que consumimos de otro grupo
 
-- **Estado:** Aceptada (2026-11-09). Reemplaza la propuesta del 2026-10-16, escrita antes de que la cátedra asignara el proveedor
+- **Estado:** Aceptada e implementada; validada contra el servicio real del Grupo 4 (2026-11-11). Reemplaza la propuesta del 2026-10-16, escrita antes de que la cátedra asignara el proveedor
 - **Fecha:** 2026-10-16, completada el 2026-11-09
 - **Responsable:** Lucía Rucci
 - **Decisión del enunciado:** D9 (cómo incorporamos la capacidad externa, cómo nos adaptamos a su contrato y qué hacemos ante errores, cambios o caídas)
@@ -45,7 +45,7 @@ Un cambio en sus nombres o formatos se arregla en el adaptador, sin tocar las re
 ### 3. Contrato, mock y test de contrato
 
 - Guardamos **su OpenAPI sin cambios** en [`docs/contracts/proveedor/comprobantes-v1.yaml`](../contracts/proveedor/comprobantes-v1.yaml), con la versión y el commit de su repositorio.
-- **Su mock con Prism** (`comprobantes-mock` en `docker-compose.yml`) se sirve desde ese archivo. Mientras no publiquen su URL, Pedidos lo usa: `PROVIDER_BASE_URL` y `PROVIDER_API_KEY` vacías en el `.env` apuntan al mock.
+- **Su mock con Prism** (`comprobantes-mock` en `docker-compose.yml`) se sirve desde ese archivo. Pedidos lo usa si `PROVIDER_BASE_URL` y `PROVIDER_API_KEY` están vacías en el `.env` (por ejemplo, en una compu sin la clave). Con las dos completas, usa su servicio real: `https://68-211-124-251.sslip.io`.
 - **Test de contrato** (`adapters/proveedor/contrato_test.go`, corre en `testdata/compose.yml`): le manda a su mock lo que arma nuestro adaptador, incluidos los casos límite (nombre largo, línea de importe 0, la clave más larga). Prism valida cada solicitud contra su OpenAPI y responde `422` si algo no cumple; además, el adaptador tiene que entender su respuesta de ejemplo. Un segundo test comprueba que el mock de verdad rechaza lo inválido (sin API key, un campo de más, sin líneas), así el primero no pasa "porque sí".
 - Si publican una versión nueva, se reemplaza el archivo y el test avisa si algo dejó de ser compatible.
 
@@ -79,14 +79,15 @@ Un cambio en sus nombres o formatos se arregla en el adaptador, sin tocar las re
 ## Consecuencias
 
 - El cliente nunca espera ni pierde un pedido por el proveedor; la factura puede llegar unos segundos o minutos después.
-- Hay que mantener la copia de su contrato al día y pedir la API key una sola vez cuando publiquen su URL.
+- Hay que mantener la copia de su contrato al día. La API key se pidió una sola vez y vive en el `.env` de cada compu.
 - Una factura rechazada no se reintenta sola: queda registrada para revisarla.
-- Mientras no publiquen su URL, todo el flujo se prueba contra su mock.
+- El test de contrato corre contra su mock, así no depende de que su servicio esté prendido; el flujo completo se probó también contra su servicio real.
 
 ## Cómo lo validamos
 
 - **Test de contrato** contra su mock, en cada corrida de `testdata/compose.yml` (y en GitHub Actions, en cada pull request).
 - **Tests del servicio y del adaptador**: misma clave en cada reintento, rechazo sin reintento, timeout como pendiente, circuit breaker.
+- **Contra su servicio real (2026-11-11):** con `PROVIDER_BASE_URL` y `PROVIDER_API_KEY` completas, cada pedido confirmado recibió su factura emitida por el Grupo 4, con números consecutivos que asigna su servidor (`B-0001-00000011` en adelante), y el PDF llegó al mail del cliente. Una consulta con una clave mal copiada dio `401` y las facturas quedaron pendientes sin frenar ningún pedido; con la clave correcta salieron solas.
 - **Jornada de fallas (hecha, 2026-11-10):** con el proveedor caído, el pedido se confirmó igual en 0,1 s, la factura quedó pendiente y salió sola 7 s después de que volvió. Detalle en el [POSTMORTEM](../POSTMORTEM.md).
 
 ## Referencias

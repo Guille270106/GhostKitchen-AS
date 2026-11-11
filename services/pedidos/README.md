@@ -197,7 +197,7 @@ Lo que consumimos de otro grupo es la **API de comprobantes del Grupo 4**: con e
 
 - Tiene su propio **circuit breaker** (ADR-010): si en 10 llamadas falla la mitad, no los llamamos durante 10 s.
 - `GET /api/v1/pedidos/{id}` muestra cómo va: `"comprobante": {"estado": "EMITIDO", "numero": "B-0001-00000042"}`.
-- Configuración: `PROVIDER_BASE_URL` y `PROVIDER_API_KEY` del `.env`. Mientras estén vacías (el Grupo 4 todavía no publicó su URL), `docker-compose.yml` usa su mock, `comprobantes-mock`, que valida cada solicitud contra su contrato.
+- Configuración: `PROVIDER_BASE_URL` y `PROVIDER_API_KEY` del `.env`. Con las dos completas usa el servicio real del Grupo 4 (`https://68-211-124-251.sslip.io`); si están vacías, `docker-compose.yml` usa su mock, `comprobantes-mock`, que valida cada solicitud contra su contrato.
 
 ## Métricas del negocio para el admin
 

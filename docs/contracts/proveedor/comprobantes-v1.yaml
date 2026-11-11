@@ -20,8 +20,8 @@ info:
 
     Historial y política de versionado: `docs/contracts/README.md`.
 servers:
-  - url: https://URL-PUBLICA-PENDIENTE
-    description: Producción. COMPLETAR con la URL pública cuando el servicio esté desplegado.
+  - url: https://68-211-124-251.sslip.io
+    description: Producción (VM en Azure, Chile Central).
   - url: http://localhost:4010
     description: Mock local (Prism)
 security:
