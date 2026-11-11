@@ -8,7 +8,7 @@
 // búsqueda; V16/V17 el inventario; L17/L18 el carrito y los pedidos; G21 el admin).
 
 import { dishPhotos } from "../data/dishPhotos";
-import { FOTOS_COCINA, photos, zonas } from "../data/visual";
+import { ETIQUETAS, FOTOS_COCINA, categorias, photos, zonas } from "../data/visual";
 import { clearAuthToken, getAuthToken, getCurrentUser, setAuthToken, setSessionProfile } from "../utils/auth";
 import { estadoLabel } from "../utils/formatters";
 
@@ -274,13 +274,43 @@ export async function getPlatosDestacados({ localidadId, limit = 4 } = {}) {
   return res.items.map(platoDeBusqueda);
 }
 
-// Sugerencias mientras se escribe: nombres de platos de la sede que empiezan con lo escrito.
-export async function autocompletePlatos(q, { localidadId } = {}) {
+// Sugerencias mientras se escribe (como las de Google). Cada palabra escrita tiene que ser el
+// principio de alguna palabra: "doble ham" sugiere "Hamburguesa doble". Devuelve:
+// - categorias: categorías y etiquetas de la lista fija que coinciden (no consultan a nadie);
+// - platos: platos de la sede cuyo nombre, marca o categoría coincide, sin repetir nombre y marca.
+export const MINIMO_SUGERENCIAS = 2;
+const palabras = (texto) => normalizar(texto).split(/[^a-z0-9ñ]+/).filter(Boolean);
+const coincide = (tokens, texto) => {
+  const suyas = palabras(texto);
+  return tokens.every((t) => suyas.some((p) => p.startsWith(t)));
+};
+
+export async function autocompletePlatos(q, { localidadId, limite = 6 } = {}) {
   const texto = String(q || "").trim();
-  if (texto.length < 3 || !localidadId) return [];
+  const tokens = palabras(texto);
+  if (texto.length < MINIMO_SUGERENCIAS || !tokens.length) return { categorias: [], platos: [] };
+
+  const etiquetasSueltas = ETIQUETAS.filter((e) => !categorias.some((c) => c.id === e)).map((e) => ({ id: e, label: e, esEtiqueta: true }));
+  const cats = [...categorias, ...etiquetasSueltas].filter((c) => coincide(tokens, `${c.label} ${c.id}`)).slice(0, 2);
+
+  if (!localidadId) return { categorias: cats, platos: [] };
   const res = await buscarEnSede(localidadId, { q: texto, soloDisponibles: false, pageSize: 20 });
-  const inicio = normalizar(texto);
-  return [...new Set(res.items.map((p) => p.nombre).filter((n) => normalizar(n).startsWith(inicio)))].sort().slice(0, 5);
+  const vistos = new Set();
+  const platos = (res.items || [])
+    .map(platoDeBusqueda)
+    .filter((p) => coincide(tokens, `${p.nombre} ${p.restauranteNombre || ""} ${p.categoria || ""}`))
+    .filter((p) => {
+      const clave = `${normalizar(p.nombre)}|${p.restauranteId}`;
+      if (vistos.has(clave)) return false;
+      vistos.add(clave);
+      return true;
+    })
+    // Primero los que coinciden por el nombre del plato, y entre ellos los que empiezan con lo escrito.
+    .map((p) => ({ p, puntaje: (coincide(tokens, p.nombre) ? 2 : 0) + (normalizar(p.nombre).startsWith(tokens[0]) ? 1 : 0) }))
+    .sort((a, b) => b.puntaje - a.puntaje)
+    .slice(0, limite)
+    .map(({ p }) => ({ id: p.id, nombre: p.nombre, restauranteNombre: p.restauranteNombre, foto: p.foto, sinStock: p.sinStock }));
+  return { categorias: cats, platos };
 }
 
 const ORDENES = { relevancia: "relevancia", "precio-asc": "precio_asc", "precio-desc": "precio_desc" };
