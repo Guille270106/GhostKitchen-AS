@@ -83,7 +83,7 @@ func (b *Busqueda) BuscarPlatos(ctx context.Context, f domain.FiltroPlatos) (Res
 	if platos == nil {
 		platos = []domain.Plato{}
 	}
-	metricas.RegistrarBusqueda(total)
+	metricas.RegistrarBusqueda(f.Texto, total)
 	return ResultadoPlatos{
 		Sede:        sede.Ref(),
 		Items:       platos,

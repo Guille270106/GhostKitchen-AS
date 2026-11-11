@@ -13,6 +13,7 @@ package metricas
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -28,11 +29,11 @@ const Ruta = "/metrics"
 var (
 	busquedas = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "busqueda_consultas_total",
-		Help: "Búsquedas de platos completadas correctamente.",
+		Help: "Búsquedas de platos con texto completadas correctamente (incluye el autocompletado).",
 	})
 	sinResultados = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "busqueda_sin_resultados_total",
-		Help: "Búsquedas de platos completadas con total cero, sin datos del usuario.",
+		Help: "Búsquedas de platos con texto que no encontraron nada, sin guardar el texto.",
 	})
 	solicitudes = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_requests_total",
@@ -48,8 +49,14 @@ var (
 	}, []string{"method", "route"})
 )
 
-// RegistrarBusqueda cuenta resultados exitosos; una página vacía no implica total cero.
-func RegistrarBusqueda(total int) {
+// RegistrarBusqueda cuenta las búsquedas con texto que salieron bien, y cuántas no
+// encontraron nada (total cero; una página vacía no lo es). Sin texto no es una búsqueda: es
+// recorrer el menú o una categoría, y no se cuenta. El texto no se guarda: no es un dato que
+// deba quedar en las métricas. Incluye las consultas del autocompletado mientras se escribe.
+func RegistrarBusqueda(texto string, total int) {
+	if strings.TrimSpace(texto) == "" {
+		return
+	}
 	busquedas.Inc()
 	if total == 0 {
 		sinResultados.Inc()

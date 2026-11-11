@@ -29,8 +29,10 @@ func TestRegistrarBusqueda(t *testing.T) {
 		return 0
 	}
 	total, vacias := leer("busqueda_consultas_total"), leer("busqueda_sin_resultados_total")
-	RegistrarBusqueda(0)
-	RegistrarBusqueda(10)
+	RegistrarBusqueda("sorrentinos", 0)
+	RegistrarBusqueda("pizza", 10)
+	RegistrarBusqueda("", 0)   // recorrer una categoría vacía no es una búsqueda sin resultados
+	RegistrarBusqueda("  ", 0) // solo espacios, tampoco
 	if leer("busqueda_consultas_total")-total != 2 || leer("busqueda_sin_resultados_total")-vacias != 1 {
 		t.Fatal("conteo incorrecto")
 	}

@@ -1140,7 +1140,7 @@
     {
       "type": "timeseries",
       "title": "Búsquedas sin resultado por minuto",
-      "description": "Consultas exitosas con total cero; sin texto ni datos del usuario.",
+      "description": "Búsquedas con texto que no encontraron ningún plato (no cuenta recorrer una categoría). Incluye las consultas del autocompletado mientras se escribe. No guarda el texto buscado.",
       "id": 24,
       "datasource": {
         "type": "prometheus",
