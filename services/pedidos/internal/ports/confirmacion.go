@@ -37,8 +37,15 @@ type Consumo interface {
 	Consumir(ctx context.Context, clave, reservaID, pedidoID string) error
 }
 
-// Envios da la tarifa de envío actual de una cocina (Catálogo, sin caché). Se lee una sola vez,
-// al confirmar, y queda guardada en la confirmación y en el pedido.
+// Envios da los datos de la cocina que se copian al pedido al confirmar (Catálogo, sin caché):
+// la tarifa de envío y el nombre de cada restaurante. Se leen una sola vez y quedan guardados en
+// la confirmación y en el pedido, así no cambian si después la cocina los cambia.
 type Envios interface {
-	CostoEnvio(ctx context.Context, cocinaID string) (int64, error)
+	DatosDeCocina(ctx context.Context, cocinaID string) (DatosCocina, error)
+}
+
+// DatosCocina es lo que el pedido copia de su cocina.
+type DatosCocina struct {
+	CostoEnvio   int64
+	Restaurantes map[string]string // id del restaurante -> nombre
 }
