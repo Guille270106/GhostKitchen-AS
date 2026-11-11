@@ -448,6 +448,7 @@ Las caídas de Inventario, RabbitMQ, el correo y el proveedor las provocamos en 
 | API publicada en la nube (Azure) con HTTPS | ✅ Entrega final ([infra/nube](../infra/nube/README.md)) |
 | Test de contrato de la API publicada en cada pull request | ✅ Entrega final (`.github/workflows/contrato.yml`) |
 | Prueba de punta a punta (todos los servicios juntos) en cada pull request | ✅ Entrega final (`.github/workflows/e2e.yml`) |
+| Prueba de la pantalla en un navegador (Playwright) en cada pull request | ✅ Entrega final (`frontend/e2e`, en el mismo job) |
 
 En local, Docker Compose levanta frontend, gateway, servicios y sus dependencias. La entrada del frontend es el gateway. `docker compose up --build` levanta todo, Notificaciones y Mailpit incluidos.
 
