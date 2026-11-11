@@ -21,6 +21,7 @@ export function mensajePara(campo) {
   }
   if (v.customError) return campo.validationMessage;
   if (v.typeMismatch && campo.type === "email") return "Escribí un mail válido, por ejemplo nombre@gmail.com.";
+  if (v.typeMismatch && campo.type === "url") return "Pegá un link que empiece con https://.";
   if (v.typeMismatch) return "El formato no es válido.";
   if (v.tooShort) return `Tiene que tener al menos ${campo.minLength} caracteres (tiene ${campo.value.length}).`;
   if (v.tooLong) return `Puede tener hasta ${campo.maxLength} caracteres.`;
@@ -41,14 +42,18 @@ function revisarMail(campo) {
 
 let siguienteId = 0;
 
+// Dónde va el aviso: después del campo o, si el campo está dentro de un contenedor propio (la
+// contraseña con su botón para verla), después del contenedor, no entre el campo y el botón.
+const ancla = (campo) => campo.closest("[data-campo]") || campo;
+
 function mostrar(campo) {
-  let aviso = campo.nextElementSibling;
+  let aviso = ancla(campo).nextElementSibling;
   if (!aviso || !aviso.classList.contains("campo-error")) {
     aviso = document.createElement("span");
     aviso.className = "campo-error";
     aviso.id = `campo-error-${++siguienteId}`;
     aviso.setAttribute("role", "alert");
-    campo.insertAdjacentElement("afterend", aviso);
+    ancla(campo).insertAdjacentElement("afterend", aviso);
   }
   aviso.textContent = mensajePara(campo);
   campo.classList.add("campo-invalido");
@@ -57,7 +62,7 @@ function mostrar(campo) {
 }
 
 function ocultar(campo) {
-  const aviso = campo.nextElementSibling;
+  const aviso = ancla(campo).nextElementSibling;
   if (aviso && aviso.classList.contains("campo-error")) aviso.remove();
   campo.classList.remove("campo-invalido");
   campo.removeAttribute("aria-invalid");
