@@ -88,3 +88,27 @@ func TestTyposConPrefijo(t *testing.T) {
 		}
 	}
 }
+
+// Una letra de diferencia en una palabra corta es otro plato: no se toma como typo.
+func TestPalabrasCortasNoSeConfunden(t *testing.T) {
+	for _, c := range []struct{ texto, consulta string }{
+		{"Salmón roll x 10", "pollo"},
+		{"Balde de pollo x 8", "roll"},
+		{"Tostado de jamón y queso en pan de miga", "mega"},
+		{"Café en grano para preparar en casa", "papa"},
+		{"Cheesecake de frutos rojos", "cafe"},
+	} {
+		if ContieneConPrefijo(c.texto, c.consulta) {
+			t.Errorf("%q no tendría que encontrar %q", c.consulta, c.texto)
+		}
+	}
+	for _, c := range []struct{ texto, consulta string }{
+		{"Empanadas de carne x 6", "empanda"},
+		{"Milanesa a caballo", "milaneza"},
+		{"Hamburguesa doble", "hamburgesa"},
+	} {
+		if !ContieneConPrefijo(c.texto, c.consulta) {
+			t.Errorf("%q tendría que encontrar %q", c.consulta, c.texto)
+		}
+	}
+}

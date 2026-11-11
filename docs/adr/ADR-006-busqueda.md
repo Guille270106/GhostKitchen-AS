@@ -34,7 +34,10 @@ Guardamos **solo lo necesario para buscar, filtrar y mostrar**. No indexamos rec
 
 ### Cómo se consulta
 
-- **Texto:** `edismax` sobre `nombre^3 restaurante_nombre^2 categoria_txt^2 descripcion`. Un plato cuyo nombre coincide aparece antes que uno donde la palabra está solo en la descripción. Con `mm=100%`, todas las palabras tienen que aparecer. Los caracteres especiales del usuario se escapan para que no se interpreten como operadores.
+- **Texto:** `edismax` sobre `nombre^3 restaurante_nombre^2 categoria_txt^2 descripcion`. Un plato cuyo nombre coincide aparece antes que uno donde la palabra está solo en la descripción. Todas las palabras tienen que aparecer (cada una va con `+`). Los caracteres especiales del usuario se descartan, así no se interpretan como operadores.
+  - **La última palabra también vale como comienzo** (`hambur` encuentra *Hamburguesa*), desde 3 letras; con menos, casi todo coincidiría. Va `hambur OR hambur*` porque el comodín no pasa por la raíz del español.
+  - **Errores de tipeo:** una palabra de **6 letras o más** acepta una letra de diferencia sobre su raíz (`sorentinos`, `hamburgesa`, `milaneza`, `empanda` encuentran el plato). Se midió con los 64 platos del menú: con 4 o 5 letras una letra cambia de plato (`pollo` traía los *roll* de sushi, `mega` el pan de *miga*, `papa` el café "*para* preparar"); desde 6 no hay cruces. Lo ideal sería exigir que la primera letra coincida, pero la consulta de Solr que usamos no lo permite. Los errores en palabras cortas los cubren las sugerencias, que aparecen desde la 3.ª letra, antes de llegar a la letra equivocada.
+  - **Con stock primero:** ordenando por relevancia, los platos disponibles suben (`bq=disponible:true^2`) sin esconder los demás.
 - **Filtros** (`fq`, no afectan la relevancia y Solr los reutiliza entre consultas): `activo:true`, la cocina, `disponible:true` por defecto, y los filtros opcionales del contrato.
 - **Orden:** por relevancia (`score desc, id asc`) o por precio (`precio asc|desc, id asc`). El `id` desempata para que la paginación sea estable.
 - **Cocina más cercana:** `sort=geodist() asc, id asc` sobre las cocinas activas; si la más cercana está a más de 25 km, `404 SIN_COBERTURA`. La distancia que mostramos se calcula con Haversine en Go con el mismo radio terrestre que usa Solr.
@@ -74,7 +77,8 @@ Si el atraso supera lo aceptado, lo tratamos como incidente aunque Solr siga res
 | **Elasticsearch / OpenSearch** | Muy usados | Hacen lo mismo que necesitamos; Solr ya lo conocíamos | Elegimos Solr |
 | **Calcular la cocina más cercana en Go** recorriendo todas | Sin motor geoespacial | Funciona con 4 cocinas, no con muchas; y no aprovecha el índice | Solo para la proximidad externa (dos puntos que no se guardan) |
 | **Que Búsqueda lea las bases de Catálogo e Inventario** | Siempre al día | Rompe "una base por servicio" ([ADR-001](ADR-001-limites-de-los-servicios.md)) | La descartamos: API para reconstruir y mensajes para cambios |
-| **Sinónimos y tolerancia a errores ya en la Entrega 2** | Mejor búsqueda | Mal configurados empeoran la precisión y requieren pruebas con consultas reales | Los dejamos para el frontend, con pruebas |
+| **Sinónimos y tolerancia a errores ya en la Entrega 2** | Mejor búsqueda | Mal configurados empeoran la precisión y requieren pruebas con consultas reales | Los dejamos para la entrega final, con pruebas |
+| **Tolerancia a errores desde 4 letras** | También encuentra `piza` o `polo` | Con el menú real trae platos de otro tipo (`pollo` → *roll*) | Desde 6 letras: preferimos que falte un resultado a mostrar uno equivocado |
 
 ## Consecuencias
 
@@ -86,10 +90,10 @@ Si el atraso supera lo aceptado, lo tratamos como incidente aunque Solr siga res
 
 **Lo que aceptamos**
 
-- Hasta que exista RabbitMQ, un cambio en Catálogo solo se ve después de reconstruir.
+- Un cambio en Catálogo o en el stock tarda unos segundos en verse: llega por mensaje (ver "Atraso aceptable").
 - La reconstrucción reescribe sobre el mismo core. No creamos una versión nueva del índice para cambiarla de golpe, que sería lo recomendable para cambios de esquema. Con 64 platos no hace falta; con miles habría que hacerlo.
-- La disponibilidad es provisional hasta que exista Inventario.
-- No hay sinónimos ni corrección de errores de tipeo todavía.
+- La disponibilidad del índice es orientativa: quien decide el stock es Inventario, al agregar al carrito.
+- No hay sinónimos. Los errores de tipeo solo se toleran en palabras de 6 letras o más: `piza` no encuentra *Pizza* (lo cubren las sugerencias desde `piz`).
 
 **Riesgos**
 
@@ -103,5 +107,6 @@ Si el atraso supera lo aceptado, lo tratamos como incidente aunque Solr siga res
 
 - **Entrega 2 (hecho):** tests del armado de consultas (texto, filtros, orden, páginas, escape), de la cocina más cercana y `SIN_COBERTURA`, de la reconstrucción contra un Catálogo simulado (activos, páginas, falla a mitad de camino) y del esquema idempotente. Las respuestas cumplen el OpenAPI 1.1.0.
 - **Entrega final (hecho):** el lector de mensajes tiene un test contra RabbitMQ real; el atraso entre el cambio y el índice se mide (`busqueda_indice_atraso_seconds`) y la alerta `IndiceAtrasado` salta si el p95 pasa los 5 s ([ADR-011](ADR-011-observabilidad.md)).
+- **Errores de tipeo (entrega final):** la consulta a Solr y la búsqueda en memoria usan el mismo umbral (`texto.MinDifuso`). Los tests cubren los dos lados con platos del menú: lo que tiene que encontrar (`sorentinos`, `milaneza`) y lo que no (`pollo` no encuentra *roll*).
 - **No llegamos:** un test de integración contra un Solr real (acentos, relevancia y `geodist()`). Hoy se prueba con un Solr simulado.
 

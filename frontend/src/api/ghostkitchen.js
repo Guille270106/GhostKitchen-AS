@@ -472,7 +472,9 @@ export async function addToCart(platoId) {
     headers: { "Idempotency-Key": clave },
   }).catch((error) => {
     if (error.status === 409 && error.code === "CARRITO_MODIFICADO") {
-      throw new ApiError("Estamos confirmando tu pedido. Cuando termine, podés armar uno nuevo.", error.code, error.status);
+      // Sale si el carrito cambió mientras se agregaba: un pedido confirmándose, un doble clic
+      // o el mismo carrito abierto en otra pestaña. Reintentar en unos segundos lo resuelve.
+      throw new ApiError("Tu carrito cambió mientras agregabas el plato. Probá de nuevo en unos segundos.", error.code, error.status);
     }
     throw error;
   });

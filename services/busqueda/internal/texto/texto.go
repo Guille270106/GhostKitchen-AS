@@ -81,8 +81,11 @@ func Contiene(texto, consulta string) bool {
 // palabra. Con menos letras, "ha" encontraría casi todo.
 const MinPrefijo = 3
 
-// MinDifuso evita ampliar palabras cortas a términos sin relación.
-const MinDifuso = 4
+// MinDifuso es el largo mínimo para aceptar un typo (una letra de diferencia). Con palabras
+// cortas, una letra cambia de plato: con 4 o 5, "pollo" (raíz "poll") encontraba los "roll" de
+// sushi, "mega" el pan de "miga" y "pasta" los postres. Desde 6 letras ya no hay cruces en el
+// menú, y siguen andando "sorentinos", "hamburgesa", "milaneza" o "empanda".
+const MinDifuso = 6
 
 // ContieneConPrefijo exige todas las palabras y conserva prefijos en la última.
 // La alternativa difusa compara raíces, igual que la consulta enviada a Solr.
