@@ -104,6 +104,6 @@ export const FOTOS_COCINA = {
   "barrio-jardin": photos.sushiTabla,
 };
 
-// Una cocina tiene como máximo 4 restaurantes (RN20). Catálogo lo controla igual; acá solo
+// Una cocina tiene como máximo 4 restaurantes. Catálogo lo controla igual; acá solo
 // sirve para desactivar el botón antes de intentarlo.
 export const MAX_RESTAURANTES = 4;

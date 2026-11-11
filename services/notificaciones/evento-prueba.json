@@ -3,7 +3,7 @@
   "tipo": "pedido.estado_cambiado",
   "version": 1,
   "ocurrido_en": "2026-11-09T12:00:00Z",
-  "correlation_id": "prueba-v15",
+  "correlation_id": "prueba-mensaje-repetido",
   "agregado_id": "pedido-prueba-1",
   "secuencia": 2,
   "datos": {

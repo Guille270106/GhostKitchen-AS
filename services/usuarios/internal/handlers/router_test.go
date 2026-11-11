@@ -20,7 +20,7 @@ import (
 
 func init() { gin.SetMode(gin.TestMode) }
 
-// repoFalso es un repositorio en memoria: G5 solo necesita saber si la base está lista.
+// repoFalso es un repositorio en memoria: el router solo necesita saber si la base está lista.
 type repoFalso struct{ caido bool }
 
 func (r repoFalso) Crear(context.Context, domain.Usuario) error { return nil }

@@ -11,7 +11,7 @@ import (
 var ErrEnCurso = errors.New("ya hay una reconstrucción en curso")
 
 // Exclusiva hace que haya una sola reconstrucción a la vez, venga del arranque o de
-// POST /internal/reindexar (G22). Dos en paralelo duplicarían la carga sobre Catálogo,
+// POST /internal/reindexar. Dos en paralelo duplicarían la carga sobre Catálogo,
 // Inventario y Solr sin ninguna ventaja (bulkhead, ADR-010).
 type Exclusiva struct {
 	mu          sync.Mutex

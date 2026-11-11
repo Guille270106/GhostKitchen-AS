@@ -6,10 +6,10 @@ import (
 	"unicode/utf8"
 )
 
-// Errores de las escrituras de la cuenta Cocina sobre sus platos (HU17).
+// Errores de las escrituras de la cuenta Cocina sobre sus platos.
 var (
 	ErrOtraCocina = errors.New("el plato o el restaurante es de otra cocina")
-	// ErrSinReceta: un plato sin receta no se publica (RN18). Las recetas son de Inventario.
+	// ErrSinReceta: un plato sin receta no se publica. Las recetas son de Inventario.
 	ErrSinReceta = errors.New("el plato no tiene receta")
 	// ErrInventarioNoDisponible: no se pudo preguntar a Inventario si hay receta. No se toma
 	// como "no tiene receta": se responde 503 y se puede reintentar.
@@ -57,7 +57,7 @@ func (p *Plato) Aplicar(c CambiosPlato) error {
 	return p.Validar()
 }
 
-// Validar revisa los datos del plato (HU17): nombre, categoría, precio y etiquetas permitidas.
+// Validar revisa los datos del plato: nombre, categoría, precio y etiquetas permitidas.
 func (p Plato) Validar() error {
 	switch {
 	case p.Nombre == "" || utf8.RuneCountInString(p.Nombre) > 80:

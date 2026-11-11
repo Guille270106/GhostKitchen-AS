@@ -3,6 +3,8 @@
 //
 // Es el mismo paquete que en Catálogo y Búsqueda. Si la solicitud trae traceparent (desde el
 // gateway o desde otro servicio), los spans de Inventario quedan dentro de esa misma traza.
+// No tiene el transporte HTTP para llamar a otros servicios: Inventario no llama a nadie,
+// recibe los datos de Catálogo por mensajes.
 package trazas
 
 import (
@@ -13,7 +15,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -84,15 +85,4 @@ func IDs(ctx context.Context) (traceID, spanID string) {
 		return "", ""
 	}
 	return sc.TraceID().String(), sc.SpanID().String()
-}
-
-// Transporte envuelve el transporte HTTP de un cliente: cada llamada a otro servicio crea un
-// span y manda el header traceparent, así la traza sigue en el servicio que llamamos.
-func Transporte(base http.RoundTripper) http.RoundTripper {
-	if base == nil {
-		base = http.DefaultTransport
-	}
-	return otelhttp.NewTransport(base, otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
-		return r.Method + " " + r.URL.Host
-	}))
 }

@@ -111,7 +111,7 @@ func (c *Cliente) Get(ctx context.Context, core, id string) (json.RawMessage, er
 
 // Confirmar hace commit en un core: lo escrito con Escribir aparece en /select ya, sin
 // esperar el segundo de commitWithin. Se usa al terminar de armar el índice (para que /ready
-// diga "listo" con todo visible) y antes de listar los platos de una cocina (G22).
+// diga "listo" con todo visible) y antes de listar los platos de una cocina.
 func (c *Cliente) Confirmar(ctx context.Context, core string) error {
 	return c.hacer(ctx, c.fondo, http.MethodPost, "/"+core+"/update?commit=true", []any{}, nil)
 }
@@ -122,7 +122,7 @@ var ErrConflicto = errors.New("solr: el documento cambió mientras se escribía"
 
 // Escribir agrega o reemplaza documentos (por id) sin esperar el commit: Solr los deja
 // visibles en /select en menos de 1 s (commitWithin), y el real-time get ya los ve. Un commit
-// por escritura tardaba casi 1 s cada uno (G15, G22). Como se reemplaza por id, guardar dos
+// por escritura tardaba casi 1 s cada uno. Como se reemplaza por id, guardar dos
 // veces lo mismo no duplica nada.
 //
 // Si un documento trae _version_, Solr solo lo guarda si coincide con el guardado (o si es -1

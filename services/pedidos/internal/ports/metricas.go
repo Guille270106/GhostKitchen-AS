@@ -14,7 +14,7 @@ type CocinaLocalidad struct {
 }
 
 // Cocinas dice qué cocinas hay en una localidad (lo sabe Catálogo). Así un admin solo ve las
-// métricas de las cocinas de su localidad (HU22, G21).
+// métricas de las cocinas de su localidad.
 type Cocinas interface {
 	CocinasDeLocalidad(ctx context.Context, localidad string) ([]CocinaLocalidad, error)
 }

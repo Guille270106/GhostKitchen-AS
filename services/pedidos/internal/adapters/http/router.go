@@ -25,7 +25,7 @@ func Rutas(log *slog.Logger, salud SaludController, pedidos PedidosController, c
 	router.Use(Logs(log))
 	router.Use(Plazo)
 
-	// Métricas para Prometheus (G19).
+	// Métricas para Prometheus.
 	router.GET(metricas.Ruta, metricas.Handler())
 
 	// Chequeos de Docker.

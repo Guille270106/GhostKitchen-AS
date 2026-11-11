@@ -1,5 +1,5 @@
 #!/bin/sh
-# Crea el .env de la máquina en la nube con claves al azar (L19). Se corre UNA vez, en la
+# Crea el .env de la máquina en la nube con claves al azar. Se corre UNA vez, en la
 # máquina, desde la raíz del repositorio:
 #
 #   sh infra/nube/crear-env.sh 57-156-56-219.sslip.io

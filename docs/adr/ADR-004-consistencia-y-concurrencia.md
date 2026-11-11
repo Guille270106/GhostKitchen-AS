@@ -63,9 +63,9 @@ La confirmación se guarda aparte del estado del pedido. No se mantienen transac
 
 1. Persistir confirmación EN_CURSO, copia del carrito y precios, identificador del pedido futuro y claves de los pasos.
 2. Registrar la intención de consumir y llamar a Inventario. Guardar el resultado. Si hay timeout, consultar reserva/consumo antes de decidir: **resultado desconocido no significa fracaso**.
-3. Ejecutar el paso obligatorio del proveedor según ADR-009. Su ubicación exacta, consulta y compensación quedan pendientes del contrato asignado; no se inventa una garantía externa.
-4. Con todos los pasos exitosos, guardar en una transacción de Pedidos: pedido RECIBIDO, ítems, historial inicial, outbox, carrito CONFIRMADO y confirmación COMPLETADA.
-5. Ante fallo definitivo, persistir la decisión de compensar. Si hubo consumo, devolver con su identidad estable; si solo hay reserva activa, liberarla. Registrar también la compensación del proveedor cuando se conozca.
+3. **El proveedor no es un paso de la saga.** La factura del Grupo 4 no decide si el pedido existe: se anota como pendiente en la misma transacción del paso 4 y Pedidos la pide **después, en segundo plano**, con reintentos y siempre con la misma clave ([ADR-009](ADR-009-consumo-del-proveedor.md)). Si el proveedor está caído o lento, el pedido se crea igual y la factura llega cuando vuelve; por eso tampoco hay nada que compensar del lado del proveedor.
+4. Con todos los pasos exitosos, guardar en una transacción de Pedidos: pedido RECIBIDO (con la dirección de entrega y el costo de envío guardados en la confirmación), ítems, historial inicial, outbox, factura pendiente, carrito CONFIRMADO y confirmación COMPLETADA.
+5. Ante fallo definitivo, persistir la decisión de compensar. Si hubo consumo, devolver con su identidad estable; si solo hay reserva activa, liberarla.
 
 Si cae Pedidos después del consumo o del commit final, el proceso de recuperación consulta y retoma el paso guardado; nunca vuelve a consumir con otra identidad. Si falla temporalmente la creación local del pedido, se reintenta esa transacción. Una decisión durable de abortar excluye la finalización: no se crea un pedido mientras se devuelve su stock.
 

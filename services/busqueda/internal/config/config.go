@@ -18,7 +18,7 @@ type Config struct {
 	SeedAlIniciar bool          // SEED_AL_INICIAR (true): solo si no hay CATALOGO_URL
 	CatalogoURL   string        // CATALOGO_URL (http://catalogo:8082). Si está, el índice se arma desde Catálogo
 	InventarioURL string        // INVENTARIO_URL (http://inventario:8084). Si está, la disponibilidad sale de Inventario
-	RabbitMQURL   string        // RABBITMQ_URL. Si está, el índice se mantiene al día con mensajes (G15)
+	RabbitMQURL   string        // RABBITMQ_URL. Si está, el índice se mantiene al día con mensajes
 }
 
 // Cargar lee las variables de entorno con sus valores por defecto.

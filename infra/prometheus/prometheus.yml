@@ -1,4 +1,4 @@
-# Prometheus (G20, ADR-011). Lee /metrics de cada servicio cada 15 s y evalúa las alertas.
+# Prometheus (ADR-011). Lee /metrics de cada servicio cada 15 s y evalúa las alertas.
 # Los servicios no publican /metrics hacia afuera: Prometheus los lee por la red de Docker.
 global:
   scrape_interval: 15s

@@ -12,7 +12,7 @@ import (
 	"ghostkitchen/pedidos/internal/ports"
 )
 
-// Test de contrato con el grupo proveedor (L16, ADR-009).
+// Test de contrato con el grupo proveedor (ADR-009).
 //
 // Corre contra su mock (Prism), servido desde la copia de su OpenAPI en docs/contracts/proveedor.
 // Prism valida cada solicitud contra el contrato: si nuestro adaptador manda algo que no cumple

@@ -59,7 +59,7 @@ func NuevosTokens(secreto string, duracion time.Duration) (*Tokens, error) {
 	return &Tokens{secreto: []byte(secreto), duracion: duracion, ahora: time.Now}, nil
 }
 
-// Emitir arma el token de una cuenta. Devuelve también cuándo vence (HU02: "un token que vence").
+// Emitir arma el token de una cuenta. Devuelve también cuándo vence.
 func (t *Tokens) Emitir(u domain.Usuario) (string, time.Time, error) {
 	ahora := t.ahora().UTC().Truncate(time.Second)
 	vence := ahora.Add(t.duracion)

@@ -1,4 +1,4 @@
-"""Verificación descartable de V2–V4. Requiere Docker y Python estándar.
+"""Verificación descartable del arranque de MySQL y las migraciones. Requiere Docker y Python estándar.
 
 Ejecutar desde cualquier directorio: python tools/mysql-startup/testdata/verify.py
 No usa las contraseñas ni los volúmenes del entorno de desarrollo.
@@ -69,7 +69,7 @@ def verificar_gateway():
 
 def main():
     try:
-        print("Iniciando entorno descartable de ronda 1...", flush=True)
+        print("Iniciando entorno descartable...", flush=True)
         docker("up", "-d", "--wait", "mysql", "busqueda", "gateway")
         print("OK inicialización MySQL y sintaxis real de NGINX", flush=True)
         docker("build", "usuarios", "integration")
@@ -100,7 +100,7 @@ def main():
         assert blocked.returncode != 0 and "MUST_NOT_START" not in blocked.stdout, blocked.stdout
         print("OK el comando arranca solo con migraciones exitosas", flush=True)
         verificar_gateway()
-        print("OK ronda 1: verificaciones completas", flush=True)
+        print("OK: verificaciones completas", flush=True)
     finally:
         # Solo elimina los recursos del proyecto de prueba y su volumen descartable.
         cleanup = docker("down", "-v", "--remove-orphans", check=False)

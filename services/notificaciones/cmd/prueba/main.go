@@ -44,9 +44,8 @@ func run() error {
 		return err
 	}
 	defer ch.Close()
-	// La herramienta de prueba usa su propia cola. V14 completará el flujo
-	// del worker y confirmará el mensaje después de guardar ENVIADO.
-	d, ok, err := ch.Get("notificaciones.v13.prueba", false)
+	// La herramienta de prueba usa su propia cola y su propia base, así no toca las del worker.
+	d, ok, err := ch.Get("notificaciones.prueba", false)
 	if err != nil {
 		return err
 	}
@@ -57,7 +56,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err = notificaciones.Registrar(ctx, db.Database("notificaciones_v13_prueba").Collection("notificaciones"), pendiente); err != nil {
+	if err = notificaciones.Registrar(ctx, db.Database("notificaciones_prueba").Collection("notificaciones"), pendiente); err != nil {
 		return errors.New("no se pudo registrar el evento")
 	}
 	log.Printf("registrado PENDIENTE: %s", pendiente.EventoID)

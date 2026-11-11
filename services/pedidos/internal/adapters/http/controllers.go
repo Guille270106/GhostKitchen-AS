@@ -157,7 +157,7 @@ func (c CarritoController) Agregar(ctx *gin.Context) {
 		fallo(ctx, http.StatusBadRequest, "DATOS_INVALIDOS", `Enviá {"platoId": "...", "cantidad": 1}`)
 		return
 	}
-	carrito, err := c.Service.AgregarPlatoConClave(ctx.Request.Context(), identidad(ctx), datos.PlatoID, datos.Cantidad, ctx.GetHeader("Idempotency-Key"))
+	carrito, err := c.Service.AgregarPlato(ctx.Request.Context(), identidad(ctx), datos.PlatoID, datos.Cantidad, ctx.GetHeader("Idempotency-Key"))
 	if err != nil {
 		responderError(ctx, err)
 		return

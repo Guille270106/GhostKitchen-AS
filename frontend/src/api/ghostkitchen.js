@@ -3,9 +3,6 @@
 // Las pantallas solo conocen estas funciones: nunca llaman a fetch directo. Cada función le
 // pide los datos al API Gateway (/api/v1) y devuelve la forma que esperan las pantallas.
 // Así, si cambia una ruta o un formato del backend, se arregla acá y no en cada pantalla.
-//
-// Cada parte del sistema suma sus funciones en su commit (G14 la base y la sesión; G18 la
-// búsqueda; V16/V17 el inventario; L17/L18 el carrito y los pedidos; G21 el admin).
 
 import { dishPhotos } from "../data/dishPhotos";
 import { ETIQUETAS, FOTOS_COCINA, categorias, photos, zonas } from "../data/visual";
@@ -16,9 +13,8 @@ import { estadoLabel } from "../utils/formatters";
 // reenvía /api al gateway (vite.config.js), así no hay problemas de CORS.
 const API_BASE = "/api/v1";
 const CHANGE_EVENT = "ghostkitchen:db-change";
-export const RESERVA_MS = 10 * 60 * 1000; // la reserva del carrito dura 10 minutos
 
-export class ApiError extends Error {
+class ApiError extends Error {
   constructor(message, code = "ERROR", status = 0) {
     super(message);
     this.code = code;
@@ -87,7 +83,7 @@ export async function pedir(metodo, ruta, { cuerpo, headers = {} } = {}) {
 // useLiveQuery vuelven a pedir sus datos.
 // ---------------------------------------------------------------------------
 
-export function avisarCambio() {
+function avisarCambio() {
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
@@ -139,14 +135,14 @@ export async function loginUser({ email, password }) {
   return { usuario: perfil };
 }
 
-// HU01: nombre, correo, contraseña y dirección. Usuarios no devuelve un token al registrarse,
+// Nombre, correo, contraseña y dirección. Usuarios no devuelve un token al registrarse,
 // así que después se inicia la sesión con los mismos datos.
 export async function registerUser({ nombre, email, password, direccion }) {
   await pedir("POST", "/auth/registro", { cuerpo: { nombre, email, password, direccion } });
   return loginUser({ email, password });
 }
 
-// El cierre de sesión descarta el token (HU02): el servidor no guarda sesiones.
+// El cierre de sesión descarta el token: el servidor no guarda sesiones.
 export function logoutUser() {
   clearAuthToken();
   avisarCambio();
@@ -158,7 +154,7 @@ export function logoutUser() {
 
 // Convierte una cocina de Catálogo a la forma que usan las pantallas. El id de la cocina es
 // también el "localidadId" de la sede que elige el cliente.
-export function cocinaParaPantallas(c) {
+function cocinaParaPantallas(c) {
   return {
     id: c.id,
     nombre: c.nombre,
@@ -183,7 +179,7 @@ export async function getCocinas({ localidadId } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Detalle de una cocina, búsqueda de platos y sede más cercana (G18)
+// Detalle de una cocina, búsqueda de platos y sede más cercana
 // ---------------------------------------------------------------------------
 
 // Foto de un plato: la que cargó la cocina o, para los platos de ejemplo, la de dishPhotos.
@@ -192,7 +188,7 @@ function fotoDe(id, fotoUrl) {
 }
 
 // Convierte un plato de Búsqueda a la forma que usan las pantallas. "disponible" es
-// orientativo (puede tener unos segundos de atraso, RN21): el control real es al reservar.
+// orientativo (puede tener unos segundos de atraso): el control real es al reservar.
 function platoDeBusqueda(p) {
   return {
     id: p.id,
@@ -317,7 +313,7 @@ export async function autocompletePlatos(q, { localidadId, limite = 6 } = {}) {
 
 const ORDENES = { relevancia: "relevancia", "precio-asc": "precio_asc", "precio-desc": "precio_desc" };
 
-// Búsqueda de platos con filtros (HU04). Hace dos consultas a Búsqueda: una con los filtros
+// Búsqueda de platos con filtros. Hace dos consultas a Búsqueda: una con los filtros
 // (los resultados) y otra solo con el texto, para armar las opciones de filtro (marcas,
 // categorías y precio máximo) sobre todo lo que coincide con el texto.
 export async function searchPlatos(filters = {}) {
@@ -378,7 +374,7 @@ async function cocinaCercana(lat, lng) {
   }
 }
 
-// Zonas que coinciden con lo escrito, cada una con su cocina más cercana (HU03). La lista de
+// Zonas que coinciden con lo escrito, cada una con su cocina más cercana. La lista de
 // barrios es fija y solo sirve para pasar del nombre a una coordenada; qué cocina queda más cerca
 // lo calcula Búsqueda, una consulta por barrio sugerido (6 como mucho, en paralelo).
 export async function buscarZonas(q, limit = 6) {
@@ -395,7 +391,7 @@ export async function buscarZonas(q, limit = 6) {
 }
 
 // ---------------------------------------------------------------------------
-// Carrito (Pedidos, L17)
+// Carrito (Pedidos)
 // ---------------------------------------------------------------------------
 
 // Colores de las marcas, en el orden en que la cocina las tiene (los mismos de los estilos).
@@ -435,7 +431,7 @@ function porRestaurante(items, marcas, restauranteDe) {
 // Convierte el carrito de Pedidos a la forma que usan las pantallas:
 //   - "ACTIVO" mientras la reserva sigue vigente (venceEn en milisegundos, para la cuenta regresiva);
 //   - "VENCIDO" si pasaron los 10 minutos (Pedidos responde vencido: true) o si Inventario avisó
-//     que venció y Pedidos lo vació (vencioEn, L14): ahí ya no tiene platos ni cocina.
+//     que venció y Pedidos lo vació (vencioEn): ahí ya no tiene platos ni cocina.
 async function carritoParaPantallas(c) {
   if (!c?.items?.length) {
     if (!c?.vencioEn) return null;
@@ -546,7 +542,7 @@ export function codigoPedido(id) {
 }
 
 // ---------------------------------------------------------------------------
-// Pedidos del cliente y tablero de la cocina (Pedidos, L18)
+// Pedidos del cliente y tablero de la cocina (Pedidos)
 // ---------------------------------------------------------------------------
 
 // Convierte un pedido de Pedidos a la forma que usan las pantallas. El envío es el que se cobró al
@@ -678,12 +674,12 @@ export async function rejectOrder(pedidoId) {
 }
 
 // ---------------------------------------------------------------------------
-// Admin de cocina (G21): cocinas y restaurantes (Catálogo), cuentas (Usuarios) y métricas
+// Admin de cocina: cocinas y restaurantes (Catálogo), cuentas (Usuarios) y métricas
 // (Pedidos). El gateway y cada servicio controlan que sea admin y de su localidad: acá solo
 // se arman los pedidos.
 // ---------------------------------------------------------------------------
 
-// Cocinas de la localidad del admin, activas o no, con todos sus restaurantes (HU14, HU16).
+// Cocinas de la localidad del admin, activas o no, con todos sus restaurantes.
 export async function getAdminCocinas() {
   const res = await pedir("GET", "/admin/cocinas");
   const cocinas = (res.items || []).map((c) => ({
@@ -701,7 +697,7 @@ export async function getAdminCocinas() {
   return { localidad: { nombre: localidad }, cocinas };
 }
 
-// Crea una cocina en la localidad del admin y su cuenta (HU14, HU15). Son dos servicios: si
+// Crea una cocina en la localidad del admin y su cuenta. Son dos servicios: si
 // la cuenta falla, la cocina ya quedó creada, y se avisa para crear la cuenta de nuevo.
 export async function crearCocina({ nombre, direccion, zonaId, envio, tiempoMin, tiempoMax, email, password }) {
   const zona = zonas.find((z) => z.id === zonaId);
@@ -725,12 +721,12 @@ export async function crearCocina({ nombre, direccion, zonaId, envio, tiempoMin,
   return cocina;
 }
 
-// Cuenta con la que la cocina entra a ver sus pedidos, su menú y su stock (HU15).
-export async function crearCuentaCocina({ cocinaId, nombre, email, password }) {
+// Cuenta con la que la cocina entra a ver sus pedidos, su menú y su stock.
+async function crearCuentaCocina({ cocinaId, nombre, email, password }) {
   return pedir("POST", "/admin/cuentas-cocina", { cuerpo: { cocinaId, nombre, email: email.trim(), password } });
 }
 
-// Pausa o reactiva una cocina: pausada, deja de aparecer para los clientes (RN19).
+// Pausa o reactiva una cocina: pausada, deja de aparecer para los clientes.
 export async function toggleCocina(cocina) {
   const res = await pedir("PATCH", `/admin/cocinas/${encodeURIComponent(cocina.id)}`, { cuerpo: { activa: !cocina.activa } });
   avisarCambio();
@@ -761,14 +757,14 @@ export async function editarRestaurante(cocinaId, restauranteId, nombre) {
   return res;
 }
 
-// Agrega un restaurante a una cocina, hasta 4 (HU16, RN20).
+// Agrega un restaurante a una cocina, hasta 4.
 export async function crearRestaurante(cocinaId, { nombre }) {
   const res = await pedir("POST", `/admin/cocinas/${encodeURIComponent(cocinaId)}/restaurantes`, { cuerpo: { nombre: nombre.trim() } });
   avisarCambio();
   return res;
 }
 
-// Pausa o reactiva un restaurante: sus platos dejan de mostrarse (RN19).
+// Pausa o reactiva un restaurante: sus platos dejan de mostrarse.
 export async function toggleRestaurante(cocinaId, restaurante) {
   const res = await pedir("PATCH", `/admin/cocinas/${encodeURIComponent(cocinaId)}/restaurantes/${encodeURIComponent(restaurante.id)}`, {
     cuerpo: { activo: !restaurante.activo },
@@ -779,7 +775,7 @@ export async function toggleRestaurante(cocinaId, restaurante) {
 
 const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
-// Métricas del negocio de una cocina de su localidad, últimos 7 días (HU22). Las calcula
+// Métricas del negocio de una cocina de su localidad, últimos 7 días. Las calcula
 // Pedidos con los pedidos guardados; no cuenta los cancelados.
 // Nombre de cada restaurante de las cocinas del admin, por id.
 async function nombresDeRestaurantes() {

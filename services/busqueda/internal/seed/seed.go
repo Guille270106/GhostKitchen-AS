@@ -79,7 +79,7 @@ func Leer(ahora time.Time) ([]domain.Sede, []domain.Plato, error) {
 			Activa: c.Activa,
 		}
 		if len(c.Restaurantes) > 4 {
-			return nil, nil, fmt.Errorf("seed: la cocina %s tiene más de 4 restaurantes (RN20)", s.ID)
+			return nil, nil, fmt.Errorf("seed: la cocina %s tiene más de 4 restaurantes", s.ID)
 		}
 		for _, r := range c.Restaurantes {
 			// El seed original no trae activo para restaurantes.

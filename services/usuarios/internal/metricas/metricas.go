@@ -1,5 +1,4 @@
-// Package metricas publica las métricas del servicio para Prometheus en GET /metrics (G19,
-// ADR-011).
+// Package metricas publica las métricas del servicio para Prometheus en GET /metrics (ADR-011).
 //
 // El middleware cuenta cada solicitud y mide cuánto tardó, por método, ruta y código de
 // respuesta: con eso Grafana arma el método RED (solicitudes por segundo, % de errores y

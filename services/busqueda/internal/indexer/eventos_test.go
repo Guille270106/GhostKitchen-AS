@@ -47,7 +47,7 @@ func TestProcesarEventos(t *testing.T) {
 		must(t, err)
 		return s
 	}
-	// Los datos son lo que publica Catálogo (G13) e Inventario (V12).
+	// Los datos son lo que publica Catálogo e Inventario.
 	plato := map[string]any{"id": "p1", "cocinaId": "nueva-cordoba", "restauranteId": "r1", "nombre": "Doble",
 		"categoria": "Hamburguesas", "precio": 9000, "moneda": "ARS", "activo": true, "version": 2}
 	must(t, a.Procesar(ctx, leer(sobre(t, "plato.creado", "p1", 2, plato), "plato.creado")))

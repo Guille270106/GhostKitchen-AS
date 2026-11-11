@@ -66,7 +66,7 @@ var camposCocinas = []map[string]any{
 	campo("costo_envio", "pint"),
 	campo("restaurantes_json", "string", soloGuardado),
 	campo("activo", "boolean"),
-	// G15: para aplicar los mensajes de Catálogo sin pisar datos más nuevos.
+	// Para aplicar los mensajes de Catálogo sin pisar datos más nuevos.
 	campo("restaurantes_inactivos_json", "string", soloGuardado),
 	campo("version_catalogo", "plong", soloGuardado),
 }
@@ -87,7 +87,7 @@ var camposPlatos = []map[string]any{
 	campo("cocina_id", "string"),
 	campo("cocina_nombre", "string"),
 	campo("actualizado_en", "pdate"),
-	// G15: cada fuente tiene su versión y cambia solo sus campos (ADR-005).
+	// Cada fuente tiene su versión y cambia solo sus campos (ADR-005).
 	campo("plato_activo", "boolean", soloGuardado),
 	campo("tiene_receta", "boolean"),
 	campo("version_catalogo", "plong", soloGuardado),

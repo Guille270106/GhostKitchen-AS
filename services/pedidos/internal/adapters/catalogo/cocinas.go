@@ -13,7 +13,7 @@ import (
 )
 
 // CocinasDeLocalidad devuelve las cocinas de una localidad, activas o no (implementa
-// ports.Cocinas, G21). Usa la API interna de Catálogo, que trae todas las cocinas con su
+// ports.Cocinas). Usa la API interna de Catálogo, que trae todas las cocinas con su
 // localidad: son pocas (una por barrio), así que se filtran acá. Es una lectura: se puede
 // reintentar una vez sin riesgo, como ObtenerPlato.
 func (c CatalogoHTTP) CocinasDeLocalidad(ctx context.Context, localidad string) ([]ports.CocinaLocalidad, error) {

@@ -103,7 +103,7 @@ func TestIDsPlatosDeSedeHaceCommitYFiltra(t *testing.T) {
 	}
 }
 
-// /ready revisa los dos cores: si falta uno, Búsqueda no está lista (G22).
+// /ready revisa los dos cores: si falta uno, Búsqueda no está lista.
 func TestPingRevisaLosDosCores(t *testing.T) {
 	repo, sf := nuevoSolrFalso(t, func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/solr/platos/") {

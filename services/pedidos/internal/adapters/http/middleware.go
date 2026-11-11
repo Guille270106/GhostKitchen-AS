@@ -10,6 +10,7 @@ import (
 
 	"ghostkitchen/pedidos/internal/adapters/correlacion"
 	"ghostkitchen/pedidos/internal/domain"
+	"ghostkitchen/pedidos/internal/trazas"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -27,16 +28,20 @@ func Correlacion(ctx *gin.Context) {
 	}
 	ctx.Set("cid", cid)
 	ctx.Header("X-Correlation-Id", cid)
+	trazas.MarcarCorrelacion(ctx.Request.Context(), cid) // para buscar la traza en Jaeger por este id
 	ctx.Request = ctx.Request.WithContext(correlacion.Con(ctx.Request.Context(), cid))
 	ctx.Next()
 }
 
-// Logs escribe una línea JSON por solicitud, con el correlation id. No registra cuerpos.
+// Logs escribe una línea JSON por solicitud, con el correlation id y el trace_id (para pasar
+// del log a la traza en Jaeger). No registra cuerpos.
 func Logs(log *slog.Logger) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		inicio := time.Now()
 		ctx.Next()
+		traceID, spanID := trazas.IDs(ctx.Request.Context())
 		log.Info("solicitud", "servicio", "pedidos", "correlation_id", ctx.GetString("cid"),
+			"trace_id", traceID, "span_id", spanID,
 			"metodo", ctx.Request.Method, "ruta", ctx.FullPath(), "estado", ctx.Writer.Status(),
 			"duracion_ms", time.Since(inicio).Milliseconds())
 	}

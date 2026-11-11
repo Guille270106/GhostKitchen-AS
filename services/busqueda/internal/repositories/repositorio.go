@@ -44,7 +44,7 @@ type Indexador interface {
 	GuardarPlatos(ctx context.Context, platos []domain.Plato) error
 }
 
-// Actualizador cambia un documento a partir del que ya está guardado (G15). Lo usan el
+// Actualizador cambia un documento a partir del que ya está guardado. Lo usan el
 // lector de mensajes y la reconstrucción desde Catálogo, que pueden correr a la vez.
 //
 // cambiar recibe lo guardado (existe=false si no hay nada) y devuelve el documento nuevo y si

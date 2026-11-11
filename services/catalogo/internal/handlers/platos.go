@@ -11,8 +11,8 @@ import (
 	"ghostkitchen/catalogo/internal/services"
 )
 
-// Platos atiende las escrituras de la cuenta Cocina sobre sus platos (HU17). El gateway las
-// publica en /api/v1/cocina/platos y /api/v1/cocina/restaurantes/{rid}/platos (G9).
+// Platos atiende las escrituras de la cuenta Cocina sobre sus platos. El gateway las
+// publica en /api/v1/cocina/platos y /api/v1/cocina/restaurantes/{rid}/platos.
 type Platos struct {
 	svc *services.PlatosCocina
 }

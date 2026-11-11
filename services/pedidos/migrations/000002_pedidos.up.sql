@@ -1,4 +1,4 @@
--- Agregado Pedido (L5). Un pedido es uno solo, con un estado para todo el pedido.
+-- Agregado Pedido. Un pedido es uno solo, con un estado para todo el pedido.
 -- version sube con cada cambio de estado: GuardarCambio solo escribe si la versión no cambió
 -- (control optimista), así dos cambios simultáneos no se pisan (ADR-004).
 CREATE TABLE pedido (

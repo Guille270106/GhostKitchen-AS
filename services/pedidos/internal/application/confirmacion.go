@@ -184,7 +184,8 @@ func (s ConfirmacionService) avanzar(ctx context.Context, conf domain.Confirmaci
 		conf.Paso = domain.PasoCrearPedido
 	}
 
-	// (Acá va el paso del grupo proveedor, L15.)
+	// La factura del grupo proveedor no es un paso: se anota pendiente al crear el pedido y se
+	// pide después, en segundo plano (ADR-009). Si el proveedor está caído, el pedido sale igual.
 
 	// Paso: crear el pedido en RECIBIDO, marcar la confirmación y vaciar el carrito (juntos).
 	pedido, err := conf.CrearPedido(time.Now())

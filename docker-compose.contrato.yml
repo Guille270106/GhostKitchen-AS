@@ -1,4 +1,4 @@
-# Test de contrato de nuestra API publicada (L21). Se usa junto con docker-compose.yml y
+# Test de contrato de nuestra API publicada. Se usa junto con docker-compose.yml y
 # docker-compose.nube.yml, así se prueba exactamente lo que se despliega en la nube:
 #
 #   docker compose -f docker-compose.yml -f docker-compose.nube.yml -f docker-compose.contrato.yml \

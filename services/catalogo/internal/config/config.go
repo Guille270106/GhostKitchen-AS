@@ -24,7 +24,7 @@ type Config struct {
 	CacheHabilitada bool          // CACHE_HABILITADA (true): para medir con y sin caché (ADR-007)
 	MemcachedAddr   string        // MEMCACHED_ADDR (memcached:11211)
 	Instancia       string        // INSTANCIA (el nombre del host): qué copia es (catalogo-1, catalogo-2)
-	PublicarOutbox  bool          // PUBLICAR_OUTBOX (true): solo una copia publica el outbox (G17)
+	PublicarOutbox  bool          // PUBLICAR_OUTBOX (true): solo una copia publica el outbox
 }
 
 // Cargar lee las variables de entorno con sus valores por defecto.

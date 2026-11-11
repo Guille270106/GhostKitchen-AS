@@ -1,4 +1,4 @@
-# Test de contrato de nuestra API publicada (L21, ADR-008), en cada pull request.
+# Test de contrato de nuestra API publicada (ADR-008), en cada pull request.
 #
 # Levanta la misma configuración que corre en la nube (docker-compose.yml + docker-compose.nube.yml)
 # y le pide cada operación del contrato a través de Prism, que compara las respuestas con

@@ -1,4 +1,4 @@
-# Grafana arranca con Prometheus ya configurado (G20). El uid fijo es el que usa el tablero.
+# Grafana arranca con Prometheus ya configurado. El uid fijo es el que usa el tablero.
 apiVersion: 1
 datasources:
   - name: Prometheus

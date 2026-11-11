@@ -18,7 +18,7 @@ func clienteRapido(url string) *Catalogo {
 	return c
 }
 
-// Un 4xx es definitivo: se pide una sola vez (L22).
+// Un 4xx es definitivo: se pide una sola vez.
 func TestUn4xxNoSeReintenta(t *testing.T) {
 	for _, estado := range []int{http.StatusBadRequest, http.StatusNotFound} {
 		var llamadas atomic.Int32

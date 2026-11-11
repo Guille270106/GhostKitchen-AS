@@ -81,7 +81,7 @@ El trabajo `notificaciones-mongo` crea el usuario de la base. Los mails se ven e
 - **Deduplicación con RabbitMQ, MongoDB y Mailpit reales.** Desde la raíz del repositorio, en PowerShell:
 
   ```powershell
-  & ./services/notificaciones/prueba-v15.ps1
+  & ./services/notificaciones/prueba-mensaje-repetido.ps1
   ```
 
   Requiere Go, Docker y las imágenes `mongo:7` y `rabbitmq:3-management`. Crea contenedores descartables, publica dos veces el mismo evento y verifica que haya **un solo mail** en Mailpit y un solo registro ENVIADO con un intento en MongoDB. También comprueba que un evento inválido llegue a la DLQ. Al terminar, borra los contenedores.

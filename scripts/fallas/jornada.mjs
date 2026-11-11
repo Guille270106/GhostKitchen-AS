@@ -1,4 +1,4 @@
-// Jornada de fallas controladas (L20, ADR-010). Apaga a propósito una dependencia por vez,
+// Jornada de fallas controladas (ADR-010). Apaga a propósito una dependencia por vez,
 // mide qué ve el usuario y cuánto tarda el sistema en recuperarse cuando vuelve:
 //
 //   1. Inventario caído    (reservar, confirmar y cancelar)
@@ -62,8 +62,12 @@ function sqlPedidos(consulta) {
   return salida.toString().trim();
 }
 
-// Cuántos mails hay en Mailpit que contengan todas esas palabras (por ejemplo, el id del pedido).
-async function mailsDe(busqueda) {
+// Cuántos mails hay en Mailpit de un pedido. El asunto lleva el código corto (los primeros 8
+// caracteres del id, en mayúsculas) y el estado en palabras: "Tu pedido #2207B999 está en preparación".
+// Con "texto" se buscan además esas palabras del asunto.
+const codigo = (pedidoId) => String(pedidoId).slice(0, 8).toUpperCase();
+async function mailsDe(pedidoId, texto = "") {
+  const busqueda = `subject:"#${codigo(pedidoId)}${texto ? " " + texto : ""}"`;
   try {
     const r = await fetch(`http://localhost:8025/api/v1/search?query=${encodeURIComponent(busqueda)}`);
     return (await r.json()).messages_count ?? 0;
@@ -115,7 +119,7 @@ await pedir("DELETE", "/carrito", { token: cliente });
 log(`listo: plato con receta (2 unidades por plato) y stock ${await stock()}`);
 
 async function confirmar(clave) {
-  return pedir("POST", "/pedidos", { token: cliente, headers: { "Idempotency-Key": clave } });
+  return pedir("POST", "/pedidos", { token: cliente, cuerpo: { direccionEntrega: "Obispo Trejo 323" }, headers: { "Idempotency-Key": clave } });
 }
 
 // =====================================================================================
@@ -192,8 +196,8 @@ r = await pedir("POST", `/cocina/pedidos/${pedido2}/avanzar`, { token: cocina })
 revisar(r.estado === 200 && r.ms < 3000, `con el correo caído, la cocina avanza el pedido: ${r.estado} ${r.json?.estado} en ${r.ms} ms`, r.texto);
 await esperar(20000);
 docker("start", "mailpit");
-const tCorto = await hasta(async () => (await mailsDe(`${pedido2} EN_PREPARACION`)) >= 1, 120);
-revisar(tCorto !== null, `corte de 20 s: el mail de EN_PREPARACION llega ${tCorto} s después de volver el correo (reintento)`);
+const tCorto = await hasta(async () => (await mailsDe(pedido2, "está en preparación")) >= 1, 120);
+revisar(tCorto !== null, `corte de 20 s: el mail de "está en preparación" llega ${tCorto} s después de volver el correo (reintento)`);
 
 // 3b. Corte largo: se agotan los reintentos (5 s, 30 s y 2 min) y el aviso va a la DLQ.
 const dlqAntes = await cola("notificaciones.mailer.dlq");

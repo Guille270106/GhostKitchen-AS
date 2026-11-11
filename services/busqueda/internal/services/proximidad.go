@@ -15,7 +15,7 @@ const (
 	EstadoSinSedes   = "SIN_SEDES"
 )
 
-// ConsultaProximidad es una consulta ya validada (RN26).
+// ConsultaProximidad es una consulta ya validada.
 type ConsultaProximidad struct {
 	Cliente            domain.Ubicacion
 	Sede               domain.Ubicacion
@@ -63,7 +63,7 @@ func (b *Busqueda) Proximidad(ctx context.Context, q ConsultaProximidad) (Result
 		return res, nil
 	}
 
-	// Nuestras cocinas no entregan a más de CoberturaKm (RN24), aunque el consumidor pida
+	// Nuestras cocinas no entregan a más de CoberturaKm, aunque el consumidor pida
 	// un radio mayor para su sede.
 	radio := math.Min(q.RadioKm, CoberturaKm)
 	dk := &DarkKitchen{RadioAplicadoKm: radio}

@@ -26,7 +26,7 @@ func Nuevo(log *slog.Logger, grupos ...Registrador) *gin.Engine {
 	r := gin.New()
 	// Primero la traza (crea el span), después el id de correlación (lo anota en el span)
 	// y el log (que escribe ambos ids).
-	// Las métricas van primero: así cuentan también las solicitudes que terminan en panic (G19).
+	// Las métricas van primero: así cuentan también las solicitudes que terminan en panic.
 	r.Use(metricas.Middleware(), trazas.Middleware(), middleware.Correlacion(), middleware.Log(log), gin.Recovery())
 	r.GET(metricas.Ruta, metricas.Handler())
 	r.HandleMethodNotAllowed = true

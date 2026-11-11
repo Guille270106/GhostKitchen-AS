@@ -9,7 +9,7 @@ import (
 	"ghostkitchen/pedidos/internal/domain"
 )
 
-// MetricasMySQL calcula las métricas del admin (HU22, G21) con consultas de solo lectura.
+// MetricasMySQL calcula las métricas del admin con consultas de solo lectura.
 // Implementa ports.MetricasRepo. Todas filtran por cocina y fecha, que es el índice
 // idx_pedido_cocina (cocina_id, estado, creado_en).
 type MetricasMySQL struct {

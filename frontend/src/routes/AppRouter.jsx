@@ -25,11 +25,10 @@ import RecetasMermas from "../pages/RecetasMermas";
 import Register from "../pages/Register";
 import Search from "../pages/Search";
 
-// Las rutas se suman con cada parte del frontend:
-//   G18  /, /buscar, /cocinas/:id, /login, /registro y el selector de sede
-//   V16  /cocina/inventario · V17 /cocina/menu y /cocina/platos
-//   L17  /carrito · L18 /pedidos y /cocina (tablero)
-//   G21  /admin/cocinas y /admin/metricas
+// Rutas por rol:
+//   cliente  /, /buscar, /cocinas/:id, /login, /registro, /carrito y /pedidos
+//   cocina   /cocina (tablero de pedidos), /cocina/menu, /cocina/platos y /cocina/inventario
+//   admin    /admin/cocinas y /admin/metricas
 // Las de la cocina y el admin van dentro de <ProtectedRoute> y <WorkspaceLayout>.
 
 function ScrollToTop() {
@@ -97,7 +96,7 @@ function AppRouter() {
                   <Route path="platos" element={<RecetasMermas />} />
                 </Route>
 
-                {/* Admin de cocina (G21) */}
+                {/* Admin de cocina */}
                 <Route
                   path="/admin"
                   element={

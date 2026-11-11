@@ -28,7 +28,7 @@ func entornoAdmin(t *testing.T) http.Handler {
 	return router.Nuevo(log, handlers.Nuevo(services.Nuevo(repo), repo.Ping), handlers.NuevoAdmin(services.NuevoAdmin(repo, repo)))
 }
 
-// pedirComo hace una solicitud con la identidad que pondría el gateway (G9).
+// pedirComo hace una solicitud con la identidad que pondría el gateway.
 func pedirComo(h http.Handler, rol, localidad, metodo, ruta, cuerpo string) (*httptest.ResponseRecorder, map[string]any) {
 	req := httptest.NewRequest(metodo, ruta, strings.NewReader(cuerpo))
 	if rol != "" {
@@ -86,7 +86,7 @@ func TestAdminDesactivaCocinaYDejaDeVerse(t *testing.T) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	if w, _ := get(t, h, "/cocinas/nueva-cordoba"); w.Code != 404 {
-		t.Fatalf("una cocina desactivada no se publica (RN19): %d", w.Code)
+		t.Fatalf("una cocina desactivada no se publica: %d", w.Code)
 	}
 }
 

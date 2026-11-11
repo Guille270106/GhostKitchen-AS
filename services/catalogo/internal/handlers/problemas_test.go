@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Los errores de Catálogo tienen el mismo formato que los de Búsqueda, Pedidos e Inventario
-// (L22): "type" con el código en minúsculas y guiones, y "title" en castellano.
+// Los errores de Catálogo tienen el mismo formato que los de Búsqueda, Pedidos e Inventario:
+// "type" con el código en minúsculas y guiones, y "title" en castellano.
 func TestFormatoDeErrorIgualAlDeLosDemasServicios(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	casos := []struct {

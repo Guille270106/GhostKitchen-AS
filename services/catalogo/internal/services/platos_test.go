@@ -42,7 +42,7 @@ func TestCrearPlatoArrancaDesactivado(t *testing.T) {
 	svc, repo, _ := entornoPlatos(t)
 	activo := true
 	datos := platoNuevo
-	datos.Activo = &activo // aunque lo pida activo, sin receta no se publica (RN18)
+	datos.Activo = &activo // aunque lo pida activo, sin receta no se publica
 	p, err := svc.CrearPlato(context.Background(), cocinaNC, "r1", datos)
 	if err != nil {
 		t.Fatal(err)

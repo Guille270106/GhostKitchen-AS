@@ -1,4 +1,4 @@
--- Confirmación del pedido como saga (L8): en qué paso va cada confirmación, para poder seguir
+-- Confirmación del pedido como saga: en qué paso va cada confirmación, para poder seguir
 -- desde ahí si algo se corta. Guarda una copia del carrito (items) con los precios.
 CREATE TABLE confirmacion (
  id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,

@@ -2,7 +2,7 @@ package domain
 
 import "time"
 
-// Métricas del negocio para el admin de cocina (HU22, G21). Son lecturas: no cambian ningún
+// Métricas del negocio para el admin de cocina. Son lecturas: no cambian ningún
 // pedido. Se calculan con los pedidos de los últimos días, sin contar los cancelados.
 
 // DiasMetricas es cuántos días mira la pantalla de métricas (hoy y los 6 anteriores).

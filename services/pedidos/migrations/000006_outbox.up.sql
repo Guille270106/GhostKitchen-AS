@@ -1,4 +1,4 @@
--- Outbox (L13, ADR-005): cada cambio de estado del pedido deja su mensaje pedido.estado_cambiado
+-- Outbox (ADR-005): cada cambio de estado del pedido deja su mensaje pedido.estado_cambiado
 -- en esta tabla, en la MISMA transacción que el cambio. Otro proceso lo publica en RabbitMQ y lo
 -- marca recién cuando RabbitMQ confirma. Así no se pierde un aviso aunque RabbitMQ esté caído,
 -- ni se avisa de un cambio que al final no se guardó.

@@ -184,7 +184,7 @@ func responderError(c *gin.Context, err error) {
 }
 
 // titulos es el título legible de cada código, en castellano: el mismo formato que Búsqueda,
-// Pedidos e Inventario (L22). Si falta uno, se usa uno general según el código HTTP.
+// Pedidos e Inventario. Si falta uno, se usa uno general según el código HTTP.
 var titulos = map[string]string{
 	"COCINA_NO_ENCONTRADA":      "Cocina no encontrada",
 	"RESTAURANTE_NO_ENCONTRADO": "Restaurante no encontrado",

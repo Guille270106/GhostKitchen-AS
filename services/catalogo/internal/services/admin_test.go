@@ -132,7 +132,7 @@ func TestConflictoSeReintentaSobreLaVersionNueva(t *testing.T) {
 	}
 }
 
-// 10 admins agregan a la vez un restaurante a una cocina con 2: solo entran 2 (RN20).
+// 10 admins agregan a la vez un restaurante a una cocina con 2: solo entran 2.
 func TestNoSePasaDeCuatroConSolicitudesALaVez(t *testing.T) {
 	svc, repo := entornoAdmin(t)
 	var wg sync.WaitGroup

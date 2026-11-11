@@ -14,8 +14,8 @@ import (
 	"ghostkitchen/catalogo/internal/services"
 )
 
-// Admin atiende las escrituras del admin sobre cocinas y restaurantes (HU14, HU16).
-// El gateway las publica en /api/v1/admin/cocinas y antes verifica el token (G9).
+// Admin atiende las escrituras del admin sobre cocinas y restaurantes.
+// El gateway las publica en /api/v1/admin/cocinas y antes verifica el token.
 type Admin struct {
 	svc *services.AdminCatalogo
 }

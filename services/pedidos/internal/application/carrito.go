@@ -38,15 +38,12 @@ func (s CarritoService) Ver(ctx context.Context, actor domain.Actor) (domain.Car
 }
 
 // AgregarPlato suma un plato al carrito y aparta sus ingredientes en Inventario.
-func (s CarritoService) AgregarPlato(ctx context.Context, actor domain.Actor, platoID string, cantidad int64) (domain.Carrito, error) {
-	return s.AgregarPlatoConClave(ctx, actor, platoID, cantidad, "")
-}
-
-// AgregarPlatoConClave es AgregarPlato con la Idempotency-Key del cliente. "Agregar" suma, así
-// que reenviar la misma solicitud (por ejemplo, porque se cortó la respuesta) sumaría dos veces.
-// Con la clave no: si esa clave ya se aplicó, se devuelve el carrito como está, sin tocar nada.
-// Dos clics distintos mandan claves distintas, así que se suman los dos. La clave es opcional.
-func (s CarritoService) AgregarPlatoConClave(ctx context.Context, actor domain.Actor, platoID string, cantidad int64, clave string) (domain.Carrito, error) {
+//
+// Recibe la Idempotency-Key del cliente (opcional). "Agregar" suma, así que reenviar la misma
+// solicitud (por ejemplo, porque se cortó la respuesta) sumaría dos veces. Con la clave no: si
+// esa clave ya se aplicó, se devuelve el carrito como está, sin tocar nada. Dos clics distintos
+// mandan claves distintas, así que se suman los dos.
+func (s CarritoService) AgregarPlato(ctx context.Context, actor domain.Actor, platoID string, cantidad int64, clave string) (domain.Carrito, error) {
 	if err := validarCliente(actor); err != nil {
 		return domain.Carrito{}, err
 	}
@@ -339,7 +336,7 @@ func validarCliente(actor domain.Actor) error {
 	return nil
 }
 
-// ReservaVencida atiende el aviso reserva.vencida de Inventario (L14): la reserva del carrito
+// ReservaVencida atiende el aviso reserva.vencida de Inventario: la reserva del carrito
 // venció y sus ingredientes ya se liberaron, así que el carrito se vacía y queda marcado como
 // vencido ("Tu carrito venció"). Si el carrito ya no tiene esa reserva, no hace nada: el mismo
 // aviso dos veces, o uno viejo que llega tarde, no cambia nada.

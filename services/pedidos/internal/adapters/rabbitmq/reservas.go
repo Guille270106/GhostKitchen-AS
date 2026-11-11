@@ -21,7 +21,7 @@ type avisoReservaVencida struct {
 	} `json:"datos"`
 }
 
-// ReservaVencida arma el manejador de la cola pedidos.reservas (L14): lee el aviso de Inventario
+// ReservaVencida arma el manejador de la cola pedidos.reservas: lee el aviso de Inventario
 // y le pide al carrito que se marque vencido. Es un adaptador de entrada, como los controllers:
 // traduce el mensaje y llama al caso de uso.
 func ReservaVencida(carritos application.CarritoService) func(ctx context.Context, cuerpo []byte) error {

@@ -39,7 +39,7 @@ func main() {
 }
 
 // correr arma y levanta el servicio. Devuelve el error en vez de llamar a os.Exit: así se
-// ejecutan los defer antes de salir, entre ellos el que manda a Jaeger las últimas trazas (L22).
+// ejecutan los defer antes de salir, entre ellos el que manda a Jaeger las últimas trazas.
 func correr() error {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("servicio", "busqueda")
 	cfg := config.Cargar()
@@ -91,7 +91,7 @@ func correr() error {
 			}
 			res, err := rec.Reconstruir(ctx)
 			if err == nil {
-				// Lo escrito queda visible ya, sin esperar el segundo de commitWithin (G22).
+				// Lo escrito queda visible ya, sin esperar el segundo de commitWithin.
 				err = repo.Confirmar(ctx)
 			}
 			if err == nil {
@@ -114,7 +114,7 @@ func correr() error {
 	var listo atomic.Bool
 	ctx, parar := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer parar()
-	// Una sola reconstrucción a la vez, venga del arranque o de POST /internal/reindexar (G22).
+	// Una sola reconstrucción a la vez, venga del arranque o de POST /internal/reindexar.
 	var excl *indexer.Exclusiva
 	if reconstruir != nil {
 		excl = indexer.NuevaExclusiva(reconstruir)
@@ -122,7 +122,7 @@ func correr() error {
 
 	go func() {
 		inicializarIndice(ctx, log, repo, cfg.SeedAlIniciar, excl, &listo)
-		// Lector de mensajes (G15). Arranca cuando el índice está listo, para que el esquema ya
+		// Lector de mensajes. Arranca cuando el índice está listo, para que el esquema ya
 		// tenga los campos de versión. Lo que pasó mientras tanto espera en la cola. Si lee un
 		// mensaje que la reconstrucción ya trajo, la versión hace que no cambie nada.
 		if ctx.Err() != nil {
@@ -229,7 +229,7 @@ func preparar(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, con
 		return err
 	}
 	log.Info("datos iniciales cargados", "sedes", sedes, "platos", platos)
-	// Las escrituras no esperan el commit (G22): se confirma al final, así /ready dice
+	// Las escrituras no esperan el commit: se confirma al final, así /ready dice
 	// "listo" con todo visible en las búsquedas.
 	return repo.Confirmar(c)
 }

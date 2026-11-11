@@ -1,4 +1,4 @@
--- G5: cuentas de Usuarios. Una fila por persona; el rol decide qué columnas aplican.
+-- Cuentas de Usuarios. Una fila por persona; el rol decide qué columnas aplican.
 -- El correo se guarda en minúsculas y es único. La comparación del CHECK es binaria: con la
 -- collation de la base, 'Ana@x.com' = 'ana@x.com' daría verdadero y el CHECK no frenaría nada.
 -- La contraseña nunca se guarda: solo su hash bcrypt (60 caracteres).

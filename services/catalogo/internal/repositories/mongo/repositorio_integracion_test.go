@@ -77,7 +77,7 @@ func TestIntegracionRepositorioMongo(t *testing.T) {
 	}
 }
 
-// Las escrituras del admin (G11): crear sin pisar y reemplazar solo con la versión esperada.
+// Las escrituras del admin: crear sin pisar y reemplazar solo con la versión esperada.
 func TestIntegracionEscriturasMongo(t *testing.T) {
 	uri := os.Getenv("MONGO_TEST_URI")
 	if uri == "" {

@@ -1,4 +1,4 @@
--- Devolución de ingredientes (L10): cuando un pedido se cancela (el cliente lo cancela o la
+-- Devolución de ingredientes: cuando un pedido se cancela (el cliente lo cancela o la
 -- cocina lo rechaza), hay que devolverle a Inventario lo que se descontó al confirmar.
 -- Se anota en la MISMA transacción que el cambio a CANCELADO, así no se pierde aunque
 -- Inventario esté caído: un proceso en segundo plano la manda y reintenta hasta que salga.

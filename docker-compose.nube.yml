@@ -1,4 +1,4 @@
-# Despliegue en la nube (L19): solo la capacidad publicada (/public/v1), con HTTPS.
+# Despliegue en la nube: solo la capacidad publicada (/public/v1), con HTTPS.
 # Se usa JUNTO con docker-compose.yml, que tiene la definición de cada servicio:
 #
 #   docker compose -f docker-compose.yml -f docker-compose.nube.yml up -d --build caddy memcached

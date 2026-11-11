@@ -9,7 +9,7 @@ import (
 	"ghostkitchen/pedidos/internal/ports"
 )
 
-// ComprobanteService le pide al grupo proveedor la factura de cada pedido confirmado (L15).
+// ComprobanteService le pide al grupo proveedor la factura de cada pedido confirmado.
 //
 // La factura NO es un paso esencial (ADR-009): el pedido ya está confirmado aunque el proveedor
 // esté caído. Por eso no se pide durante la confirmación (que tiene 3 s) sino después, en

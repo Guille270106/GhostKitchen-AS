@@ -118,6 +118,21 @@ Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedor
    ```
 
    O todas las operaciones juntas, en PowerShell: `.\scripts\probar-api-publica.ps1 -Clave <la clave>`.
+4. Entrar al sistema en http://localhost:5173:
+
+   - **Cliente:** cualquiera se registra desde "Crear cuenta".
+   - **Admin:** hay uno por localidad, `admin.<sede>@ghostkitchen.dev` (`barrio-jardin`, `cerro`, `nueva-cordoba` o `villa-allende`), con la contraseña `ADMIN_PASSWORD` del `.env`.
+   - **Cocina:** las 4 cocinas de los datos iniciales no traen cuenta: la crea el admin de su localidad. (Una cocina nueva, en cambio, se crea desde "Cocinas y restaurantes" junto con su cuenta.) Por ejemplo, para Nueva Córdoba, en Git Bash y desde la raíz del repositorio:
+
+     ```bash
+     CLAVE=$(grep ^ADMIN_PASSWORD= .env | cut -d= -f2)
+     TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login -H "Content-Type: application/json" \
+       -d "{\"email\":\"admin.nueva-cordoba@ghostkitchen.dev\",\"password\":\"$CLAVE\"}" | sed -E 's/.*"token":"([^"]+)".*/\1/')
+     curl -X POST http://localhost:8080/api/v1/admin/cuentas-cocina -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+       -d '{"cocinaId":"nueva-cordoba","nombre":"Cocina Nueva Córdoba","email":"cocina.nueva-cordoba@ghostkitchen.dev","password":"cocina1234"}'
+     ```
+
+     Después la cocina entra con ese mail y esa contraseña.
 
 | Servicio | URL |
 | --- | --- |

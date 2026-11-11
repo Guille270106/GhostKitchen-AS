@@ -32,7 +32,7 @@ type Recetas interface {
 	TieneReceta(ctx context.Context, usuarioID, cocinaID, platoID, correlationID string) (bool, error)
 }
 
-// PlatosCocina son las escrituras de la cuenta Cocina sobre sus platos (HU17).
+// PlatosCocina son las escrituras de la cuenta Cocina sobre sus platos.
 type PlatosCocina struct {
 	repo    repositories.Repositorio
 	esc     repositories.EscritorPlatos
@@ -53,10 +53,10 @@ func (s *PlatosCocina) MisPlatos(ctx context.Context, quien Cocina) ([]domain.Pl
 	return s.esc.ListarPlatosDeCocinaTodos(ctx, quien.CocinaID)
 }
 
-// CrearPlato da de alta un plato en un restaurante de su cocina (HU17).
+// CrearPlato da de alta un plato en un restaurante de su cocina.
 //
 // Un plato nuevo arranca **desactivado**: todavía no tiene receta, y un plato sin receta no
-// se publica (RN18). La cocina le carga la receta en Inventario y después lo activa.
+// se publica. La cocina le carga la receta en Inventario y después lo activa.
 func (s *PlatosCocina) CrearPlato(ctx context.Context, quien Cocina, restauranteID string, datos domain.CambiosPlato) (domain.Plato, error) {
 	if err := quien.valida(); err != nil {
 		return domain.Plato{}, err
@@ -92,8 +92,8 @@ func (s *PlatosCocina) CrearPlato(ctx context.Context, quien Cocina, restaurante
 	return p, nil
 }
 
-// ModificarPlato cambia un plato de su cocina, lo desactiva o lo vuelve a activar (HU17, RN19).
-// Para activarlo, antes se le pregunta a Inventario si tiene receta (RN18).
+// ModificarPlato cambia un plato de su cocina, lo desactiva o lo vuelve a activar.
+// Para activarlo, antes se le pregunta a Inventario si tiene receta.
 func (s *PlatosCocina) ModificarPlato(ctx context.Context, quien Cocina, id string, cambios domain.CambiosPlato, correlationID string) (domain.Plato, error) {
 	if err := quien.valida(); err != nil {
 		return domain.Plato{}, err

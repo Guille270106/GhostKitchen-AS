@@ -19,7 +19,7 @@ import (
 )
 
 // CocinaCatalogo es una cocina tal como la devuelve Catálogo en /internal/cocinas, y como
-// viaja en los mensajes cocina.* (G13).
+// viaja en los mensajes cocina.*.
 // Es un tipo del cliente y no domain.Sede a propósito: si Catálogo cambia su JSON, se ajusta
 // acá y el dominio de Búsqueda no se entera.
 type CocinaCatalogo struct {
@@ -41,7 +41,7 @@ type CocinaCatalogo struct {
 }
 
 // PlatoCatalogo es un plato tal como lo devuelve Catálogo en /internal/platos, y como viaja
-// en los mensajes plato.* (G13).
+// en los mensajes plato.*.
 type PlatoCatalogo struct {
 	ID            string    `json:"id"`
 	CocinaID      string    `json:"cocinaId"`

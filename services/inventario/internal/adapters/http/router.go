@@ -1,7 +1,6 @@
 package http
 
 import (
-	"ghostkitchen/inventario/internal/trazas"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,14 +14,15 @@ import (
 	"ghostkitchen/inventario/internal/application"
 	"ghostkitchen/inventario/internal/domain"
 	"ghostkitchen/inventario/internal/metricas"
+	"ghostkitchen/inventario/internal/trazas"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 var cidValido = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
 
-// Estas cabeceras son identidad interna del gateway, nunca parámetros del cliente.
-// V5 no publica el servicio al host ni agrega rutas del gateway (G9 pendiente).
+// Estas cabeceras las pone el gateway después de verificar el token: el cliente no las puede
+// mandar (el gateway pisa las que vengan) y el servicio no se publica al host.
 func identidad(c *gin.Context) domain.Identidad {
 	return domain.Identidad{UsuarioID: c.GetHeader("X-Usuario-Id"), Rol: strings.ToLower(c.GetHeader("X-Rol")), CocinaID: c.GetHeader("X-Cocina-Id")}
 }
@@ -30,7 +30,7 @@ func identidad(c *gin.Context) domain.Identidad {
 func Nuevo(svc *application.Ingredientes, ready func(context.Context) error, log *slog.Logger) *gin.Engine {
 	r := gin.New()
 	r.Use(metricas.Middleware(), trazas.Middleware(), gin.Recovery())
-	r.GET(metricas.Ruta, metricas.Handler()) // G19: Prometheus
+	r.GET(metricas.Ruta, metricas.Handler()) // Prometheus
 	r.Use(func(c *gin.Context) {
 		cid := c.GetHeader("X-Correlation-Id")
 		if !cidValido.MatchString(cid) {
@@ -38,12 +38,14 @@ func Nuevo(svc *application.Ingredientes, ready func(context.Context) error, log
 		}
 		c.Set("cid", cid)
 		c.Header("X-Correlation-Id", cid)
+		trazas.MarcarCorrelacion(c.Request.Context(), cid) // para buscar la traza en Jaeger por este id
 		inicio := time.Now()
 		ctx, cancel := context.WithTimeout(domain.ConCorrelacion(c.Request.Context(), cid), 3*time.Second)
 		defer cancel()
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
-		log.Info("solicitud", "servicio", "inventario", "correlation_id", cid, "ruta", c.FullPath(), "metodo", c.Request.Method, "estado", c.Writer.Status(), "duracion_ms", time.Since(inicio).Milliseconds())
+		traceID, spanID := trazas.IDs(c.Request.Context())
+		log.Info("solicitud", "servicio", "inventario", "correlation_id", cid, "trace_id", traceID, "span_id", spanID, "ruta", c.FullPath(), "metodo", c.Request.Method, "estado", c.Writer.Status(), "duracion_ms", time.Since(inicio).Milliseconds())
 	})
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"estado": "ok"}) })
 	r.GET("/ready", func(c *gin.Context) {

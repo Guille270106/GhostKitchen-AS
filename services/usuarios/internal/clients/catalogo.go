@@ -1,9 +1,8 @@
 // Package clients habla con otros servicios por HTTP. Usuarios solo le pregunta a Catálogo
-// por una cocina, cuando un admin crea una cuenta Cocina (HU15).
+// por una cocina, cuando un admin crea una cuenta Cocina.
 package clients
 
 import (
-	"ghostkitchen/usuarios/internal/trazas"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"ghostkitchen/usuarios/internal/trazas"
 )
 
 // Límites de la consulta a Catálogo (README de Usuarios y ADR-005): 800 ms por intento y un
@@ -24,7 +25,7 @@ const (
 
 var (
 	// ErrCocinaNoExiste: Catálogo respondió 404. Puede no existir o estar inactiva: Catálogo
-	// solo muestra cocinas activas (RN19), y para crear una cuenta da lo mismo.
+	// solo muestra cocinas activas, y para crear una cuenta da lo mismo.
 	ErrCocinaNoExiste = errors.New("la cocina no existe o está inactiva")
 	// ErrCatalogoNoDisponible: no se pudo saber. No se toma como "no existe" (README).
 	ErrCatalogoNoDisponible = errors.New("catálogo no disponible")

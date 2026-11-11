@@ -46,7 +46,7 @@ services:
       interval: 3s
       timeout: 5s
       retries: 40
-  # Mock del grupo proveedor (Grupo 4), desde la copia de su contrato: el test de contrato (L16)
+  # Mock del grupo proveedor (Grupo 4), desde la copia de su contrato: el test de contrato
   # le manda lo que arma nuestro adaptador, y Prism lo valida contra su OpenAPI.
   comprobantes-mock:
     image: stoplight/prism:5

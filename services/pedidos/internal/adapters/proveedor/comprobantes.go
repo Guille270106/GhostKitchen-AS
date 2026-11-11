@@ -4,7 +4,6 @@
 package proveedor
 
 import (
-	"ghostkitchen/pedidos/internal/trazas"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -16,6 +15,7 @@ import (
 	"ghostkitchen/pedidos/internal/adapters/correlacion"
 	"ghostkitchen/pedidos/internal/domain"
 	"ghostkitchen/pedidos/internal/ports"
+	"ghostkitchen/pedidos/internal/trazas"
 	"github.com/sony/gobreaker"
 )
 
