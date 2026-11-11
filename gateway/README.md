@@ -32,7 +32,7 @@ El gateway **no tiene reglas del negocio**: solo manda, verifica, limita y repar
 | `GET /api/v1/admin/metricas[?cocinaId=]` | Pedidos | Sí (Pedidos controla que sea admin y que la cocina sea de su localidad) |
 | `/internal/...` y cualquier otra ruta | — | Responde `404` en JSON (`NO_ENCONTRADO`), igual que Caddy en la nube |
 
-Notificaciones no tiene rutas: solo escucha mensajes. El frontend llama al gateway a través del servidor de Vite (`GATEWAY_URL`), así que no hace falta CORS.
+Notificaciones no tiene rutas: solo escucha mensajes. El frontend llama al gateway desde el mismo origen: en Docker, el NGINX del frontend le pasa `/api` (`frontend/nginx.conf`); con `npm run dev`, lo hace el servidor de Vite (`GATEWAY_URL`). Por eso no hace falta CORS.
 
 ## Login en el borde
 

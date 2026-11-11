@@ -76,3 +76,40 @@ func TestPlatoConRespuestaRota(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Al confirmar, Pedidos copia de Catálogo la tarifa de envío y el nombre de cada restaurante.
+// Un restaurante sin nombre no rompe nada: queda vacío y la pantalla usa el de Catálogo.
+func TestDatosDeCocina(t *testing.T) {
+	falso := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/internal/cocinas/nueva-cordoba" || r.Header.Get("X-Correlation-Id") != "prueba-2" {
+			t.Errorf("solicitud inesperada: %s %q", r.URL.Path, r.Header.Get("X-Correlation-Id"))
+		}
+		w.Write([]byte(`{"id":"nueva-cordoba","costoEnvio":1300,"restaurantes":[
+			{"id":"r1","nombre":"Mostaza"},{"id":"r2","nombre":"Sushi Club"},{"id":"r3"}]}`))
+	}))
+	defer falso.Close()
+	ctx := correlacion.Con(context.Background(), "prueba-2")
+
+	datos, err := Nuevo(falso.URL).DatosDeCocina(ctx, "nueva-cordoba")
+	if err != nil || datos.CostoEnvio != 1300 || len(datos.Restaurantes) != 3 ||
+		datos.Restaurantes["r1"] != "Mostaza" || datos.Restaurantes["r2"] != "Sushi Club" || datos.Restaurantes["r3"] != "" {
+		t.Fatal(err, datos)
+	}
+}
+
+// Sin tarifa, con tarifa negativa o con una respuesta rota: Catálogo no está disponible (se
+// reintenta una vez), nunca un envío inventado en 0.
+func TestDatosDeCocinaInvalidos(t *testing.T) {
+	for _, cuerpo := range []string{`{"restaurantes":[]}`, `{"costoEnvio":-1}`, `{roto`} {
+		llamadas := 0
+		falso := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			llamadas++
+			w.Write([]byte(cuerpo))
+		}))
+		_, err := Nuevo(falso.URL).DatosDeCocina(context.Background(), "nueva-cordoba")
+		falso.Close()
+		if !errors.Is(err, domain.ErrCatalogoCaido) || llamadas != 2 {
+			t.Fatalf("%s: %v, %d llamadas", cuerpo, err, llamadas)
+		}
+	}
+}
