@@ -781,11 +781,24 @@ const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
 // Métricas del negocio de una cocina de su localidad, últimos 7 días (HU22). Las calcula
 // Pedidos con los pedidos guardados; no cuenta los cancelados.
+// Nombre de cada restaurante de las cocinas del admin, por id.
+async function nombresDeRestaurantes() {
+  try {
+    const res = await pedir("GET", "/admin/cocinas");
+    return Object.fromEntries((res.items || []).flatMap((c) => (c.restaurantes || []).map((r) => [r.id, r.nombre])));
+  } catch {
+    return {};
+  }
+}
+
 export async function getMetricas(cocinaId) {
   const qs = cocinaId ? `?cocinaId=${encodeURIComponent(cocinaId)}` : "";
   const res = await pedir("GET", `/admin/metricas${qs}`);
   const d = res.detalle;
   if (!d) return null;
+  // Los pedidos anteriores a guardar el nombre del restaurante lo tienen vacío: se completa con
+  // el nombre actual que tiene Catálogo.
+  const nombres = (d.porMarca || []).some((m) => !m.nombre) ? await nombresDeRestaurantes() : {};
   return {
     pedidos: d.pedidos,
     cancelados: d.cancelados,
@@ -806,6 +819,6 @@ export async function getMetricas(cocinaId) {
       vendidos: p.vendidos,
       foto: fotoDe(p.platoId),
     })),
-    porMarca: (d.porMarca || []).map((m) => ({ id: m.restauranteId, nombre: m.nombre, pedidos: m.pedidos, porcentaje: m.porcentaje })),
+    porMarca: (d.porMarca || []).map((m) => ({ id: m.restauranteId, nombre: m.nombre || nombres[m.restauranteId] || m.restauranteId, pedidos: m.pedidos, porcentaje: m.porcentaje })),
   };
 }

@@ -57,36 +57,44 @@ func (c CatalogoHTTP) pedirCocinas(ctx context.Context, localidad string) ([]por
 	return res, nil
 }
 
-// CostoEnvio devuelve la tarifa de envío de una cocina (implementa ports.Envios). Lee la ruta
-// interna, sin caché: es el importe que se le cobra al cliente. Es una lectura: se reintenta una
-// vez si Catálogo no contesta.
-func (c CatalogoHTTP) CostoEnvio(ctx context.Context, cocinaID string) (int64, error) {
-	envio, err := c.pedirEnvio(ctx, cocinaID)
+// DatosDeCocina devuelve la tarifa de envío y el nombre de los restaurantes de una cocina
+// (implementa ports.Envios). Lee la ruta interna, sin caché: es el importe que se le cobra al
+// cliente. Es una lectura: se reintenta una vez si Catálogo no contesta.
+func (c CatalogoHTTP) DatosDeCocina(ctx context.Context, cocinaID string) (ports.DatosCocina, error) {
+	datos, err := c.pedirDatosCocina(ctx, cocinaID)
 	if errors.Is(err, domain.ErrCatalogoCaido) {
-		envio, err = c.pedirEnvio(ctx, cocinaID)
+		datos, err = c.pedirDatosCocina(ctx, cocinaID)
 	}
-	return envio, err
+	return datos, err
 }
 
-func (c CatalogoHTTP) pedirEnvio(ctx context.Context, cocinaID string) (int64, error) {
+func (c CatalogoHTTP) pedirDatosCocina(ctx context.Context, cocinaID string) (ports.DatosCocina, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/internal/cocinas/"+url.PathEscape(cocinaID), nil)
 	if err != nil {
-		return 0, err
+		return ports.DatosCocina{}, err
 	}
 	req.Header.Set("X-Correlation-Id", correlacion.Desde(ctx))
 	resp, err := c.Client.Do(req)
 	if err != nil {
-		return 0, domain.ErrCatalogoCaido
+		return ports.DatosCocina{}, domain.ErrCatalogoCaido
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return 0, domain.ErrCatalogoCaido
+		return ports.DatosCocina{}, domain.ErrCatalogoCaido
 	}
 	var cocina struct {
-		CostoEnvio *int64 `json:"costoEnvio"`
+		CostoEnvio   *int64 `json:"costoEnvio"`
+		Restaurantes []struct {
+			ID     string `json:"id"`
+			Nombre string `json:"nombre"`
+		} `json:"restaurantes"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&cocina); err != nil || cocina.CostoEnvio == nil || *cocina.CostoEnvio < 0 {
-		return 0, domain.ErrCatalogoCaido
+		return ports.DatosCocina{}, domain.ErrCatalogoCaido
 	}
-	return *cocina.CostoEnvio, nil
+	datos := ports.DatosCocina{CostoEnvio: *cocina.CostoEnvio, Restaurantes: map[string]string{}}
+	for _, r := range cocina.Restaurantes {
+		datos.Restaurantes[r.ID] = r.Nombre
+	}
+	return datos, nil
 }

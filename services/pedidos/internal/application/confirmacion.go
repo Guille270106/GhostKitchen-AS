@@ -33,7 +33,8 @@ type ConfirmacionService struct {
 	Carritos ports.CarritosRepo
 	Pedidos  ports.PedidosRepo
 	Consumo  ports.Consumo
-	// Envios da la tarifa de la cocina al confirmar. Sin él, el envío queda sin registrar.
+	// Envios da la tarifa de la cocina y el nombre de sus restaurantes al confirmar. Sin él, el
+	// envío queda sin registrar.
 	Envios ports.Envios
 }
 
@@ -94,11 +95,17 @@ func (s ConfirmacionService) iniciarConfirmacion(ctx context.Context, actor doma
 	// 2b. El envío que se cobra: la tarifa de la cocina ahora. Si Catálogo no contesta, todavía no
 	//     se hizo nada (ni se descontó stock): se responde que no está disponible.
 	if s.Envios != nil {
-		envio, err := s.Envios.CostoEnvio(ctx, carrito.CocinaID)
+		cocina, err := s.Envios.DatosDeCocina(ctx, carrito.CocinaID)
 		if err != nil {
 			return domain.Confirmacion{}, err
 		}
+		envio := cocina.CostoEnvio
 		nueva.CostoEnvio = &envio
+		// El nombre de cada restaurante queda copiado en el pedido (lo muestran la cocina, las
+		// métricas y la factura), igual que el precio: si después lo renombran, el pedido no cambia.
+		for i, it := range nueva.Items {
+			nueva.Items[i].RestauranteNombre = cocina.Restaurantes[it.RestauranteID]
+		}
 	}
 
 	// 3. La guardamos. Si dos solicitudes llegan a la vez para el mismo carrito, la base deja

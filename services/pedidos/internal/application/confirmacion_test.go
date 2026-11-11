@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"ghostkitchen/pedidos/internal/domain"
+	"ghostkitchen/pedidos/internal/ports"
 )
 
 // ConfirmacionesMock imita a MySQL: la misma clave o el mismo carrito no crean otra
@@ -272,11 +273,11 @@ type EnviosMock struct {
 	caido  bool
 }
 
-func (e *EnviosMock) CostoEnvio(context.Context, string) (int64, error) {
+func (e *EnviosMock) DatosDeCocina(context.Context, string) (ports.DatosCocina, error) {
 	if e.caido {
-		return 0, domain.ErrCatalogoCaido
+		return ports.DatosCocina{}, domain.ErrCatalogoCaido
 	}
-	return e.tarifa, nil
+	return ports.DatosCocina{CostoEnvio: e.tarifa, Restaurantes: map[string]string{"r5": "Johnny B. Good", "r6": "Il Gatto"}}, nil
 }
 
 // El pedido guarda el envío que se cobró al confirmar. Si después la cocina cambia su tarifa,
@@ -291,6 +292,11 @@ func TestElPedidoGuardaElEnvioDelMomentoDeConfirmar(t *testing.T) {
 	}
 	if r.Pedido.CostoEnvio == nil || *r.Pedido.CostoEnvio != 1300 || *r.Pedido.TotalConEnvio != 24000+1300 || r.Pedido.Total != 24000 {
 		t.Fatalf("envío o total mal guardados: %+v", r.Pedido)
+	}
+	for _, it := range r.Pedido.Items {
+		if it.RestauranteNombre == "" {
+			t.Fatalf("el pedido tiene que guardar el nombre del restaurante: %+v", it)
+		}
 	}
 
 	envios.tarifa = 2300 // el admin cambia la tarifa
