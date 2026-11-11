@@ -29,6 +29,14 @@ func TestTextoDelMail(t *testing.T) {
 	if asunto, _ := TextoDelMail(Pendiente{PedidoID: "abc", EstadoPedido: "OTRO"}); asunto != "Tu pedido #ABC cambió de estado" {
 		t.Errorf("estado desconocido: %q", asunto)
 	}
+	// La factura se pide al confirmar, así que el mail de entregado no la promete; y el pedido
+	// puede ir a otra dirección que la de la cuenta, así que el de listo no dice "tu casa".
+	if _, cuerpo := TextoDelMail(Pendiente{PedidoID: "abc", EstadoPedido: "ENTREGADO"}); strings.Contains(cuerpo, "factura") {
+		t.Errorf("entregado no tiene que prometer la factura: %q", cuerpo)
+	}
+	if _, cuerpo := TextoDelMail(Pendiente{PedidoID: "abc", EstadoPedido: "LISTO"}); !strings.Contains(cuerpo, "dirección de entrega") {
+		t.Errorf("listo tiene que hablar de la dirección de entrega: %q", cuerpo)
+	}
 }
 
 // servidorSMTP es un servidor de correo mínimo para el test: acepta un mail y lo devuelve.

@@ -81,6 +81,7 @@ Un cambio en sus nombres o formatos se arregla en el adaptador, sin tocar las re
 - El cliente nunca espera ni pierde un pedido por el proveedor; la factura puede llegar unos segundos o minutos después.
 - Hay que mantener la copia de su contrato al día. La API key se pidió una sola vez y vive en el `.env` de cada compu.
 - Una factura rechazada no se reintenta sola: queda registrada para revisarla.
+- La factura se pide al confirmar, así que un pedido que después se cancela queda con su factura emitida. En la práctica eso se compensa con una nota de crédito, pero el contrato del Grupo 4 solo permite emitir y consultar facturas (`POST /v1/comprobantes`, `GET /v1/comprobantes/{id}`): no hay anulación. Queda como limitación conocida; si la agregan, Pedidos la pediría al pasar el pedido a `CANCELADO`.
 - El test de contrato corre contra su mock, así no depende de que su servicio esté prendido; el flujo completo se probó también contra su servicio real.
 
 ## Cómo lo validamos

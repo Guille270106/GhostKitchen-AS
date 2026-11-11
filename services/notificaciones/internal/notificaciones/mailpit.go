@@ -27,11 +27,11 @@ func TextoDelMail(p Pendiente) (asunto, cuerpo string) {
 	case "EN_PREPARACION":
 		estado, detalle = "está en preparación", "La cocina está cocinando tu pedido."
 	case "LISTO":
-		estado, detalle = "está listo", "En un rato sale para tu casa."
+		estado, detalle = "está listo", "En un rato sale para la dirección de entrega."
 	case "EN_CAMINO":
 		estado, detalle = "está en camino", "Cuando lo recibas, confirmalo en Mis pedidos."
 	case "ENTREGADO":
-		estado, detalle = "fue entregado", "¡Que lo disfrutes! La factura te llega en otro mail."
+		estado, detalle = "fue entregado", "¡Que lo disfrutes!"
 	case "CANCELADO":
 		estado, detalle = "fue cancelado", "Los ingredientes que tenía reservados volvieron a la cocina."
 	}
