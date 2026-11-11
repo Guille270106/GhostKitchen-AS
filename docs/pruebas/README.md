@@ -2,7 +2,7 @@
 
 [`GhostKitchen-pruebas.postman_collection.json`](GhostKitchen-pruebas.postman_collection.json) prueba la API de punta a punta **a través del gateway**, como la usa el frontend. Tiene 73 requests y 100 pruebas automáticas, y se corre entera con *Run collection*. La última corrida completa (11/11/2026) pasó las 100.
 
-Es una prueba de integración del sistema levantado. Los tests de cada servicio (unitarios, de integración con su base y de contrato) están en su carpeta y corren en GitHub Actions, igual que la prueba de punta a punta [`services/pedidos/testdata/e2e.mjs`](../../services/pedidos/testdata/e2e.mjs), que recorre el flujo principal con todo el sistema levantado.
+Es una prueba de integración del sistema levantado. Los tests de cada servicio (unitarios, de integración con su base y de contrato) están en su carpeta y corren en GitHub Actions, igual que la prueba de punta a punta [`services/pedidos/testdata/e2e.mjs`](../../services/pedidos/testdata/e2e.mjs), que recorre el flujo principal con todo el sistema levantado, y la prueba de la pantalla con Playwright ([`frontend/e2e`](../../frontend/README.md#prueba-de-la-pantalla-playwright)).
 
 ## Qué prueba
 

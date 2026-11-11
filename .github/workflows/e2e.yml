@@ -1,11 +1,15 @@
-# Prueba de punta a punta (services/pedidos/testdata/e2e.mjs), en cada pull request.
+# Pruebas de punta a punta, en cada pull request. Levanta el sistema como en la compu de cada uno
+# (docker-compose.yml) y corre dos pruebas sobre él:
 #
-# Levanta el sistema como en la compu de cada uno (docker-compose.yml) y recorre el flujo entero
-# por el gateway, como el frontend: el admin crea una cuenta Cocina; la cocina crea plato,
-# ingrediente y receta; el cliente compra, confirma (Inventario descuenta) y cancela (Inventario
-# devuelve), y otro pedido llega hasta ENTREGADO. Al final revisa que los eventos lleguen a
-# RabbitMQ. Los tests de cada servicio prueban cada uno por separado; este prueba que sigan
-# funcionando juntos.
+# 1. La de la API (services/pedidos/testdata/e2e.mjs), por el gateway: el admin crea una cuenta
+#    Cocina; la cocina crea plato, ingrediente y receta; el cliente compra, confirma (Inventario
+#    descuenta) y cancela (Inventario devuelve), y otro pedido llega hasta ENTREGADO. Al final
+#    revisa que los eventos lleguen a RabbitMQ.
+# 2. La de la pantalla (frontend/e2e, con Playwright), en un navegador de verdad: un cliente
+#    nuevo busca un plato, lo agrega al carrito y confirma con otra dirección; la cocina lo acepta
+#    desde su tablero y el cliente ve el cambio.
+#
+# Los tests de cada servicio prueban cada uno por separado; estas prueban que sigan funcionando juntos.
 name: Prueba de punta a punta
 
 on:
@@ -24,14 +28,15 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
       # Los servicios del flujo (todos con healthcheck); sus bases, RabbitMQ y Solr arrancan solos
-      # porque dependen de ellos. El frontend, Prometheus y Grafana no hacen falta.
-      SERVICIOS: usuarios inventario pedidos notificaciones catalogo-1 catalogo-2 busqueda gateway
+      # porque dependen de ellos. Prometheus y Grafana no hacen falta.
+      SERVICIOS: usuarios inventario pedidos notificaciones catalogo-1 catalogo-2 busqueda gateway frontend
       # Estos no son dependencias en el compose, pero el flujo los usa: la caché de Catálogo y el
       # mock del Grupo 4, al que Pedidos le pide la factura.
       EXTRAS: memcached comprobantes-mock
+      PLAYWRIGHT_IMAGEN: mcr.microsoft.com/playwright:v1.63.0-noble
     steps:
       - uses: actions/checkout@v4
 
@@ -47,9 +52,16 @@ jobs:
       - name: Compilar y levantar el sistema
         run: docker compose up -d --build $SERVICIOS $EXTRAS
 
-      # Se espera a que los 8 estén healthy: cada servicio aplica sus migraciones y carga los
+      # Mientras el sistema arranca se baja la imagen oficial de Playwright: trae el navegador y
+      # todo lo que necesita, sin instalar paquetes con apt (que depende de los servidores de
+      # Ubuntu y a veces falla). La versión es la misma que @playwright/test en package.json.
+      - name: Bajar la imagen de Playwright
+        run: docker pull $PLAYWRIGHT_IMAGEN
+
+      # Se espera a que todos estén healthy: cada servicio aplica sus migraciones y carga los
       # datos de ejemplo al arrancar, y Búsqueda arma su índice desde Catálogo.
       - name: Esperar a que todo esté listo
+        id: listo
         run: |
           total=$(echo $SERVICIOS | wc -w)
           for i in $(seq 1 72); do
@@ -61,8 +73,29 @@ jobs:
           docker compose ps -a
           exit 1
 
-      - name: Correr la prueba de punta a punta
+      - name: Prueba de la API
         run: node services/pedidos/testdata/e2e.mjs
+
+      # Corre aunque la de la API haya fallado (si el sistema llegó a levantarse), así se ven las dos.
+      - name: Prueba de la pantalla (Playwright)
+        # --network host: el navegador llega al frontend (5173) y al gateway (8080) como en la compu.
+        # Se monta todo el repositorio porque preparar.js lee ADMIN_PASSWORD del .env de la raíz.
+        if: ${{ !cancelled() && steps.listo.outcome == 'success' }}
+        run: >
+          docker run --rm --init --ipc=host --network host -e CI=true
+          -v "$PWD:/repo" -w /repo/frontend $PLAYWRIGHT_IMAGEN
+          sh -c "npm ci && npm run test:e2e"
+
+      # Captura, video y traza paso a paso de lo que vio el navegador (npx playwright show-trace).
+      - name: Guardar lo que vio el navegador
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 7
 
       - name: Logs si falló
         if: failure()

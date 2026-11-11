@@ -243,7 +243,7 @@ GhostKitchen/
   - `main`: solo lo que entregamos. Cada entrega pasa de `develop` a `main` y se marca con un tag (`entrega-1`, `entrega-2`, `final`).
   - `develop`: donde juntamos el trabajo de todos.
   - `feature/...`, `docs/...`, `fix/...`: una rama por tarea. Sale de `develop` y vuelve a `develop` con un **pull request que revisa otro integrante**.
-- **Revisión automática:** desde la Entrega 2, GitHub Actions corre los tests en cada pull request. Para la entrega final se sumaron el test de contrato de la API publicada (`contrato.yml`) y la prueba de punta a punta con todo el sistema levantado (`e2e.yml`).
+- **Revisión automática:** desde la Entrega 2, GitHub Actions corre los tests en cada pull request. Para la entrega final se sumaron el test de contrato de la API publicada (`contrato.yml`) y las pruebas de punta a punta con todo el sistema levantado (`e2e.yml`): la de la API y la de la pantalla en un navegador, con Playwright.
 - **Decisiones:** cada decisión importante va en un ADR. Si cambiamos de idea, hacemos un ADR nuevo y no borramos el viejo.
 - **Contraseñas y claves:** nunca en el repositorio. Van en el `.env` de cada integrante, que está en `.gitignore`; los nombres de las variables están en [Variables del `.env`](#variables-del-env).
 

@@ -43,6 +43,29 @@ npm run dev      # http://localhost:5173, reenvía /api a http://localhost:8080
 npm run lint
 ```
 
+## Prueba de la pantalla (Playwright)
+
+`e2e/pedido.spec.js` abre un navegador de verdad y recorre el flujo principal contra el sistema levantado, sin respuestas simuladas:
+
+1. Un cliente nuevo se registra, elige Cocina Cerro y busca un plato.
+2. Lo agrega al carrito y confirma el pedido con **otra** dirección de entrega.
+3. Lo ve en *Mis pedidos* (Recibido, con esa dirección).
+4. La cocina, en otro navegador, lo ve en su tablero con la dirección y lo acepta.
+5. El cliente ve que la cocina lo aceptó y que ya no lo puede cancelar.
+
+Antes, `e2e/preparar.js` crea por la API una cuenta Cocina y un plato propio con stock (como `services/pedidos/testdata/e2e.mjs`), así no depende del stock de los datos de ejemplo y se puede repetir. Los botones y campos se buscan por lo que ve el usuario (su texto o su rótulo) y no por clases de CSS: si cambia el diseño, la prueba sigue andando; si cambia un texto de esos, hay que actualizarla.
+
+Corre en GitHub Actions en cada pull request, en el mismo job que la prueba de la API (`.github/workflows/e2e.yml`). Si falla, el job guarda el artefacto `playwright` con la captura, el video y la traza paso a paso. Para correrla en la compu, con el sistema levantado (`docker compose up -d --build`) y desde `frontend/`:
+
+```bash
+npm ci
+npx playwright install chromium   # la primera vez
+npm run test:e2e                  # usa ADMIN_PASSWORD del .env, sin imprimirla
+npx playwright show-trace test-results/<carpeta>/trace.zip   # si falló: qué vio el navegador
+```
+
+El gateway deja 10 logins o registros por minuto por IP: si se corre varias veces seguidas, esperar un minuto entre corridas.
+
 ## De dónde sale cada dato
 
 | Pantalla | Función de `ghostkitchen.js` | Backend |
