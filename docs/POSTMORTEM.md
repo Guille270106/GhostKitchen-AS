@@ -96,12 +96,14 @@ Es una prueba **controlada**: se rompe una pieza a la vez, en un entorno local i
 | Paso | Qué vio el usuario | Tiempo |
 | --- | --- | --- |
 | Agregar un plato al carrito | `503 SERVICIO_NO_DISPONIBLE`. No se inventa una reserva | 1,6 s |
-| Confirmar el pedido | `202 "Estamos confirmando tu pedido"`: la confirmación queda `EN_CURSO` | 2,1 s |
+| Confirmar el pedido (un carrito sin cambios pendientes) | `202 "Estamos confirmando tu pedido"`: la confirmación queda `EN_CURSO` | 2,1 s |
 | Mientras Inventario sigue caído | La confirmación sigue `EN_CURSO`: nunca se dice que falló | — |
 | Alerta `ServicioCaido(inventario)` | Disparada en Prometheus y visible en Grafana ("Alertas activas", severidad alta; "Servicios arriba" muestra Inventario en rojo) | 91 s después de la caída |
 | **Inventario vuelve** | La confirmación se completa **sola** y el pedido queda `RECIBIDO`. El stock pasa de 20 a 18 (se descontó una sola vez) | 13 s |
 | Cancelar con Inventario caído | `200 CANCELADO`. La devolución de ingredientes queda anotada como `PENDIENTE` | 0,03 s |
 | **Inventario vuelve** | Los ingredientes vuelven al stock (20) | 3 s |
+
+**Cambio posterior a esta jornada.** El 10/11 a la noche entró la corrección de consistencia entre el carrito y las reservas (Pedidos anota cada cambio del carrito como incierto antes de llamar a Inventario; ver el [README de Pedidos](../services/pedidos/README.md)). Desde entonces, si un "agregar" falla con Inventario caído, ese cambio queda sin resolver y **confirmar responde `409 CARRITO_MODIFICADO`** hasta que Inventario vuelve y Pedidos lo aclara solo (cada 10 s). Es a propósito: confirmar consumiría una reserva que quizás no coincide con el carrito. Por eso el script ahora confirma con un carrito sin cambios pendientes, y prueba el "agregar" fallido al final del caso, en la segunda caída: comprueba el `503`, el `409` y que el cambio se aclare solo sin dejar el plato en el carrito.
 
 **Por qué funcionó:** la confirmación es una saga con cada paso guardado; los reintentos usan siempre la misma `Idempotency-Key` (Inventario no descuenta dos veces); un proceso de Pedidos retoma las confirmaciones pendientes cada 10 s; y la devolución de un pedido cancelado se anota en la misma transacción que el cambio de estado y se manda en segundo plano. Los tiempos de 1,6 s y 2,1 s salen de los límites por llamada (800 ms por intento) y del plazo de 2 s para descontar, dentro de los 3 s.
 

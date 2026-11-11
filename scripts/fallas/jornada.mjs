@@ -155,10 +155,8 @@ r = await agregar(1);
 revisar(r.estado === 200, `con Inventario arriba, el cliente arma el carrito (reserva) en ${r.ms} ms`, r.texto);
 docker("stop", "inventario");
 
-r = await agregar(1);
-revisar(r.estado === 503 && r.json?.code === "SERVICIO_NO_DISPONIBLE" && r.ms < 3000,
-  `agregar otro plato: ${r.estado} ${r.json?.code} en ${r.ms} ms (no se inventa una reserva)`, r.texto);
-
+// Se confirma sin tocar más el carrito: si antes falla un "agregar", ese cambio queda sin resolver
+// y Pedidos no deja confirmar hasta que Inventario vuelva (eso se prueba al final de este caso).
 r = await confirmar(`fallas-${marca}-1`);
 const conf = r.json?.confirmacionId;
 revisar(r.estado === 202 && r.json?.mensaje === "Estamos confirmando tu pedido" && r.ms < 3000,
@@ -187,9 +185,25 @@ revisar(r.estado === 200 && r.json?.estado === "CANCELADO" && r.ms < 3000, `canc
 await esperar(6000);
 const dev = sqlPedidos(`SELECT estado, intentos FROM devolucion WHERE pedido_id='${pedido1}'`);
 revisar(dev.startsWith("PENDIENTE"), `la devolución queda anotada: ${dev.replace(/\s+/g, " ")} (estado, intentos)`, dev);
+
+// Agregar con Inventario caído: no se inventa una reserva. Como no se sabe si Inventario llegó a
+// reservar (pudo ser un timeout), el cambio queda sin resolver y Pedidos no deja confirmar ese
+// carrito hasta aclararlo: confirmar consumiría una reserva que quizás no coincide con el carrito.
+r = await agregar(1);
+revisar(r.estado === 503 && r.json?.code === "SERVICIO_NO_DISPONIBLE" && r.ms < 3000,
+  `agregar con Inventario caído: ${r.estado} ${r.json?.code} en ${r.ms} ms (no se inventa una reserva)`, r.texto);
+r = await confirmar(`fallas-${marca}-1b`);
+revisar(r.estado === 409 && r.json?.code === "CARRITO_MODIFICADO",
+  `confirmar con ese cambio sin resolver: ${r.estado} ${r.json?.code} (no confirma a ciegas)`, r.texto);
+
 docker("start", "inventario");
 const tDevuelve = await hasta(async () => (await stock()) === 20, 90);
 revisar(tDevuelve !== null, `al volver, los ingredientes vuelven al stock (20) en ${tDevuelve} s`, String(await stock()));
+// Pedidos resuelve el cambio pendiente cada 10 s (repite la reserva con la misma clave y la libera,
+// porque el plato nunca llegó al carrito). Después, confirmar ya no lo frena: el carrito está vacío.
+let intento = 0;
+const tResuelve = await hasta(async () => (await confirmar(`fallas-${marca}-1c-${intento++}`)).json?.code === "CARRITO_VACIO", 60);
+revisar(tResuelve !== null, `el cambio sin resolver se aclara solo en ${tResuelve} s y el plato no quedó en el carrito`, "");
 
 // =====================================================================================
 console.log("\n== 2. RabbitMQ caído ==");
