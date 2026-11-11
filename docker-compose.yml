@@ -1,17 +1,19 @@
 # Puesta en marcha local de GhostKitchen: `docker compose up --build`
 #
-# Estado (Entrega 2):
-#   - gateway:       NGINX en el puerto 8080. Publica la capacidad en /public/v1 (API key y límite)
-#                    y las lecturas de Catálogo en /api/v1.
-#   - catalogo:      servicio Catálogo (Go + Gin). Fuente de verdad de cocinas, restaurantes y platos.
-#   - mongo:         MongoDB, base catalogo_db con su propio usuario.
-#   - busqueda:      servicio Búsqueda (Go + Gin). Arma su índice desde Catálogo y atiende la capacidad publicada.
-#   - solr:          índice de Búsqueda (cores "cocinas" y "platos").
-#   - jaeger:        recibe las trazas (OpenTelemetry) del gateway, Búsqueda y Catálogo. UI en el puerto 16686.
-#   - contract-mock: mock de la capacidad publicada, servido desde el contrato OpenAPI (puerto 4010).
-# MySQL y las plantillas de migración se agregan en la ronda 1; los servicios de negocio
-# Usuarios, Inventario y Pedidos se implementan en la ronda 2.
-# Los secretos se leen del archivo .env, que no se versiona (copiar .env.example como .env).
+# Qué levanta:
+#   - frontend:        React servido por NGINX en el puerto 5173 (le pasa /api al gateway).
+#   - gateway:         NGINX en el puerto 8080. Publica la capacidad en /public/v1 (API key y límite)
+#                      y la API del frontend en /api/v1 (verifica el token con Usuarios).
+#   - usuarios, inventario, pedidos: servicios en Go + Gin con MySQL. Cada uno aplica sus migraciones al arrancar.
+#   - catalogo-1/2:    servicio Catálogo (Go + Gin), 2 copias balanceadas. Fuente de verdad de cocinas, restaurantes y platos.
+#   - busqueda:        servicio Búsqueda (Go + Gin). Arma su índice desde Catálogo e Inventario y atiende la capacidad publicada.
+#   - notificaciones:  worker que manda un mail por cada cambio de estado del pedido (Mailpit en el puerto 8025).
+#   - mysql, mongo, memcached, solr: bases, caché e índice.
+#   - rabbitmq:        mensajería entre servicios. Exchange ghostkitchen.events, una cola por consumidor y su DLQ.
+#                      Panel en el puerto 15672 (usuario y contraseña de RABBITMQ_USER / RABBITMQ_PASSWORD).
+#   - jaeger, prometheus, grafana: trazas, métricas, alertas y tablero.
+#   - comprobantes-mock, contract-mock: mocks del proveedor (Grupo 4) y de nuestra capacidad publicada.
+# Los secretos se leen del archivo .env, que no se versiona (las variables están en el README, sección "Variables del .env").
 services:
   mysql:
     image: mysql:8.4
@@ -35,75 +37,272 @@ services:
       start_period: 20s
     restart: unless-stopped
 
-  # Plantillas ejecutables: cada trabajo usa únicamente las credenciales de su base.
-  # En ronda 2, mysql-startup será el ENTRYPOINT de cada servicio, antes de su binario.
-  usuarios-migrations:
-    build: ./tools/mysql-startup
+  # Igual que Inventario y Pedidos, aplica sus migraciones antes de arrancar HTTP. Reemplaza al
+  # trabajo usuarios-migrations. No se publica al host: entra por el gateway.
+  usuarios:
+    build:
+      context: .
+      dockerfile: services/usuarios/Dockerfile
     environment:
       DB_HOST: mysql
       DB_USER: usuarios
       DB_PASSWORD: ${USUARIOS_DB_PASSWORD:?Completá USUARIOS_DB_PASSWORD en .env}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       DB_NAME: usuarios_db
-    volumes:
-      - ./services/usuarios/migrations:/migrations:ro
+      # Clave para firmar los tokens (al menos 32 bytes) y cuánto duran.
+      JWT_SECRET: ${JWT_SECRET:?Completá JWT_SECRET en .env (al menos 32 caracteres)}
+      JWT_TTL_MINUTES: ${JWT_TTL_MINUTES:-120}
+      # Catálogo confirma la cocina y su localidad al crear una cuenta Cocina.
+      CATALOGO_URL: http://catalogo:8082
+      # Contraseña inicial de los 4 admins (uno por localidad). Sin ella no se crean.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      PORT: "8081"
+      GIN_MODE: release
+    expose:
+      - "8081"
     depends_on:
       mysql:
         condition: service_healthy
-    restart: "no"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
-  inventario-migrations:
-    build: ./tools/mysql-startup
+  # Aplica sus migraciones antes de arrancar HTTP, también tras cada reinicio.
+  inventario:
+    build:
+      context: .
+      dockerfile: services/inventario/Dockerfile
     environment:
       DB_HOST: mysql
       DB_USER: inventario
       DB_PASSWORD: ${INVENTARIO_DB_PASSWORD:?Completá INVENTARIO_DB_PASSWORD en .env}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       DB_NAME: inventario_db
-    volumes:
-      - ./services/inventario/migrations:/migrations:ro
+      RABBITMQ_USER: ${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}
+      PORT: "8084"
+      GIN_MODE: release
+    expose:
+      - "8084"
     depends_on:
       mysql:
         condition: service_healthy
-    restart: "no"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8084/ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
-  pedidos-migrations:
-    build: ./tools/mysql-startup
+  # Pedidos: aplica sus migraciones al arrancar (mysql-startup) y después atiende HTTP.
+  # Solo expose: no se publica al host, así nadie le manda headers de identidad salteando el gateway.
+  pedidos:
+    build:
+      context: .
+      dockerfile: services/pedidos/Dockerfile
     environment:
       DB_HOST: mysql
       DB_USER: pedidos
       DB_PASSWORD: ${PEDIDOS_DB_PASSWORD:?Completá PEDIDOS_DB_PASSWORD en .env}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       DB_NAME: pedidos_db
-    volumes:
-      - ./services/pedidos/migrations:/migrations:ro
+      PORT: "8085"
+      CATALOGO_URL: http://catalogo:8082        # precio y cocina del plato
+      INVENTARIO_URL: http://inventario:8084    # reservas internas (no pasan por el gateway)
+      # Descontar (al confirmar) y devolver (al cancelar) stock con Inventario:
+      # POST /reservas/{id}/consumir y POST /consumos/{pedidoId}/devolver. Con "simulado" no llama
+      # a Inventario (sirve para probar Pedidos solo).
+      CONSUMO_INVENTARIO: real
+      # Mensajes pedido.estado_cambiado: se guardan en el outbox y se publican en RabbitMQ.
+      # Si RabbitMQ está caído, Pedidos sigue atendiendo y los mensajes esperan en MySQL.
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}:${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}@rabbitmq:5672/
+      # Facturas del pedido con el grupo proveedor. Si el .env no tiene su URL, se usa su mock.
+      PROVIDER_BASE_URL: ${PROVIDER_BASE_URL:-http://comprobantes-mock:4010}
+      PROVIDER_API_KEY: ${PROVIDER_API_KEY:-clave-del-mock}
+    expose:
+      - "8085"
     depends_on:
       mysql:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8085/ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # Mensajería (ADR-005). El usuario sale de .env; las colas las crea rabbitmq-topologia.
+  rabbitmq:
+    image: rabbitmq:3.13.7-management-alpine
+    container_name: ghostkitchen-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    expose:
+      - "5672"            # AMQP: solo dentro de la red de Docker
+    ports:
+      - "15672:15672"     # panel de administración (solo para desarrollo)
+    healthcheck:
+      # Se corre como el usuario rabbitmq: si lo hace root, la cookie de Erlang queda sin permisos.
+      test: ["CMD", "su-exec", "rabbitmq", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  # Trabajo de una sola vez: carga exchanges, colas, DLQ y bindings por la API de administración.
+  # Se puede repetir sin problema: importar las mismas definiciones no duplica nada.
+  # No se cargan al arrancar RabbitMQ porque así no crearía el usuario de .env.
+  rabbitmq-topologia:
+    image: curlimages/curl:8.10.1
+    environment:
+      RABBITMQ_USER: ${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}
+    volumes:
+      - ./infra/rabbitmq/definiciones.json:/definiciones.json:ro
+    command:
+      - sh
+      - -c
+      - >-
+        curl -sS -f -u "$$RABBITMQ_USER:$$RABBITMQ_PASSWORD"
+        -H "Content-Type: application/json" -X POST --data-binary @/definiciones.json
+        http://rabbitmq:15672/api/definitions
+        && echo "topologia de RabbitMQ cargada"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     restart: "no"
+
+  # Servidor de correo de prueba: guarda los mails en vez de mandarlos (http://localhost:8025).
+  mailpit:
+    image: axllent/mailpit@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
+    ports:
+      - "127.0.0.1:8025:8025"
+
+  notificaciones-mongo:
+    image: mongo:7
+    environment:
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Completá MONGO_ROOT_PASSWORD en .env}
+      NOTIFICACIONES_DB_PASSWORD: ${NOTIFICACIONES_DB_PASSWORD:?Completá NOTIFICACIONES_DB_PASSWORD en .env}
+    entrypoint: ["sh", "-ec"]
+    command:
+      - |
+        test -n "$$NOTIFICACIONES_DB_PASSWORD" || {
+          echo "Completá NOTIFICACIONES_DB_PASSWORD en .env" >&2
+          exit 1
+        }
+        mongosh --quiet --host mongo -u root -p "$$MONGO_ROOT_PASSWORD" --authenticationDatabase admin --eval '
+          const base = db.getSiblingDB("notificaciones_db");
+          if (!base.getUser("notificaciones")) {
+            base.createUser({user: "notificaciones", pwd: process.env.NOTIFICACIONES_DB_PASSWORD,
+              roles: [{role: "readWrite", db: "notificaciones_db"}]});
+          }
+        '
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  notificaciones:
+    build: ./services/notificaciones
+    environment:
+      NOTIFICACIONES_DB_PASSWORD: ${NOTIFICACIONES_DB_PASSWORD:?Completá NOTIFICACIONES_DB_PASSWORD en .env}
+      RABBITMQ_USER: ${RABBITMQ_USER:?Completá RABBITMQ_USER en .env}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Completá RABBITMQ_PASSWORD en .env}
+      SMTP_ADDR: mailpit:1025
+    expose:
+      - "8086"            # /health, /ready y /metrics, solo dentro de la red de Docker
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8086/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    depends_on:
+      notificaciones-mongo:
+        condition: service_completed_successfully
+      rabbitmq-topologia:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+
+
+  # Frontend (React + Vite) compilado para producción y servido por NGINX, en
+  # http://localhost:5173. Le pide todo al gateway por /api (frontend/nginx.conf).
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5173/"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+    depends_on:
+      - gateway
+    restart: unless-stopped
 
   gateway:
     image: nginx:1.27-alpine-otel     # NGINX con el módulo de OpenTelemetry
     container_name: ghostkitchen-gateway
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./gateway/proxy-comun.conf:/etc/nginx/proxy-comun.conf:ro
+      - ./gateway/identidad.conf:/etc/nginx/identidad.conf:ro
+      - ./gateway/seguridad.conf:/etc/nginx/seguridad.conf:ro
     ports:
       - "8080:8080"
+    # /health responde sin consultar a ningún servicio: dice si NGINX está vivo.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
     depends_on:
       busqueda:
         condition: service_healthy
-      catalogo:
+      catalogo-1:
+        condition: service_healthy
+      catalogo-2:
         condition: service_healthy
       jaeger:
         condition: service_started
     restart: unless-stopped
 
-  catalogo:
+  # Catálogo corre con 2 copias, catalogo-1 y catalogo-2, que el gateway reparte por turnos
+  # (ADR-012). Las dos leen la misma MongoDB y la misma Memcached: da igual cuál conteste.
+  # Las dos responden también al nombre "catalogo" dentro de Docker (alias), así Búsqueda,
+  # Usuarios y Pedidos siguen usando http://catalogo:8082 y, si una copia no contesta, Go prueba
+  # con la otra dirección.
+  catalogo-1:
     build: ./services/catalogo
-    container_name: ghostkitchen-catalogo
+    container_name: ghostkitchen-catalogo-1
+    networks:
+      default:
+        aliases: [catalogo]
     environment:
+      INSTANCIA: catalogo-1
+      PUBLICAR_OUTBOX: "true"     # una sola copia publica el outbox
       PORT: "8082"
-      MONGO_URI: mongodb://catalogo:${CATALOGO_DB_PASSWORD:?Completá CATALOGO_DB_PASSWORD en .env}@mongo:27017/catalogo_db?authSource=catalogo_db
+      MONGO_URI: mongodb://catalogo:${CATALOGO_DB_PASSWORD:?Completá CATALOGO_DB_PASSWORD en .env}@mongo:27017/catalogo_db?authSource=catalogo_db&replicaSet=rs0
       MONGO_DB: catalogo_db
       MONGO_TIMEOUT_MS: "2000"
       SEED_AL_INICIAR: "true"
+      # Para activar un plato, Catálogo le pregunta a Inventario si tiene receta.
+      INVENTARIO_URL: http://inventario:8084
+      # El publicador del outbox manda cocina.* y plato.* al exchange ghostkitchen.events.
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      # Caché de lecturas públicas en Memcached (ADR-007). false para medir sin caché.
+      CACHE_HABILITADA: ${CACHE_HABILITADA:-true}
+      MEMCACHED_ADDR: memcached:11211
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     expose:
       - "8082"            # solo dentro de la red de Docker
@@ -117,9 +316,43 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # La segunda copia es igual a la primera (extends), con otro nombre y sin publicar el outbox.
+  catalogo-2:
+    extends:
+      service: catalogo-1
+    container_name: ghostkitchen-catalogo-2
+    environment:
+      INSTANCIA: catalogo-2
+      PUBLICAR_OUTBOX: "false"
+
+  # Caché compartida de Catálogo (ADR-007). Sin datos propios: si se reinicia, solo se
+  # pierden copias. 64 MB alcanzan de sobra para 4 cocinas y sus menús.
+  memcached:
+    image: memcached:1.6-alpine
+    container_name: ghostkitchen-memcached
+    command: ["memcached", "-m", "64"]
+    expose:
+      - "11211"
+    restart: unless-stopped
+
+  # MongoDB corre como replica set de un solo nodo (rs0). Hace falta para las
+  # transacciones del outbox de Catálogo: guardar el cambio y su mensaje juntos.
+  # MongoDB solo permite transacciones en un replica set, aunque tenga un solo miembro.
   mongo:
     image: mongo:7
     container_name: ghostkitchen-mongo
+    # Con usuarios (autenticación) un replica set exige una clave compartida entre sus miembros
+    # (keyFile). Se genera al arrancar dentro del contenedor, con el dueño y los permisos que
+    # pide MongoDB: montarla desde Windows no respeta esos permisos. No es un secreto que haya
+    # que guardar: con un solo miembro nadie más la usa.
+    command:
+      - bash
+      - -c
+      - |
+        head -c 756 /dev/urandom | base64 -w 0 > /data/configdb/keyfile
+        chmod 400 /data/configdb/keyfile
+        chown 999:999 /data/configdb/keyfile
+        exec docker-entrypoint.sh mongod --replSet rs0 --keyFile /data/configdb/keyfile --bind_ip_all
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Completá MONGO_ROOT_PASSWORD en .env}
@@ -128,12 +361,20 @@ services:
       - mongo-data:/data/db
       - ./infra/mongo:/docker-entrypoint-initdb.d:ro
     ports:
-      - "27017:27017"     # para mirar los datos con MongoDB Compass (solo desarrollo)
+      - "27017:27017"     # Compass (solo desarrollo): mongodb://root:<clave>@localhost:27017/?directConnection=true
+    # El healthcheck además inicia el replica set la primera vez (rs.initiate) y recién da
+    # "healthy" cuando este nodo es el primario: antes de eso Catálogo no podría escribir.
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet -u root -p "$$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval
+          "let ok; try { ok = rs.status().ok } catch (e) { ok = rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }).ok }
+          quit(ok === 1 && db.hello().isWritablePrimary ? 0 : 1)"
       interval: 5s
-      timeout: 3s
-      retries: 20
+      timeout: 5s
+      retries: 30
+      start_period: 20s
     restart: unless-stopped
 
   busqueda:
@@ -144,13 +385,16 @@ services:
       SOLR_URL: http://solr:8983/solr
       SOLR_TIMEOUT_MS: "2000"
       CATALOGO_URL: http://catalogo:8082
+      INVENTARIO_URL: http://inventario:8084    # disponibilidad para reconstruir el índice
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/   # cola busqueda.indexador
       PUBLIC_API_KEYS: ${PUBLIC_API_KEYS:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     expose:
       - "8083"            # solo dentro de la red de Docker: desde afuera se entra por el gateway
     depends_on:
       - solr
-      - catalogo
+      - catalogo-1
+      - catalogo-2
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8083/health"]
       interval: 5s
@@ -164,6 +408,9 @@ services:
     command: bash -c "precreate-core cocinas; precreate-core platos; exec solr -f"
     environment:
       SOLR_HEAP: 512m
+      # Solr anota cada búsqueda con sus parámetros (el texto que escribió el cliente). Con WARN
+      # solo registra advertencias y errores: el texto buscado no queda en los logs.
+      SOLR_LOG_LEVEL: WARN
     volumes:
       - solr-data:/var/solr
     ports:
@@ -179,6 +426,52 @@ services:
       - "16686:16686"     # interfaz web para ver las trazas
     restart: unless-stopped
 
+  # Mock del grupo proveedor (Grupo 4, API de comprobantes), servido desde su contrato con Prism.
+  # Valida cada solicitud contra su OpenAPI. Pedidos lo usa si PROVIDER_BASE_URL está vacía.
+  comprobantes-mock:
+    image: stoplight/prism:5
+    command: mock -h 0.0.0.0 -p 4010 -m false /contrato/comprobantes-v1.yaml
+    volumes:
+      - ./docs/contracts/proveedor:/contrato:ro
+    expose:
+      - "4010"
+
+  # Métricas y tablero (ADR-011). Prometheus lee /metrics de cada servicio y evalúa las
+  # alertas; Grafana muestra el tablero "GhostKitchen", ya cargado al arrancar.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: ghostkitchen-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d   # la ventana de los objetivos de servicio (ADR-011)
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alertas.yml:/etc/prometheus/alertas.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"       # consultas y alertas (http://localhost:9090/alerts)
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: ghostkitchen-grafana
+    environment:
+      # Cualquiera que abra localhost:3000 ve el tablero sin entrar (solo lectura). Para editar,
+      # usuario admin y la contraseña de GRAFANA_ADMIN_PASSWORD en .env ("admin" si no está).
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/ghostkitchen.json
+      GF_USERS_DEFAULT_LANGUAGE: es-ES
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"       # tablero (http://localhost:3000)
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
   contract-mock:
     image: stoplight/prism:5
     container_name: ghostkitchen-contract-mock
@@ -189,6 +482,8 @@ services:
       - "4010:4010"
 
 volumes:
+  prometheus-data:
   mysql-data:
+  rabbitmq-data:
   mongo-data:
   solr-data:

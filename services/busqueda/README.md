@@ -2,7 +2,7 @@
 
 **Responsable:** Guillermina Sánchez (índice y búsqueda) · Lucía Rucci (capacidad publicada).
 
-> **Entrega 2:** funcionando la **capacidad publicada** completa (`/v1/sedes`, `/v1/sedes/cercana`, `/v1/sedes/{sedeId}/platos`, `/v1/platos/{platoId}` y `POST /v1/proximidad`) sobre Solr, detrás del gateway con API key. El índice se **reconstruye desde Catálogo** (MongoDB) al arrancar y con `POST /internal/reindexar`. La disponibilidad todavía es una tabla provisional (es dato de Inventario, que aún no existe): un plato nuevo, sin receta, figura no disponible. El lector de mensajes y la búsqueda del frontend (`/platos/buscar`, sugerencias, zonas) llegan con RabbitMQ y el frontend.
+Atiende la **capacidad publicada** completa (`/v1/sedes`, `/v1/sedes/cercana`, `/v1/sedes/{sedeId}/platos`, `/v1/platos/{platoId}` y `POST /v1/proximidad`) sobre Solr, detrás del gateway con API key, y la búsqueda del frontend. El índice se **reconstruye desde Catálogo e Inventario** al arrancar y con `POST /internal/reindexar`, y se mantiene al día con los mensajes `cocina.*`, `plato.*` (Catálogo) y `disponibilidad.cambiada` (Inventario). Detalle en [Mensajes que escucha](#mensajes-que-escucha).
 
 ## Cómo levantarlo y probarlo
 
@@ -27,7 +27,7 @@ Sirve para **encontrar platos** y la **cocina más cercana**. También atiende *
 - Atiende la capacidad **"Cocinas, platos y proximidad de sedes externas"** que publicamos ([contrato](../../docs/contracts/README.md)).
 - Mantiene sus datos al día con los mensajes que recibe, y los puede **reconstruir de cero** si hace falta.
 
-Lo que guarda es una **copia** armada para buscar rápido (Clase 5). Sirve para mirar, pero **no decide el stock**: que un plato figure "disponible" es orientativo, y cuando el cliente lo agrega al carrito, Inventario vuelve a controlar.
+Lo que guarda es una **copia** armada para buscar rápido. Sirve para mirar, pero **no decide el stock**: que un plato figure "disponible" es orientativo, y cuando el cliente lo agrega al carrito, Inventario vuelve a controlar.
 
 ## Qué datos guarda (Solr)
 
@@ -39,20 +39,19 @@ Lo que guarda es una **copia** armada para buscar rápido (Clase 5). Sirve para 
 
 Un cambio en un plato o en su stock se tiene que ver acá en **5 segundos como máximo**. Un plato sin receta no aparece como disponible.
 
-## Experiencia de búsqueda prevista para el frontend
+## Experiencia de búsqueda
 
-Estas mejoras quedan definidas como diseño para implementar y probar desde la Entrega 2; todavía no funcionan en el mock. No cambian la arquitectura ni requieren otro motor de búsqueda.
-
-| Comportamiento | Ejemplo | Regla prevista |
+| Comportamiento | Ejemplo | Estado |
 | --- | --- | --- |
-| Mayúsculas y acentos | `CAFE` encuentra `Café` | Normalizar el texto al indexar y consultar, conservando el nombre original para mostrarlo |
-| Errores pequeños de escritura | `hamburgesa` encuentra `hamburguesa` | Si la búsqueda normal no obtiene resultados, intentar una búsqueda aproximada con hasta una edición por término de cinco letras o más |
-| Sinónimos definidos | `burger` encuentra `hamburguesa` | Configurar equivalencias de comida explícitas y revisadas; no asumir que Solr entiende cualquier palabra parecida |
-| Autocompletado | `ham` sugiere `Hamburguesa vegetariana` | Desde tres caracteres, ofrecer hasta cinco nombres distintos de platos activos de la cocina seleccionada cuyo nombre comience con el texto normalizado |
+| Mayúsculas y acentos | `CAFE` encuentra `Café` | ✅ Solr normaliza el texto al indexar y al consultar (minúsculas y sin acentos), y conserva el nombre original para mostrarlo |
+| Palabras a medias | `hambur` encuentra `Hamburguesa` | ✅ Ver abajo |
+| Autocompletado | `ham` sugiere `Hamburguesa vegetariana` | ✅ Desde 3 letras, hasta 5 nombres distintos de platos de la sede elegida. Lo arma el frontend con una búsqueda normal |
+| Errores pequeños de escritura | `hamburgesa` encuentra `hamburguesa` | No lo hicimos |
+| Sinónimos | `burger` encuentra `hamburguesa` | No lo hicimos: mal configurados empeoran los resultados ([ADR-006](../../docs/adr/ADR-006-busqueda.md)) |
 
-Las búsquedas normales incluyen los sinónimos configurados. La alternativa aproximada conserva los mismos filtros: cocina, restaurante, categoría, etiqueta, precio y disponibilidad. Con orden por relevancia, las coincidencias directas deben tener prioridad sobre las equivalencias. Con orden por precio, se respeta el orden elegido.
+**Palabras a medias:** la última palabra, si tiene al menos 3 letras, también vale como comienzo de palabra: "hambur" encuentra "Hamburguesa" mientras se escribe. Se busca `hambur OR hambur*`, porque el comodín no pasa por la raíz en español ("hamburguesas*" no encontraría nada) y la palabra entera sí. Las anteriores tienen que estar completas.
 
-El autocompletado es una consulta separada: no completa automáticamente el carrito ni reserva stock. Seleccionar una sugerencia ejecuta la búsqueda. Se implementará con campos de prefijos o un mecanismo equivalente de Solr, limitando las solicitudes del frontend mientras la persona escribe. Las sugerencias también conservan el alcance de la cocina y la disponibilidad solicitada, que sigue siendo orientativa.
+El autocompletado no agrega nada al carrito ni reserva stock: elegir una sugerencia ejecuta la búsqueda.
 
 No se promete reconocer singular y plural, búsquedas por significado ni información nutricional. Esos comportamientos requieren decisiones y datos adicionales.
 
@@ -66,20 +65,21 @@ Usamos capas, pero el servicio recibe trabajo por **dos lados**: por HTTP (las b
 cmd/api/                       arranca el servidor HTTP y prepara el índice
 internal/handlers/             entrada 1: rutas HTTP, validación y errores Problem Details
 internal/services/             reglas: sede cercana, cobertura de 25 km, búsqueda de platos, proximidad
-internal/repositories/         interfaces Lector e Indexador
+internal/repositories/         interfaces Lector, Indexador y Actualizador (cambios sin pisar datos más nuevos)
 internal/repositories/solr/    implementación sobre Solr (consultas, esquema, carga)
 internal/repositories/memoria/ implementación en memoria, solo para tests
 internal/domain/               cómo es un plato y una sede en la búsqueda, y sus errores
 internal/geo/                  distancia Haversine
-internal/indexer/              reconstrucción del índice desde Catálogo (y, más adelante, el lector de mensajes)
-internal/clients/              cliente HTTP de Catálogo: 5 s por intento y 3 reintentos (trabajo de fondo)
+internal/indexer/              reglas para aplicar cambios, reconstrucción desde Catálogo e Inventario, y eventos
+internal/mensajeria/           lector de la cola busqueda.indexador de RabbitMQ
+internal/clients/              clientes HTTP de Catálogo e Inventario: 5 s por intento y 3 reintentos (trabajo de fondo)
 internal/seed/                 datos iniciales para probar Búsqueda sola y disponibilidad provisional
 internal/middleware/           X-Correlation-Id y log JSON de cada solicitud
 internal/router/               arma Gin con middleware y rutas
 internal/config/               variables de entorno
 ```
 
-Previsto para cuando existan Inventario y RabbitMQ: el lector de mensajes en `internal/indexer/` y el cliente de Inventario para la disponibilidad real.
+El lector de mensajes está en `internal/mensajeria` y el cliente de Inventario en `internal/clients/inventario.go`.
 
 **Esquema de Solr:** no hay archivos de configuración aparte. Al arrancar, Búsqueda usa la Schema API para crear los campos que falten en los cores `cocinas` y `platos`, y un tipo de texto `text_gk` que pasa a minúsculas y quita acentos (así `CAFE` encuentra `Café`). Es idempotente: se puede ejecutar en cada arranque.
 
@@ -94,13 +94,18 @@ Salvo las rutas técnicas comunes, la tabla muestra rutas internas del servicio.
 | `GET /zonas?q=` | el frontend | Sugerir la cocina más cercana a una zona |
 | `POST /v1/proximidad` | el gateway para el otro grupo (API key) | Proximidad externa y cocina opcional; contrato 1.1.0 |
 | `GET /v1/...` | el gateway, para el otro grupo (con API key) | Lo que publicamos: ver el [contrato](../../docs/contracts/v1/openapi.yaml). El gateway expone `/public/v1/...` y elimina `/public` al reenviar |
-| `POST /internal/reindexar` | operación técnica autorizada en la red interna | Reconstruir la búsqueda desde cero |
+| `POST /internal/reindexar` | operación técnica autorizada en la red interna | Reconstruir la búsqueda desde cero. 200 con lo indexado; 409 `RECONSTRUCCION_EN_CURSO` (con `Retry-After`) si ya corre otra; 503 con lo que se llegó a guardar (`parcial`) si falla |
 | `GET /internal/apikey/verificar` | el gateway (`auth_request`) | Verificar la `X-API-Key` antes de dejar pasar una solicitud a `/public/v1`: 204 válida, 401 inválida |
-| `GET /health` y `GET /ready` | Docker y el gateway | `/health`: el proceso está vivo. `/ready`: el índice está preparado y Solr responde (503 si no) |
+| `GET /health` y `GET /ready` | Docker y el gateway | `/health`: el proceso está vivo. `/ready`: el índice está preparado y los dos cores de Solr responden (503 si no) |
 
-Implementadas en la Entrega 2: las rutas `/v1/...`, `POST /v1/proximidad`, `POST /internal/reindexar`, `/internal/apikey/verificar`, `/health` y `/ready`. Las demás llegan con el frontend y con Catálogo e Inventario.
+**Reconstrucción más robusta:**
+- Nunca corren dos a la vez: la del arranque y la manual comparten un candado (`indexer.Exclusiva`). La del arranque espera su turno; la manual responde 409 enseguida.
+- La manual tiene su propio contexto, con plazo de 25 s: si quien la pidió corta la conexión, no queda a medias. Conserva el `correlation_id`.
+- Los errores salen como Problem Details, igual que el resto del servicio.
+- Las escrituras no esperan el commit (`commitWithin` de 1 s). Al terminar de armar el índice se hace un commit, así `/ready` dice "listo" con todo visible.
+- `/ready` revisa los dos cores (`cocinas` y `platos`): si se borró uno, Búsqueda no está lista.
 
-## Proximidad externa prevista
+## Proximidad externa
 
 Recibe exactamente dos ubicaciones: ubicacionCliente y ubicacionSede, más radioKm (> 0 y hasta 500) e incluirDarkKitchen=false por defecto. Valida latitud entre -90 y 90 y longitud entre -180 y 180. Go calcula Haversine y compara sin redondear contra el radio inclusivo; muestra kilómetros con tres decimales. sedeExterna informa distanciaKm y dentroDelRango de la sede enviada. El consumidor puede ofrecerla si está dentro del rango. No selecciona entre varias sedes ni guarda, indexa o registra las coordenadas recibidas.
 
@@ -118,11 +123,26 @@ Si un mensaje llega dos veces, no pasa nada: actualiza el mismo plato. Y si lleg
 
 La versión se compara por fuente: Catálogo actualiza datos comerciales e Inventario actualiza disponibilidad. Un evento de stock no sobrescribe el precio y uno de Catálogo no sobrescribe el stock. El ACK se realiza después de persistir la actualización idempotente en Solr. El objetivo de 5 segundos se mide en operación normal; las caídas generan atraso observable y requieren recuperación.
 
+### Cómo quedó implementado
+
+- **Dónde:** `internal/mensajeria` lee la cola `busqueda.indexador` (de a un mensaje, prefetch 1) y `internal/indexer/aplicar.go` decide qué guardar. La reconstrucción usa las mismas reglas, así que las dos pueden correr a la vez.
+- **Versiones guardadas en Solr:** cada plato tiene `version_catalogo` (la `version` del plato en Catálogo) y `version_inventario` (el contador de Inventario por plato); cada cocina, `version_catalogo`. Un mensaje con una versión menor que la guardada se ignora; con la misma, se escribe lo mismo.
+- **Sin perder cambios:** cada mensaje lee el documento con el real-time get de Solr y lo guarda con el `_version_` leído. Si otro escribió en el medio (por ejemplo, la reconstrucción), Solr responde 409 y se vuelve a leer y aplicar. Los mensajes no esperan el commit (`commitWithin` de 1 s): con commit por mensaje, cada uno tardaría casi 1 s.
+- **Cocina:** actualiza la sede y recalcula sus platos (nombre de la cocina y del restaurante, y si se muestran). Un plato se muestra solo si él, su restaurante y su cocina están activos; por eso cada plato guarda también `plato_activo`, lo suyo.
+- **Plato antes que su cocina:** se guarda inactivo con el id de la cocina, y se completa cuando llega la cocina. No se devuelve a la cola: podría quedar delante del mensaje de la cocina y trabarlo.
+- **Stock antes que el plato:** se guarda un plato inactivo con solo la disponibilidad, que se completa cuando llega el de Catálogo.
+- **Sin receta, nunca disponible**, aunque Inventario diga lo contrario.
+- **Respuestas a RabbitMQ:** guardado → ack. No cumple el contrato (sobre inválido, el tipo no coincide con la ruta, los datos no coinciden con el sobre) → reject, y RabbitMQ lo manda a `busqueda.indexador.dlq`. Solr caído → espera 1, 2, 4… hasta 10 s y lo devuelve a la cola; al quinto intento va a la DLQ (`x-delivery-limit`).
+- **RabbitMQ caído:** se reconecta esperando 1, 2, 4… hasta 10 s. Mientras tanto las búsquedas andan con lo que hay y los cambios esperan en la cola.
+- **Observabilidad:** cada mensaje deja un log `evento aplicado` con tipo, `evento_id`, plato o cocina, `correlation_id` del cambio original y `demora_ms` (desde que pasó el cambio hasta que quedó en el índice; el objetivo es menos de 5000), y un span `procesar <tipo>` en la traza.
+
 ## Con quién habla
 
-- Solo para **reconstruir de cero**, les pide los datos a Catálogo e Inventario **por su API**. Nunca entra a sus bases.
+- Solo para **reconstruir de cero**, les pide los datos a Catálogo (`/internal/cocinas`, `/internal/platos`) e Inventario (`GET /platos/disponibilidad`) **por su API**. Nunca entra a sus bases.
+- Si Inventario no contesta, la reconstrucción sigue sin él (`sinInventario: true` en la respuesta y en el log): los platos conservan la disponibilidad que tenían y los mensajes la ponen al día.
+- La lista de Inventario no trae el contador de cada plato, así que solo se usa para platos que nunca recibieron un mensaje de stock: no se puede saber si es más nueva que el mensaje. Si Inventario agrega `secuencia` a cada item, se usa sin cambiar nada.
 
-## Dependencias y fallas previstas
+## Dependencias y fallas
 
 | Dependencia | Para qué | Si falla |
 | --- | --- | --- |
@@ -142,10 +162,12 @@ Las llamadas de reconstrucción admiten hasta 5 s por intento y tres reintentos:
 | `PUBLIC_API_KEYS` | vacío | Claves de los grupos consumidores, separadas por coma. Vacío = se rechazan todas |
 | `CATALOGO_URL` | vacío | Dirección de Catálogo (`http://catalogo:8082` en Docker). Si está, el índice se arma desde Catálogo |
 | `SEED_AL_INICIAR` | `true` | Solo sin `CATALOGO_URL`: cargar los datos iniciales embebidos (para probar Búsqueda sola) |
+| `INVENTARIO_URL` | vacío | Dirección de Inventario (`http://inventario:8084` en Docker). Sin ella, los platos nuevos usan la tabla provisional de los datos de ejemplo |
+| `RABBITMQ_URL` | vacío | Conexión a RabbitMQ, con usuario y contraseña (nunca se registra). Sin ella, el índice solo se actualiza al reconstruirlo |
 
-Más adelante se suman las direcciones de RabbitMQ y de las API internas de Catálogo e Inventario. El radio de cobertura de la API publicada es 25 km, según el [contrato v1](../../docs/contracts/v1/openapi.yaml). Las claves de consumidores se validan en el gateway mediante `PUBLIC_API_KEYS`; no se incorporan al índice.
+El radio de cobertura de la API publicada es 25 km, según el [contrato v1](../../docs/contracts/v1/openapi.yaml). Las claves de consumidores se validan en el gateway mediante `PUBLIC_API_KEYS`; no se incorporan al índice.
 
-## Pruebas implementadas (Entrega 2)
+## Pruebas
 
 `go test ./... -cover` (sin Docker):
 
@@ -155,16 +177,14 @@ Más adelante se suman las direcciones de RabbitMQ y de las API internas de Cat�
 - **Datos iniciales:** 4 cocinas, 64 platos sin ids repetidos, carga idempotente y el plato `p5` igual al ejemplo del contrato.
 - **Reconstrucción** contra un Catálogo simulado: solo se muestran platos activos de restaurantes y cocinas activas, se ignoran restaurantes desconocidos, se recorren todas las páginas y, si Catálogo falla a mitad de camino, se conserva lo ya guardado y se informa el error.
 
-Las respuestas se validaron contra el OpenAPI 1.1.0 con los datos en memoria, y el gateway se probó con `scripts/probar-api-publica.ps1` (401, 413, 429 y 503 con Problem Details). Queda pendiente sumar a la suite una prueba de integración contra un Solr real.
+**Mensajes:**
 
-## Pruebas previstas
+- **Reglas** (`indexer/aplicar_test.go`): cada fuente cambia solo sus campos, mensajes viejos ignorados (plato, stock y cocina), repetido sin cambios, stock antes que el plato, plato antes que su cocina, plato nuevo no disponible, sin receta nunca disponible, la lista sin contador no pisa un mensaje, desactivar y reactivar la cocina o un restaurante llega a sus platos, Solr caído es pasajero.
+- **Reconstrucción con mensajes:** no vuelve atrás un plato ni un stock más nuevos que llegaron por mensaje; con Inventario caído sigue y lo informa.
+- **Contrato** (`indexer/eventos_test.go`): sobre inválido, tipo distinto a la ruta, secuencia distinta a la versión, datos de otro plato, tipo desconocido.
+- **Solr simulado:** con un 409 vuelve a leer y escribe con el `_version_` nuevo, exacto; un plato nuevo se escribe con `_version_` -1; un mensaje viejo no escribe nada.
+- **RabbitMQ real** (`mensajeria/integracion_test.go`, con `RABBITMQ_TEST_URL`): plato antes que su cocina, mensaje roto a la DLQ, cocina y stock; el plato queda visible, con el restaurante y disponible.
 
-- Normalización de acentos y mayúsculas, errores de una edición en términos de al menos cinco letras solo si no hay resultados normales, sinónimos revisados y prioridad de coincidencias directas con relevancia.
-- Autocompletado desde tres caracteres, hasta cinco nombres distintos de platos activos de la cocina, filtros conservados y errores de Solr sin simular ausencia.
+Las respuestas se validaron contra el OpenAPI 1.1.0 con los datos en memoria, y el gateway se probó con `scripts/probar-api-publica.ps1` (401, 413, 429 y 503 con Problem Details). No tenemos una prueba de integración contra un Solr real: Solr se prueba simulado.
 
-- Mensajes repetidos y fuera de orden no sobrescriben datos más nuevos; las versiones de Catálogo e Inventario se comparan por separado.
-- Filtros, orden, paginación e indexación contra Solr real; cocina más cercana y error `SIN_COBERTURA`.
-- Proximidad: 0 km, límite inclusivo, sede fuera de rango, campos ausentes, coordenadas/radio inválidos y booleano como texto. No admite listas.
-- false funciona sin Solr; true comprueba cercanía al cliente (no a la sede externa), radio efectivo, empates por ID de cocina y EN_RANGO/FUERA_RANGO/SIN_SEDES independientes; 503 ante caída sin guardar ubicaciones.
-- Reconstrucción concurrente con eventos sin perder actualizaciones ni dejar sin servicio el índice anterior.
-- Respuestas de la capacidad publicada conformes a OpenAPI, incluida la traducción de fallas a `503`.
+**Proximidad:** 0 km, límite inclusivo, sede fuera de rango, campos ausentes, coordenadas o radio inválidos y booleano como texto. Con `incluirDarkKitchen=false` funciona sin Solr; con `true`, la cocina más cercana es al cliente (no a la sede externa), con radio efectivo, empates por id y `503` si Solr está caído.

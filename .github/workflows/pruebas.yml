@@ -1,0 +1,94 @@
+# Pruebas de todo el sistema en cada pull request: los tests de Go de los seis servicios (con la
+# cobertura de sus reglas de negocio), el frontend (lint y build) y la integración de Pedidos e
+# Inventario contra MySQL y RabbitMQ reales. Así un cambio no puede pasar la revisión rompiendo el flujo principal, aunque no toque
+# la API publicada (de eso se encarga contrato.yml).
+name: Pruebas
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop]
+
+jobs:
+  unitarias:
+    name: Tests de Go (${{ matrix.servicio }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        servicio: [usuarios, catalogo, busqueda, inventario, pedidos, notificaciones]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: services/${{ matrix.servicio }}/go.sum
+      # -coverpkg cuenta también lo que se ejecuta desde los tests de otro paquete (por ejemplo,
+      # los casos de uso que se prueban a través de los handlers HTTP).
+      - name: go vet y go test
+        working-directory: services/${{ matrix.servicio }}
+        run: |
+          go vet ./...
+          go test -count=1 -coverpkg=./internal/... -coverprofile=cobertura.out ./...
+      # Cobertura de las reglas de negocio (dominio y casos de uso): falla por debajo del 70 %
+      # (SPEC, sección 10). El detalle por paquete queda en el resumen del job.
+      - name: Cobertura de las reglas de negocio
+        working-directory: services/${{ matrix.servicio }}
+        run: node ../../scripts/cobertura/reglas.mjs ${{ matrix.servicio }} cobertura.out
+
+  frontend:
+    name: Frontend (lint y build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+  integracion:
+    name: Integración (${{ matrix.servicio }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Pedidos: MySQL, RabbitMQ y el mock del proveedor (test de contrato de lo que consumimos).
+          - servicio: pedidos
+            levantar: pedidos comprobantes-mock rabbitmq
+          # Inventario: MySQL, incluida la prueba de 200 clientes por el último plato.
+          - servicio: inventario
+            levantar: inventario
+    steps:
+      - uses: actions/checkout@v4
+      - name: Levantar las dependencias de prueba
+        run: >
+          docker compose -p ci-${{ matrix.servicio }} -f services/${{ matrix.servicio }}/testdata/compose.yml
+          up -d --build --wait ${{ matrix.levantar }}
+      - name: Tests contra las dependencias reales
+        # Si un test de integración se saltea por falta de una variable, la corrida falla: acá
+        # tienen que correr todos.
+        shell: bash   # con pipefail: si go test falla, el paso falla aunque después venga tee
+        run: |
+          docker compose -p ci-${{ matrix.servicio }} -f services/${{ matrix.servicio }}/testdata/compose.yml \
+            run --rm --build pruebas | tee salida.txt
+          if grep -E -- "--- SKIP" salida.txt; then
+            echo "::error::Hay tests de integración que se saltearon"
+            exit 1
+          fi
+      - name: Logs si falló
+        if: failure()
+        run: docker compose -p ci-${{ matrix.servicio }} -f services/${{ matrix.servicio }}/testdata/compose.yml logs --tail 80
+      - name: Bajar todo
+        if: always()
+        run: docker compose -p ci-${{ matrix.servicio }} -f services/${{ matrix.servicio }}/testdata/compose.yml down -v

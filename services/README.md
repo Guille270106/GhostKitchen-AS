@@ -2,7 +2,7 @@
 
 Cada carpeta es un servicio aparte, con su propio código, su `Dockerfile` y sus tests, y se levanta por separado. Su `README.md` explica qué hace el servicio, qué datos guarda, cómo se organiza por dentro, qué rutas tiene y qué mensajes manda o escucha.
 
-Hoy funcionan **Catálogo** y **Búsqueda** (desde la Entrega 2). **Usuarios**, **Inventario** y **Pedidos** ya tienen su base MySQL y su carpeta `migrations/`, y su código llega en la ronda 2; **Notificaciones**, en la ronda 4.
+Funcionan los seis. Usuarios, Inventario y Pedidos usan MySQL; Catálogo y Notificaciones, MongoDB; Búsqueda, Solr.
 
 | Servicio | Qué hace | Base | Cómo se organiza por dentro | Puerto |
 | --- | --- | --- | --- | --- |
@@ -11,7 +11,7 @@ Hoy funcionan **Catálogo** y **Búsqueda** (desde la Entrega 2). **Usuarios**, 
 | [busqueda](busqueda/README.md) | Buscar platos, sugerir la cocina más cercana, calcular proximidad externa y atender lo que publicamos | Solr | Capas (entra por HTTP y por mensajes) | 8083 |
 | [inventario](inventario/README.md) | Ingredientes, stock, recetas y reservas de 10 minutos | MySQL | Hexagonal liviano | 8084 |
 | [pedidos](pedidos/README.md) | Carrito, pedido, estados y la confirmación con Inventario y el proveedor | MySQL | Hexagonal + DDD | 8085 |
-| [notificaciones](notificaciones/README.md) | Un mail por cada cambio de estado del pedido | MongoDB | Capas (entra por mensajes) | 8086 |
+| [notificaciones](notificaciones/README.md) | Un mail por cada cambio de estado del pedido | MongoDB | Un solo paquete (entra por mensajes) | 8086 (solo `/health`, `/ready` y `/metrics`) |
 
 El gateway (NGINX, puerto 8080) está explicado en [`gateway/`](../gateway/README.md).
 
@@ -24,11 +24,11 @@ Las imágenes de contexto y contenedores están en `docs/diagrams/`. Las depende
 
 ## Reglas que siguen todos los servicios
 
-- **Go + Gin**, igual que en el práctico de la materia.
-- Todos tienen tres rutas técnicas, igual que Catálogo y Búsqueda:
+- **Go + Gin** (Notificaciones usa `net/http`: solo tiene las tres rutas técnicas).
+- Todos tienen tres rutas técnicas:
   - `/health`: el servicio está prendido (lo usa Docker para saber si reiniciarlo);
   - `/ready`: el servicio puede atender, por ejemplo porque llega a su base;
-  - `/metrics`: números para Prometheus (llega con el monitoreo).
+  - `/metrics`: números para Prometheus.
 - Los logs se escriben en JSON y llevan un identificador para seguir una misma acción entre servicios. **Nunca** se escriben contraseñas ni tokens.
 - Las claves se leen de variables de entorno (ver [Variables del `.env`](../README.md#variables-del-env)), nunca van en el código.
 - Los mensajes que publican o escuchan siguen el formato común de [`docs/contracts/eventos`](../docs/contracts/eventos/README.md).

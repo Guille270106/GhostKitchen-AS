@@ -23,6 +23,7 @@ import (
 	"ghostkitchen/busqueda/internal/config"
 	"ghostkitchen/busqueda/internal/handlers"
 	"ghostkitchen/busqueda/internal/indexer"
+	"ghostkitchen/busqueda/internal/mensajeria"
 	"ghostkitchen/busqueda/internal/middleware"
 	"ghostkitchen/busqueda/internal/repositories/solr"
 	"ghostkitchen/busqueda/internal/router"
@@ -32,13 +33,21 @@ import (
 )
 
 func main() {
+	if err := correr(); err != nil {
+		os.Exit(1) // correr ya registró el error, y sus defer (las últimas trazas) ya se ejecutaron
+	}
+}
+
+// correr arma y levanta el servicio. Devuelve el error en vez de llamar a os.Exit: así se
+// ejecutan los defer antes de salir, entre ellos el que manda a Jaeger las últimas trazas.
+func correr() error {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("servicio", "busqueda")
 	cfg := config.Cargar()
 
 	cerrarTrazas, err := trazas.Iniciar(context.Background())
 	if err != nil {
 		log.Error("no se pudo configurar OpenTelemetry", "error", err.Error())
-		os.Exit(1)
+		return err
 	}
 	defer func() {
 		fin, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -56,17 +65,24 @@ func main() {
 	repo := solr.NuevoRepositorio(solr.NuevoCliente(cfg.SolrURL, cfg.SolrTimeout))
 	svc := services.Nueva(repo)
 
-	// De dónde salen los datos del índice: de Catálogo si está configurado (lo normal),
-	// o de los datos iniciales embebidos (para probar Búsqueda sola).
-	// Los datos se piden a la API de Catálogo; Búsqueda nunca lee catalogo_db (ADR-001).
+	// De dónde salen los datos del índice: de Catálogo (y la disponibilidad de Inventario) si
+	// están configurados (lo normal), o de los datos iniciales embebidos (para probar Búsqueda
+	// sola). Los datos se piden a sus API; Búsqueda nunca lee otras bases (ADR-001).
 	var reconstruir func(context.Context) (indexer.Resultado, error)
 	if cfg.CatalogoURL != "" {
+		// Sin INVENTARIO_URL, los platos nuevos usan la tabla provisional de los datos de ejemplo.
+		var inventario indexer.FuenteDisponibilidad
+		if cfg.InventarioURL != "" {
+			inventario = clients.NuevoInventario(cfg.InventarioURL)
+		} else {
+			log.Warn("sin INVENTARIO_URL: la disponibilidad de los platos nuevos sale de la tabla provisional")
+		}
 		dispo, err := seed.DisponibilidadInicial()
 		if err != nil {
 			log.Error("no se pudo leer la disponibilidad inicial", "error", err.Error())
-			os.Exit(1)
+			return err
 		}
-		rec := indexer.NuevoReconstructor(clients.NuevoCatalogo(cfg.CatalogoURL), repo, dispo)
+		rec := indexer.NuevoReconstructor(clients.NuevoCatalogo(cfg.CatalogoURL), inventario, repo, dispo)
 		reconstruir = func(ctx context.Context) (indexer.Resultado, error) {
 			// El esquema se revisa en cada reconstrucción: si alguien borró y recreó el core,
 			// el índice se vuelve a armar solo (es una copia reconstruible, ADR-003).
@@ -75,12 +91,17 @@ func main() {
 			}
 			res, err := rec.Reconstruir(ctx)
 			if err == nil {
+				// Lo escrito queda visible ya, sin esperar el segundo de commitWithin.
+				err = repo.Confirmar(ctx)
+			}
+			if err == nil {
 				// Se registran los dos ids: correlation_id (el nuestro, viaja en
 				// X-Correlation-Id y se busca en los logs de todos los servicios, ADR-005) y
 				// trace_id (el de OpenTelemetry, para abrir la traza en Jaeger, ADR-011).
 				traceID, _ := trazas.IDs(ctx)
-				log.Info("índice reconstruido desde Catálogo", "correlation_id", middleware.IDDesdeContexto(ctx),
-					"trace_id", traceID, "sedes", res.Sedes, "platos", res.Platos)
+				log.Info("índice reconstruido", "correlation_id", middleware.IDDesdeContexto(ctx),
+					"trace_id", traceID, "sedes", res.Sedes, "platos", res.Platos,
+					"disponibilidad", res.Disponibilidad, "sin_inventario", res.SinInventario)
 			}
 			return res, err
 		}
@@ -93,11 +114,30 @@ func main() {
 	var listo atomic.Bool
 	ctx, parar := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer parar()
-	go inicializarIndice(ctx, log, repo, cfg.SeedAlIniciar, reconstruir, &listo)
+	// Una sola reconstrucción a la vez, venga del arranque o de POST /internal/reindexar.
+	var excl *indexer.Exclusiva
+	if reconstruir != nil {
+		excl = indexer.NuevaExclusiva(reconstruir)
+	}
+
+	go func() {
+		inicializarIndice(ctx, log, repo, cfg.SeedAlIniciar, excl, &listo)
+		// Lector de mensajes. Arranca cuando el índice está listo, para que el esquema ya
+		// tenga los campos de versión. Lo que pasó mientras tanto espera en la cola. Si lee un
+		// mensaje que la reconstrucción ya trajo, la versión hace que no cambie nada.
+		if ctx.Err() != nil {
+			return
+		}
+		if cfg.RabbitMQURL == "" {
+			log.Warn("sin RABBITMQ_URL: el índice solo se actualiza al reconstruirlo")
+			return
+		}
+		mensajeria.NuevoConsumidor(cfg.RabbitMQURL, indexer.NuevoAplicador(repo), log).Correr(ctx)
+	}()
 
 	r := router.Nuevo(log,
 		handlers.NuevoInterno(cfg.APIKeys, repo.Ping, &listo),
-		handlers.NuevoReindexar(reconstruir),
+		handlers.NuevoReindexar(excl),
 		handlers.NuevoPublico(svc),
 	)
 	srv := &http.Server{
@@ -108,21 +148,27 @@ func main() {
 		WriteTimeout:      30 * time.Second, // la reconstrucción manual puede tardar más que una consulta
 	}
 
+	errServidor := make(chan error, 1)
 	go func() {
 		log.Info("escuchando", "puerto", cfg.Puerto)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Error("el servidor se detuvo", "error", err.Error())
-			os.Exit(1)
+			errServidor <- err
 		}
 	}()
 
 	// Apagado ordenado: con SIGTERM (docker stop) se dejan terminar las solicitudes en curso
 	// hasta 10 s en lugar de cortarlas a la mitad.
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+	case err := <-errServidor:
+		log.Error("el servidor se detuvo", "error", err.Error())
+		return err
+	}
 	log.Info("apagando")
 	fin, cancelar := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelar()
 	_ = srv.Shutdown(fin)
+	return nil
 }
 
 // inicializarIndice espera a que Solr (y Catálogo, si se usa) respondan y arma el índice.
@@ -132,10 +178,10 @@ func main() {
 // Búsqueda en arrancar, y sin índice el servicio no puede atender. La espera se duplica
 // en cada intento para no insistir sobre una dependencia que todavía está levantando (ADR-010).
 func inicializarIndice(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, conSeed bool,
-	reconstruir func(context.Context) (indexer.Resultado, error), listo *atomic.Bool) {
+	excl *indexer.Exclusiva, listo *atomic.Bool) {
 	espera := time.Second
 	for intento := 1; ; intento++ {
-		err := preparar(ctx, log, repo, conSeed, reconstruir)
+		err := preparar(ctx, log, repo, conSeed, excl)
 		if err == nil {
 			listo.Store(true)
 			log.Info("índice listo", "intentos", intento)
@@ -159,7 +205,7 @@ func siguienteEspera(actual time.Duration) time.Duration {
 // preparar hace un intento de armar el índice: desde Catálogo si hay CATALOGO_URL; si no,
 // con los datos iniciales (conSeed) o dejando solo el esquema.
 func preparar(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, conSeed bool,
-	reconstruir func(context.Context) (indexer.Resultado, error)) error {
+	excl *indexer.Exclusiva) error {
 	// Cada intento tiene su propio correlation_id ("inicio-..."), para encontrar en los logs
 	// de Búsqueda y de Catálogo todo lo que hizo ese arranque. El plazo de 60 s es mucho más
 	// largo que los 3 s de una pantalla porque es trabajo de fondo: nadie lo está esperando,
@@ -170,8 +216,9 @@ func preparar(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, con
 	c, span := trazas.Tracer().Start(c, "preparar índice al iniciar")
 	defer span.End()
 	trazas.MarcarCorrelacion(c, middleware.IDDesdeContexto(c))
-	if reconstruir != nil {
-		_, err := reconstruir(c)
+	if excl != nil {
+		// Si justo corre una reconstrucción manual, espera a que termine y arma la suya.
+		_, err := excl.Esperar(c)
 		return err
 	}
 	if !conSeed {
@@ -182,5 +229,7 @@ func preparar(ctx context.Context, log *slog.Logger, repo *solr.Repositorio, con
 		return err
 	}
 	log.Info("datos iniciales cargados", "sedes", sedes, "platos", platos)
-	return nil
+	// Las escrituras no esperan el commit: se confirma al final, así /ready dice
+	// "listo" con todo visible en las búsquedas.
+	return repo.Confirmar(c)
 }

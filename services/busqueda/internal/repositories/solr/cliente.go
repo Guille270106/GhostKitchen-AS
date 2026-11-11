@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -25,6 +27,15 @@ import (
 	"ghostkitchen/busqueda/internal/domain"
 	"ghostkitchen/busqueda/internal/trazas"
 )
+
+// llamadas mide cada llamada a Solr, por operación (ej. "platos/select") y resultado (ok o
+// error). Es el panel "Dependencias" del ADR-011: saber si lo lento es Solr. La operación no
+// lleva la URL con parámetros (ADR-011, privacidad).
+var llamadas = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "busqueda_solr_duration_seconds",
+	Help:    "Duración de las llamadas de Búsqueda a Solr, por operación y resultado.",
+	Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.3, 0.5, 1, 2, 5},
+}, []string{"operacion", "resultado"})
 
 // Cores (índices) que usa Búsqueda. Se crean al levantar Solr (docker-compose).
 const (
@@ -98,10 +109,26 @@ func (c *Cliente) Get(ctx context.Context, core, id string) (json.RawMessage, er
 	return r.Doc, nil
 }
 
-// Actualizar agrega o reemplaza documentos (por id) y hace commit, para que lo guardado ya
-// aparezca en /select. Como se reemplaza por id, guardar dos veces lo mismo no duplica nada.
-func (c *Cliente) Actualizar(ctx context.Context, core string, docs any) error {
-	return c.hacer(ctx, c.fondo, http.MethodPost, "/"+core+"/update?commit=true", docs, nil)
+// Confirmar hace commit en un core: lo escrito con Escribir aparece en /select ya, sin
+// esperar el segundo de commitWithin. Se usa al terminar de armar el índice (para que /ready
+// diga "listo" con todo visible) y antes de listar los platos de una cocina.
+func (c *Cliente) Confirmar(ctx context.Context, core string) error {
+	return c.hacer(ctx, c.fondo, http.MethodPost, "/"+core+"/update?commit=true", []any{}, nil)
+}
+
+// ErrConflicto es la respuesta 409 de Solr cuando el documento cambió entre la lectura y la
+// escritura (el _version_ que se mandó ya no es el guardado).
+var ErrConflicto = errors.New("solr: el documento cambió mientras se escribía")
+
+// Escribir agrega o reemplaza documentos (por id) sin esperar el commit: Solr los deja
+// visibles en /select en menos de 1 s (commitWithin), y el real-time get ya los ve. Un commit
+// por escritura tardaba casi 1 s cada uno. Como se reemplaza por id, guardar dos
+// veces lo mismo no duplica nada.
+//
+// Si un documento trae _version_, Solr solo lo guarda si coincide con el guardado (o si es -1
+// y no existe); si no, responde 409 y se devuelve ErrConflicto.
+func (c *Cliente) Escribir(ctx context.Context, core string, docs any) error {
+	return c.hacer(ctx, c.fondo, http.MethodPost, "/"+core+"/update?commitWithin=1000", docs, nil)
 }
 
 // Esquema envía comandos a la Schema API.
@@ -164,11 +191,15 @@ func (c *Cliente) hacer(ctx context.Context, cli *http.Client, metodo, ruta stri
 			attribute.String("db.operation", operacion),
 			attribute.String("http.request.method", metodo),
 		))
+	inicio := time.Now()
 	defer func() {
-		if err != nil {
+		resultado := "ok"
+		if err != nil && !errors.Is(err, ErrConflicto) { // un 409 es parte del protocolo, no una falla
+			resultado = "error"
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "falló la llamada a Solr")
 		}
+		llamadas.WithLabelValues(operacion, resultado).Observe(time.Since(inicio).Seconds())
 		span.End()
 	}()
 
@@ -197,6 +228,9 @@ func (c *Cliente) hacer(ctx context.Context, cli *http.Client, metodo, ruta stri
 	datos, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // tope de 10 MiB para no agotar la memoria
 	if err != nil {
 		return fmt.Errorf("%w: leer respuesta: %v", domain.ErrNoDisponible, err)
+	}
+	if resp.StatusCode == http.StatusConflict {
+		return ErrConflicto
 	}
 	if resp.StatusCode >= 300 {
 		var e errorSolr

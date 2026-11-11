@@ -76,3 +76,63 @@ func Contiene(texto, consulta string) bool {
 	}
 	return true
 }
+
+// MinPrefijo es el largo mínimo de la última palabra para buscarla también como comienzo de
+// palabra. Con menos letras, "ha" encontraría casi todo.
+const MinPrefijo = 3
+
+// MinDifuso es el largo mínimo para aceptar un typo (una letra de diferencia). Con palabras
+// cortas, una letra cambia de plato: con 4 o 5, "pollo" (raíz "poll") encontraba los "roll" de
+// sushi, "mega" el pan de "miga" y "pasta" los postres. Desde 6 letras ya no hay cruces en el
+// menú, y siguen andando "sorentinos", "hamburgesa", "milaneza" o "empanda".
+const MinDifuso = 6
+
+// ContieneConPrefijo exige todas las palabras y conserva prefijos en la última.
+// La alternativa difusa compara raíces, igual que la consulta enviada a Solr.
+func ContieneConPrefijo(texto, consulta string) bool {
+	palabras := strings.FieldsFunc(strings.ToLower(consulta), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	terminos := Terminos(texto)
+	for i, palabra := range palabras {
+		normal := sinAcentos(palabra)
+		raiz := Raiz(normal)
+		coincide := false
+		for _, t := range terminos {
+			if t == raiz || (i == len(palabras)-1 && len([]rune(palabra)) >= MinPrefijo && strings.HasPrefix(t, normal)) ||
+				(len([]rune(palabra)) >= MinDifuso && unaEdicion(raiz, t)) {
+				coincide = true
+				break
+			}
+		}
+		if !coincide {
+			return false
+		}
+	}
+	return true
+}
+
+// unaEdicion admite una inserción, eliminación, sustitución o transposición adyacente.
+func unaEdicion(a, b string) bool {
+	x, y := []rune(a), []rune(b)
+	if len(x)-len(y) > 1 || len(y)-len(x) > 1 {
+		return false
+	}
+	i := 0
+	for i < len(x) && i < len(y) && x[i] == y[i] {
+		i++
+	}
+	if i == len(x) || i == len(y) {
+		return true
+	}
+	if len(x) == len(y) {
+		if string(x[i+1:]) == string(y[i+1:]) {
+			return true
+		}
+		return i+1 < len(x) && x[i] == y[i+1] && x[i+1] == y[i] && string(x[i+2:]) == string(y[i+2:])
+	}
+	if len(x) > len(y) {
+		return string(x[i+1:]) == string(y[i:])
+	}
+	return string(x[i:]) == string(y[i+1:])
+}

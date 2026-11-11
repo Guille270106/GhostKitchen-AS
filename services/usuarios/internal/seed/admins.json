@@ -1,0 +1,6 @@
+[
+  { "nombre": "Admin Barrio Jardín", "email": "admin.barrio-jardin@ghostkitchen.dev", "localidad": "Barrio Jardín" },
+  { "nombre": "Admin Cerro", "email": "admin.cerro@ghostkitchen.dev", "localidad": "Cerro de las Rosas" },
+  { "nombre": "Admin Nueva Córdoba", "email": "admin.nueva-cordoba@ghostkitchen.dev", "localidad": "Nueva Córdoba" },
+  { "nombre": "Admin Villa Allende", "email": "admin.villa-allende@ghostkitchen.dev", "localidad": "Villa Allende" }
+]

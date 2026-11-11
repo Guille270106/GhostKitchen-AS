@@ -39,6 +39,14 @@ type Sede struct {
 	CostoEnvio       int          `json:"costoEnvio"`
 	Restaurantes     []Referencia `json:"restaurantes"`
 	Activa           bool         `json:"-"`
+
+	// Lo que sigue no se publica: lo usa el lector de mensajes.
+	// RestaurantesInactivos guarda los restaurantes desactivados, para saber el nombre y el
+	// estado del restaurante de un plato cuando llega su mensaje.
+	RestaurantesInactivos []Referencia `json:"-"`
+	// VersionCatalogo es la versión de la cocina en Catálogo que tiene esta copia. Un mensaje
+	// con una versión menor es viejo y se ignora.
+	VersionCatalogo int64 `json:"-"`
 }
 
 // Ref devuelve la referencia corta de la sede.
@@ -59,6 +67,19 @@ type Plato struct {
 	Sede          Referencia `json:"sede"`
 	ActualizadoEn time.Time  `json:"actualizadoEn"`
 	Activo        bool       `json:"-"`
+
+	// Lo que sigue no se publica: lo usa el lector de mensajes.
+	//
+	// Activo es la suma de tres cosas: el plato, su restaurante y su cocina activos.
+	// PlatoActivo guarda solo lo del plato, para recalcular Activo cuando cambia la cocina.
+	PlatoActivo bool `json:"-"`
+	// TieneReceta lo informa Inventario: un plato sin receta nunca figura disponible.
+	TieneReceta bool `json:"-"`
+	// Cada fuente tiene su versión y cambia solo sus campos (ADR-005): Catálogo los datos
+	// comerciales, Inventario la disponibilidad. Así un mensaje de stock no pisa un precio y
+	// uno de Catálogo no pisa el stock.
+	VersionCatalogo   int64 `json:"-"`
+	VersionInventario int64 `json:"-"`
 }
 
 // Orden de los resultados de la búsqueda de platos.

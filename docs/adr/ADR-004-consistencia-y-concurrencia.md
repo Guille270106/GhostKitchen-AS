@@ -1,10 +1,10 @@
 # ADR-004 — Consistencia y concurrencia
 
-- **Estado:** Propuesta; implementación y pruebas del flujo crítico pendientes.
+- **Estado:** Aceptada e implementada. Validada con tests contra MySQL real, la prueba de carga y la jornada de fallas del 2026-11-10 (ver [Cómo lo validamos](#cómo-lo-validamos)).
 - **Fecha:** 2026-11-06
 - **Responsable:** Valentina Rey
 - **Decisión del enunciado:** D4
-- **Relacionado con:** [ADR-003](ADR-003-persistencia.md), [ADR-005](ADR-005-comunicacion-entre-servicios.md), [ADR-009](ADR-009-consumo-del-proveedor.md) y [SPEC](../../SPEC.md), RN04–RN17.
+- **Relacionado con:** [ADR-003](ADR-003-persistencia.md), [ADR-005](ADR-005-comunicacion-entre-servicios.md), [ADR-009](ADR-009-consumo-del-proveedor.md) y [SPEC](../../SPEC.md).
 
 ## Contexto
 
@@ -63,9 +63,9 @@ La confirmación se guarda aparte del estado del pedido. No se mantienen transac
 
 1. Persistir confirmación EN_CURSO, copia del carrito y precios, identificador del pedido futuro y claves de los pasos.
 2. Registrar la intención de consumir y llamar a Inventario. Guardar el resultado. Si hay timeout, consultar reserva/consumo antes de decidir: **resultado desconocido no significa fracaso**.
-3. Ejecutar el paso obligatorio del proveedor según ADR-009. Su ubicación exacta, consulta y compensación quedan pendientes del contrato asignado; no se inventa una garantía externa.
-4. Con todos los pasos exitosos, guardar en una transacción de Pedidos: pedido RECIBIDO, ítems, historial inicial, outbox, carrito CONFIRMADO y confirmación COMPLETADA.
-5. Ante fallo definitivo, persistir la decisión de compensar. Si hubo consumo, devolver con su identidad estable; si solo hay reserva activa, liberarla. Registrar también la compensación del proveedor cuando se conozca.
+3. **El proveedor no es un paso de la saga.** La factura del Grupo 4 no decide si el pedido existe: se anota como pendiente en la misma transacción del paso 4 y Pedidos la pide **después, en segundo plano**, con reintentos y siempre con la misma clave ([ADR-009](ADR-009-consumo-del-proveedor.md)). Si el proveedor está caído o lento, el pedido se crea igual y la factura llega cuando vuelve; por eso tampoco hay nada que compensar del lado del proveedor.
+4. Con todos los pasos exitosos, guardar en una transacción de Pedidos: pedido RECIBIDO (con la dirección de entrega y el costo de envío guardados en la confirmación), ítems, historial inicial, outbox, factura pendiente, carrito CONFIRMADO y confirmación COMPLETADA.
+5. Ante fallo definitivo, persistir la decisión de compensar. Si hubo consumo, devolver con su identidad estable; si solo hay reserva activa, liberarla.
 
 Si cae Pedidos después del consumo o del commit final, el proceso de recuperación consulta y retoma el paso guardado; nunca vuelve a consumir con otra identidad. Si falla temporalmente la creación local del pedido, se reintenta esa transacción. Una decisión durable de abortar excluye la finalización: no se crea un pedido mientras se devuelve su stock.
 
@@ -102,7 +102,7 @@ Inventario y Pedidos guardan cambio y evento en una transacción local. El publi
 
 Una caída entre publicar y marcar puede repetir el mensaje con el mismo `evento_id`: la entrega es **al menos una vez**. El consumidor guarda identificador único y efecto en una transacción y hace ACK después del commit. La secuencia se compara por fuente y agregado. Una proyección de estado completo descarta versiones antiguas; quien necesita cada transición detecta huecos y recupera el orden. Búsqueda usa las versiones persistidas de Solr definidas en ADR-005.
 
-SMTP conserva la excepción de RN17: una caída justo después de enviar puede producir un correo repetido. No se promete entrega exactamente una vez de efectos externos.
+SMTP conserva la excepción que aceptamos en el SPEC: una caída justo después de enviar puede producir un correo repetido. No se promete entrega exactamente una vez de efectos externos.
 
 ## Alternativas que pensamos
 
@@ -120,28 +120,50 @@ La base controla sobreventa y duplicados; las operaciones locales son atómicas 
 
 Se observan antigüedad del outbox, confirmaciones y compensaciones pendientes, conflictos y DLQ según ADR-011. Una caída prolongada mantiene las obligaciones pendientes; no las elimina.
 
-## Cómo lo vamos a validar
+## Cómo lo validamos
 
-Pruebas pendientes contra MySQL real y RabbitMQ, sin dar por comprobado el diseño:
+Con tests contra MySQL real y RabbitMQ (en Docker), la prueba de carga ([ADR-013](ADR-013-capacidad-y-costos.md)) y la jornada de fallas del 2026-11-10 ([POSTMORTEM](../POSTMORTEM.md)):
 
-| Escenario | Resultado exigido |
+| Escenario | Resultado exigido | Cómo se comprobó |
+| --- | --- | --- |
+| 200 clientes reservando el último plato | Un ganador, ninguna reserva parcial y stock siempre válido | ✅ `TestV8UltimoPlato200Solicitudes` (Inventario, 1 ganador y 199 `SIN_STOCK`) y la prueba de carga (20 aceptados y 180 `SIN_STOCK` con stock para 20) |
+| Falta el último ingrediente; falla un ajuste | Rollback completo y reserva anterior intacta | ✅ `TestMySQLReservaTodoONadaYErrorDurable` y `TestMySQLAjusteConservaRecetasYVencimiento` (Inventario) |
+| Edición de receta tras reservar/consumir | Liberación, descuento y devolución usan cantidades guardadas | ✅ `TestMySQLAjusteConservaRecetasYVencimiento` y `TestMySQLConsumoYDevolucionIdempotentes` (Inventario) |
+| Consumir y vencer simultáneamente | Una transición; ningún consumo vencido | Parcial: una reserva vencida rechaza los ajustes (`TestMySQLReservaVencidaYReferencias`). La carrera exacta entre consumir y vencer no tiene un test propio |
+| Solicitudes duplicadas o misma clave con otros datos | Un efecto o conflicto, respectivamente | ✅ `TestMySQLReservaIdempotenteYCarritoUnico` y `TestMySQLConsumoYDevolucionIdempotentes` (Inventario); `TestDobleClicConLaMismaClaveEsUnSoloPedido` (Pedidos) |
+| Confirmar el mismo carrito con claves distintas | Una confirmación activa y como máximo un pedido | ✅ `TestDosClavesALaVezConfirmanUnaSolaVez` (Pedidos) |
+| Caídas antes/después del consumo y del commit de Pedidos | Recuperación sin pedido parcial ni doble descuento | ✅ `TestInventarioCaidoRespondeEstamosConfirmandoYDespuesSeRecupera`, `TestSiFallaGuardarElPedidoNoSeDevuelveNadaYSeReintenta` y `TestMySQLConfirmacionCompleta` (Pedidos); en la jornada de fallas el pedido se completó solo 13 s después de que volvió Inventario |
+| Fallo definitivo y caída durante compensación | Ningún pedido creado; una devolución al recuperarse | ✅ `TestReservaVencidaFallaYVaciaElCarrito` e `TestInventarioCaidoLaDevolucionQuedaPendienteYSeReintentaConLaMismaClave` (Pedidos) |
+| Aceptar y cancelar simultáneamente | Un cambio, historial y evento; conflicto del perdedor | ✅ `TestCancelarYAceptarALaVezGanaUnaSola` y `TestMySQLCambiosSimultaneosGanaUnoSolo` (Pedidos) |
+| Cancelar con Inventario caído y reiniciar Pedidos | Cancelación durable y devolución recuperada una vez | ✅ `TestMySQLCancelarAnotaLaDevolucion` y `TestInventarioCaidoLaDevolucionQuedaPendienteYSeReintentaConLaMismaClave` (Pedidos); en la jornada de fallas el stock volvió 3 s después de que volvió Inventario |
+| Caída de RabbitMQ y reentrega al consumidor | Outbox conservado y un efecto transaccional por evento | ✅ `TestSiRabbitMQNoConfirmaParaYReintenta` y `TestSiFallaLaBaseElMensajeSeReintenta` (Pedidos); en la jornada de fallas el outbox se vació 36 s después de que volvió RabbitMQ |
+| Reenviar el mismo "agregar al carrito" | Se suma una sola vez | ✅ `TestReenviarElMismoAgregarNoSumaDosVeces` (Pedidos) y `TestMySQLLaMismaClaveNoSeAplicaDosVeces` (MySQL real): la `Idempotency-Key` del clic se guarda en la misma transacción que el carrito |
+| Inventario reservó pero el carrito no se pudo guardar | La reserva no queda apartando ingredientes que ningún carrito tiene | ✅ `TestSiFallaGuardarElPrimerPlatoSeLiberaLaReserva` y `TestSiFallaGuardarUnCambioLaReservaVuelveALoGuardado` (Pedidos): se libera o se ajusta a lo guardado. Si la base no se puede ni leer, la reserva vence a los 10 minutos |
+
+### Detalle: 200 clientes por el último plato (2026-11-06)
+
+Se ejecutó `TestV8UltimoPlato200Solicitudes` contra la API real de Inventario y MySQL 8.4, en Docker, con las migraciones 000001–000004. Las 200 solicitudes POST usan claves y carritos distintos y se liberan mediante una barrera de inicio común. La receta necesita dos ingredientes; hay stock para una sola unidad del plato.
+
+| Comprobación | Resultado observado |
 | --- | --- |
-| 200 clientes reservando el último plato | Un ganador, ninguna reserva parcial y stock siempre válido |
-| Falta el último ingrediente; falla un ajuste | Rollback completo y reserva anterior intacta |
-| Edición de receta tras reservar/consumir | Liberación, descuento y devolución usan cantidades guardadas |
-| Consumir y vencer simultáneamente | Una transición; ningún consumo vencido |
-| Solicitudes duplicadas o misma clave con otros datos | Un efecto o conflicto, respectivamente |
-| Confirmar el mismo carrito con claves distintas | Una confirmación activa y como máximo un pedido |
-| Caídas antes/después del consumo y del commit de Pedidos | Recuperación sin pedido parcial ni doble descuento |
-| Fallo definitivo y caída durante compensación | Ningún pedido creado; una devolución al recuperarse |
-| Aceptar y cancelar simultáneamente | Un cambio, historial y evento; conflicto del perdedor |
-| Cancelar con Inventario caído y reiniciar Pedidos | Cancelación durable y devolución recuperada una vez |
-| Caída de RabbitMQ y reentrega al consumidor | Outbox conservado y un efecto transaccional por evento |
+| Solicitudes | 200 HTTP, concurrentes |
+| Ganadores | 1 respuesta 201 y una reserva ACTIVA del mismo carrito |
+| Perdedoras | 199 respuestas 409 con código SIN_STOCK |
+| Errores técnicos o timeouts | 0 en la ejecución aprobada |
+| Stock total | 1000 y 1; sin descuento al reservar |
+| Stock reservado | 2 y 1; disponible 998 y 0 |
+| Datos persistidos | Una reserva, un plato de cantidad 1 y dos detalles de ingredientes |
+| Consistencia | Ninguna reserva parcial, ninguna sobre-reserva; reservado coincide con la suma del detalle |
+| Idempotencia | 200 resultados finales persistidos |
+| Duración del lote aprobado | 1,102 s en la ejecución local aislada |
 
-La defensa debe mostrar respuestas, filas, restricciones y avance de recuperación. La evidencia se agregará al implementar el flujo.
+La primera ejecución encontró un ganador, pero solo 150 rechazos SIN_STOCK y 49 respuestas técnicas o de operación en proceso: no se consideró aprobada. La contención ocurría al intentar escribir un ingrediente abundante antes de detectar que faltaba el último. Se incorporó un rechazo temprano de stock ya insuficiente mediante lectura; las escrituras siguen condicionadas atómicamente en MySQL y dentro de una transacción. No se amplió el presupuesto HTTP de 3 s ni se relajaron las condiciones de la prueba.
+
+La suite completa de Inventario también pasó contra MySQL real después de la corrección, incluidas las pruebas anteriores de ingredientes, recetas, idempotencia, rollback, ajustes y liberación. En esa ejecución la prueba repitió el resultado 1/199/0, con duración de lote 1,101 s.
+
+Esta prueba cubre la fase de **reserva**, con una instancia del servicio; el resto del flujo lo cubren los tests de la tabla de arriba. La duración es una observación local, no una garantía de rendimiento en otro entorno. La [guía de Inventario](../../services/inventario/README.md) contiene el comando de reproducción. El test inspecciona las filas antes de limpiar sus datos descartables y falla ante cualquier respuesta o estado final distinto del esperado.
 
 ## Referencias
 
-- SPEC: RN04–RN17, HU06–HU10 y HU24–HU25.
+- SPEC: reglas del stock, del carrito y del pedido.
 - ADR-003, ADR-005 y ADR-009.
-- Clases 2, 4 y 7: transacciones, saga, outbox y fallos parciales.

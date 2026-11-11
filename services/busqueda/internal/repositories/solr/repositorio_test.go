@@ -109,7 +109,7 @@ func TestParametrosBusqueda(t *testing.T) {
 		RestauranteID: "r1", PrecioMax: 15000, SoloDisponibles: true, Orden: domain.OrdenPrecioDesc,
 		Pagina: 3, TamPagina: 10,
 	})
-	if p.Get("defType") != "edismax" || p.Get("q") != `burger \(doble\)` || p.Get("mm") != "100%" {
+	if p.Get("defType") != "edismax" || p.Get("q") != `+(burger OR burger~1) +(doble OR doble*)` || p.Get("mm") != "1" {
 		t.Fatalf("texto mal armado: %v", p)
 	}
 	fq := strings.Join(p["fq"], " | ")
@@ -124,9 +124,26 @@ func TestParametrosBusqueda(t *testing.T) {
 	}
 }
 
+func TestLaUltimaPalabraTambienEsPrefijo(t *testing.T) {
+	casos := map[string]string{
+		"hambur":       "+(hambur OR hambur* OR hambur~1)",
+		"Doble hambúr": "+doble +(hambúr OR hambúr* OR hambur~1)",
+		"ha":           "+ha",            // muy corta: sería casi todo
+		"pan *":        "+(pan OR pan*)", // los signos no cuentan
+		"a-b":          "+a +b",          // dos palabras
+		"pollo OR (":   "+pollo +or",     // "OR" es una palabra, no un operador; "pollo" es corta para typos
+		"**":           "*:*",            // solo signos: como sin texto
+	}
+	for entrada, quiero := range casos {
+		if got := ParametrosBusqueda(domain.FiltroPlatos{SedeID: "x", Texto: entrada, Pagina: 1, TamPagina: 1}).Get("q"); got != quiero {
+			t.Errorf("%q: %q, esperaba %q", entrada, got, quiero)
+		}
+	}
+}
+
 func TestParametrosBusquedaSinTextoNiFiltros(t *testing.T) {
 	p := ParametrosBusqueda(domain.FiltroPlatos{SedeID: "cerro", Pagina: 1, TamPagina: 20})
-	if p.Get("q") != "*:*" || p.Get("defType") != "" || p.Get("sort") != "score desc,id asc" || len(p["fq"]) != 2 {
+	if p.Get("q") != "*:*" || p.Get("defType") != "edismax" || p.Get("sort") != "score desc,id asc" || len(p["fq"]) != 2 {
 		t.Fatalf("%v", p)
 	}
 }
@@ -138,15 +155,22 @@ func TestFiltroEscapaComillas(t *testing.T) {
 	}
 }
 
+func TestTextoTrataOperadoresComoPalabras(t *testing.T) {
+	p := ParametrosBusqueda(domain.FiltroPlatos{SedeID: "cerro", Texto: "AND OR NOT", Pagina: 1, TamPagina: 10})
+	if got, want := p.Get("q"), "+and +or +(not OR not*)"; got != want {
+		t.Fatalf("q = %q, esperado %q", got, want)
+	}
+}
+
 func TestPrepararEsquemaSoloAgregaLoQueFalta(t *testing.T) {
 	repo, sf := nuevoSolrFalso(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-			case strings.HasSuffix(r.URL.Path, "/schema/fieldtypes"):
-				_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"fieldTypes":[{"name":"string"},{"name":"text_gk","analyzer":{"filters":[{"class":"solr.LowerCaseFilterFactory"},{"class":"solr.ASCIIFoldingFilterFactory"},{"class":"solr.SpanishLightStemFilterFactory"}]}}]}`)
-			case strings.HasSuffix(r.URL.Path, "/schema/fields"):
-				_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"fields":[{"name":"id"},{"name":"nombre"},{"name":"activo"}]}`)
-			case strings.HasSuffix(r.URL.Path, "/schema/copyfields"):
-				_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"copyFields":[{"source":"categoria","dest":"categoria_txt"}]}`)
+		case strings.HasSuffix(r.URL.Path, "/schema/fieldtypes"):
+			_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"fieldTypes":[{"name":"string"},{"name":"text_gk","analyzer":{"filters":[{"class":"solr.LowerCaseFilterFactory"},{"class":"solr.ASCIIFoldingFilterFactory"},{"class":"solr.SpanishLightStemFilterFactory"}]}}]}`)
+		case strings.HasSuffix(r.URL.Path, "/schema/fields"):
+			_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"fields":[{"name":"id"},{"name":"nombre"},{"name":"activo"}]}`)
+		case strings.HasSuffix(r.URL.Path, "/schema/copyfields"):
+			_, _ = io.WriteString(w, `{"responseHeader":{"status":0,"QTime":1},"copyFields":[{"source":"categoria","dest":"categoria_txt"}]}`)
 		default:
 			_, _ = io.WriteString(w, `{"responseHeader":{"status":0}}`)
 		}
@@ -188,7 +212,7 @@ func TestGuardarPlatosArmaLosDocumentos(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sf.pedidos[0].URL.Path != "/solr/platos/update" || sf.pedidos[0].URL.Query().Get("commit") != "true" {
+	if q := sf.pedidos[0].URL.Query(); sf.pedidos[0].URL.Path != "/solr/platos/update" || q.Get("commitWithin") != "1000" || q.Get("commit") != "" {
 		t.Fatalf("%s", sf.pedidos[0].URL)
 	}
 	if !strings.Contains(sf.cuerpos[0], `"cocina_id":"nueva-cordoba"`) || !strings.Contains(sf.cuerpos[0], `"actualizado_en":"2026-10-16T15:00:00Z"`) {
@@ -259,5 +283,20 @@ func TestPrepararEsquemaNoTocaTextGKAlDia(t *testing.T) {
 	alDia := `{"name":"text_gk","analyzer":{"filters":[{"name":"lowercase"},{"name":"asciiFolding"},{"name":"spanishLightStem"}]}}`
 	if posts := postsDeEsquema(t, alDia); len(posts) != 0 {
 		t.Fatalf("no tenía que cambiar nada: %v", posts)
+	}
+}
+
+func TestDisponibilidadSoloAportaEnRelevancia(t *testing.T) {
+	for _, orden := range []domain.Orden{"", domain.OrdenPrecioAsc, domain.OrdenPrecioDesc} {
+		p := ParametrosBusqueda(domain.FiltroPlatos{Orden: orden, Pagina: 1, TamPagina: 10})
+		if orden == "" && p.Get("bq") != "disponible:true^2" {
+			t.Fatal(p)
+		}
+		if orden != "" && p.Get("bq") != "" {
+			t.Fatal(p)
+		}
+		if strings.Contains(strings.Join(p["fq"], " "), "disponible:true") {
+			t.Fatal("el boost no debe filtrar", p)
+		}
 	}
 }

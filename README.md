@@ -76,19 +76,19 @@ Las imágenes de los diagramas están únicamente en **`docs/diagrams/`**. Qué 
 - Contrato OpenAPI v1: [docs/contracts/v1/openapi.yaml](docs/contracts/v1/openapi.yaml)
 - Guía para el consumidor (autenticación, errores, ejemplos, versionado): [docs/contracts/README.md](docs/contracts/README.md)
 - Mock: `docker compose up` → http://localhost:4010
-- URL pública en la nube: se publica en la Entrega 2.
+- URL pública en la nube: `https://57-156-56-219.sslip.io/public/v1` (con API key; ver [infra/nube](infra/nube/README.md)).
 
 ## Tecnologías
 
-**Backend (lo programamos desde la Entrega 2)**
+**Backend**
 
 - Go + Gin para los microservicios
 - NGINX como API Gateway y para repartir la carga
 - MySQL, MongoDB, Solr (búsqueda), Memcached (caché) y RabbitMQ (mensajes)
-- Observabilidad: logs JSON con `correlation_id` y `trace_id`, y trazas distribuidas con OpenTelemetry y Jaeger (Entrega 2). Métricas con Prometheus y tablero en Grafana: para la presentación final.
-- Pruebas previstas: tests de Go para las reglas; integración con bases y RabbitMQ reales en Docker Compose; pruebas de contrato y de carga. La herramienta de carga se definirá al implementar.
+- Observabilidad: logs JSON con `correlation_id` y `trace_id`, y trazas distribuidas con OpenTelemetry y Jaeger. Métricas con Prometheus (`/metrics` en cada servicio con API), tablero en Grafana y alertas.
+- Pruebas: tests de Go para las reglas; integración con bases y RabbitMQ reales en Docker; test de contrato del proveedor y de nuestra API; carga con k6.
 
-**Frontend (Entrega 2):** React + Vite.
+**Frontend:** React + Vite.
 
 **Contrato y puesta en marcha:** OpenAPI (para escribir el contrato), Prism (para el mock), Docker y Docker Compose.
 
@@ -96,54 +96,82 @@ Las imágenes de los diagramas están únicamente en **`docs/diagrams/`**. Qué 
 
 Requisitos: Docker y Docker Compose, con Docker Desktop y su motor de contenedores Linux iniciados. La primera ejecución descarga las imágenes (MongoDB, Solr, NGINX, Go, Prism) y necesita conexión a Internet.
 
-1. Crear un archivo `.env` en la raíz del repositorio con las variables de la tabla [Variables del `.env`](#variables-del-env), una por línea (`NOMBRE=valor`). Las contraseñas, con letras y números. El `.env` no se sube al repositorio.
+1. Crear el `.env` con claves al azar. Desde la raíz del repositorio (en Windows, desde **Git Bash**):
+
+   ```bash
+   sh infra/nube/crear-env.sh localhost
+   ```
+
+   El script completa todas las variables, no pisa un `.env` que ya exista e imprime una API key para probar la capacidad publicada. El `.env` no se sube al repositorio. Si preferís armarlo a mano, las variables están en [Variables del `.env`](#variables-del-env).
 2. Desde la raíz del repositorio:
 
    ```bash
    docker compose up --build
    ```
 
+   Levanta **todo**: frontend, gateway, los seis servicios (Notificaciones incluido), las bases, RabbitMQ, Mailpit y el monitoreo. Cada servicio con MySQL aplica sus migraciones al arrancar.
+
 3. Probar la capacidad publicada, ya implementada, a través del gateway (en PowerShell usar `curl.exe`):
 
    ```bash
-   curl -H "X-API-Key: clave-local" http://localhost:8080/public/v1/sedes
+   curl -H "X-API-Key: <la clave que imprimió el script>" http://localhost:8080/public/v1/sedes
    ```
 
-   O todas las operaciones juntas, en PowerShell: `.\scripts\probar-api-publica.ps1 -Clave clave-local`.
+   O todas las operaciones juntas, en PowerShell: `.\scripts\probar-api-publica.ps1 -Clave <la clave>`.
+4. Entrar al sistema en http://localhost:5173:
+
+   - **Cliente:** cualquiera se registra desde "Crear cuenta".
+   - **Admin:** hay uno por localidad, `admin.<sede>@ghostkitchen.dev` (`barrio-jardin`, `cerro`, `nueva-cordoba` o `villa-allende`), con la contraseña `ADMIN_PASSWORD` del `.env`.
+   - **Cocina:** las 4 cocinas de los datos iniciales no traen cuenta: la crea el admin de su localidad. (Una cocina nueva, en cambio, se crea desde "Cocinas y restaurantes" junto con su cuenta.) Por ejemplo, para Nueva Córdoba, en Git Bash y desde la raíz del repositorio:
+
+     ```bash
+     CLAVE=$(grep ^ADMIN_PASSWORD= .env | cut -d= -f2)
+     TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login -H "Content-Type: application/json" \
+       -d "{\"email\":\"admin.nueva-cordoba@ghostkitchen.dev\",\"password\":\"$CLAVE\"}" | sed -E 's/.*"token":"([^"]+)".*/\1/')
+     curl -X POST http://localhost:8080/api/v1/admin/cuentas-cocina -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+       -d '{"cocinaId":"nueva-cordoba","nombre":"Cocina Nueva Córdoba","email":"cocina.nueva-cordoba@ghostkitchen.dev","password":"cocina1234"}'
+     ```
+
+     Después la cocina entra con ese mail y esa contraseña.
 
 | Servicio | URL |
 | --- | --- |
-| Capacidad publicada (real, Entrega 2) | http://localhost:8080/public/v1/sedes (header `X-API-Key` con una clave de `PUBLIC_API_KEYS`) |
+| Frontend | http://localhost:5173 |
+| Mails que manda Notificaciones (Mailpit) | http://localhost:8025 |
+| Capacidad publicada | http://localhost:8080/public/v1/sedes (header `X-API-Key` con una clave de `PUBLIC_API_KEYS`) |
+| Capacidad publicada en la nube | https://57-156-56-219.sslip.io/public/v1/sedes (con la API key del grupo; ver [infra/nube](infra/nube/README.md)) |
 | Mock de la capacidad publicada | http://localhost:4010/v1/sedes (header `X-API-Key` con cualquier valor) |
 | Lecturas de Catálogo para el frontend | http://localhost:8080/api/v1/cocinas |
 | Panel de Solr (desarrollo) | http://localhost:8983 |
 | MongoDB con Compass (desarrollo) | `mongodb://root:<MONGO_ROOT_PASSWORD>@localhost:27017` |
 | Trazas en Jaeger | http://localhost:16686 |
+| Tablero en Grafana | http://localhost:3000 (se ve sin entrar; para editar, `admin` y `GRAFANA_ADMIN_PASSWORD`) |
+| Prometheus y alertas | http://localhost:9090/alerts |
 | Panel de RabbitMQ (desarrollo) | http://localhost:15672 (usuario y contraseña de `RABBITMQ_USER` y `RABBITMQ_PASSWORD`) |
 
 Para detener todo: `docker compose down`. Con `-v` se borran también los volúmenes de MongoDB y Solr: al arrancar de nuevo se cargan los datos iniciales y se reconstruye el índice.
 
 ### Variables del `.env`
 
-Las marcadas como **obligatorias** las pide Docker Compose: si falta alguna, no arranca y dice cuál. Las demás las van a usar los servicios que todavía no están implementados. Para usar en local alcanza con valores inventados.
+Las marcadas como **obligatorias** las pide Docker Compose: si falta alguna, no arranca y dice cuál. Para usar en local alcanza con valores inventados; `infra/nube/crear-env.sh` las completa todas.
 
 | Variable | Para qué | Obligatoria hoy |
 | --- | --- | --- |
 | `PUBLIC_API_KEYS` | Claves de los grupos que consumen nuestra API, separadas por coma (por ejemplo `clave-local`). Si queda vacía, `/public/v1` responde 401 a todos | No, pero sin ella no se puede probar la API |
 | `MONGO_ROOT_PASSWORD` | Contraseña del usuario `root` de MongoDB | Sí |
 | `CATALOGO_DB_PASSWORD` | Contraseña del usuario de Catálogo en MongoDB | Sí |
-| `NOTIFICACIONES_DB_PASSWORD` | Contraseña del usuario de Notificaciones en MongoDB | No |
+| `NOTIFICACIONES_DB_PASSWORD` | Contraseña del usuario de Notificaciones en MongoDB | Sí |
 | `MYSQL_ROOT_PASSWORD` | Contraseña del usuario `root` de MySQL | Sí |
 | `USUARIOS_DB_PASSWORD` | Contraseña del usuario de Usuarios en MySQL | Sí |
 | `INVENTARIO_DB_PASSWORD` | Contraseña del usuario de Inventario en MySQL | Sí |
 | `PEDIDOS_DB_PASSWORD` | Contraseña del usuario de Pedidos en MySQL | Sí |
 | `RABBITMQ_USER` | Usuario de RabbitMQ, para el panel y los servicios (por ejemplo `ghostkitchen`) | Sí |
 | `RABBITMQ_PASSWORD` | Contraseña de ese usuario | Sí |
-| `JWT_SECRET` | Clave larga y aleatoria con la que Usuarios firma los tokens del login | No |
-| `JWT_TTL_MINUTES` | Duración del token en minutos (por ejemplo `120`) | No |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Servidor de correo de Notificaciones (en local, Mailpit: `mailpit` y `1025`) | No |
+| `JWT_SECRET` | Clave aleatoria de al menos 32 caracteres con la que Usuarios firma los tokens del login (por ejemplo, la que da `openssl rand -base64 48`) | Sí |
+| `JWT_TTL_MINUTES` | Duración del token en minutos (si falta, `120`) | No |
+| `ADMIN_PASSWORD` | Contraseña inicial de los 4 admins (una por localidad), de 8 caracteres o más. Si falta, los admins no se crean | No, pero sin ella no hay admins |
 | `PROVIDER_BASE_URL`, `PROVIDER_API_KEY` | Dirección y clave de la API del grupo proveedor | No |
-| `GRAFANA_ADMIN_PASSWORD` | Contraseña del administrador de Grafana | No |
+| `GRAFANA_ADMIN_PASSWORD` | Contraseña del administrador de Grafana. Si falta, `admin` (solo sirve en local: el tablero se ve sin entrar) | No |
 
 Las contraseñas de MongoDB van dentro de una URL: usar solo letras y números. Si se cambia una contraseña de una base ya creada, hay que borrar su volumen (`docker compose down -v`).
 
@@ -165,7 +193,7 @@ Los ejemplos de uso están en [la guía del contrato](docs/contracts/README.md#e
 docker compose logs gateway busqueda catalogo | Select-String "mi-prueba-1"
 ```
 
-**Trazas distribuidas (OpenTelemetry + Jaeger).** Cada solicitud genera una traza con un span por paso: el gateway, Búsqueda, cada consulta a Solr, cada llamada a Catálogo y cada comando de Catálogo a MongoDB. El `trace_id` viaja en el header estándar `traceparent` (W3C) y también aparece en los logs, así que se puede pasar de un log a su traza y al revés. Para verla:
+**Trazas distribuidas (OpenTelemetry + Jaeger).** Cada solicitud genera una traza con un span por paso: el gateway, cada servicio con API (Usuarios, Catálogo, Búsqueda, Inventario y Pedidos), cada llamada de un servicio a otro, cada consulta a Solr y cada comando de Catálogo a MongoDB. Por ejemplo, agregar al carrito muestra `gateway → pedidos → catalogo` y `pedidos → inventario`. El `trace_id` viaja en el header estándar `traceparent` (W3C) y también aparece en los logs, así que se puede pasar de un log a su traza y al revés. Para verla:
 
 1. Hacer una solicitud con un id conocido:
    ```powershell
@@ -185,7 +213,7 @@ Para no mandar datos sensibles a Jaeger, los spans llevan la ruta como plantilla
 
 ## Estructura del repositorio
 
-**Ronda 1 — MySQL:** se agregaron una instancia con bases y usuarios separados para Usuarios, Inventario y Pedidos, y tres plantillas ejecutables de migración. Completar las cuatro contraseñas MySQL de `.env` antes de ejecutar Compose. La [guía de MySQL y migraciones](infra/mysql/README.md) describe el arranque, la persistencia y la integración del runner a los servicios de la ronda 2. Las API de esos tres servicios todavía no están implementadas.
+**MySQL:** una instancia con una base y un usuario por servicio (Usuarios, Inventario y Pedidos). Cada servicio aplica sus migraciones al arrancar; la [guía de MySQL y migraciones](infra/mysql/README.md) explica cómo.
 
 ```
 GhostKitchen/
@@ -194,11 +222,17 @@ GhostKitchen/
 ├── docker-compose.yml            # Puesta en marcha local con un solo comando
 ├── docs/
 │   ├── ARCHITECTURE.md           # Arquitectura: diagramas, servicios, datos, comunicación
-│   ├── adr/                      # Decisiones arquitectónicas (D1, D3, D5 y D8 en esta entrega)
+│   ├── POSTMORTEM.md             # Informe de la jornada de fallas
+│   ├── adr/                      # Decisiones arquitectónicas (D1 a D13)
+│   ├── pruebas/                  # Colección de Postman: la API de punta a punta por el gateway
 │   └── contracts/                # Capacidad publicada: contrato OpenAPI v1 + guía + CHANGELOG
 ├── services/                     # Un microservicio por carpeta, cada uno con su README
 │   └── usuarios/  catalogo/  busqueda/  inventario/  pedidos/  notificaciones/
-└── gateway/                      # API Gateway NGINX (la configuración llega en la Entrega 2)
+├── frontend/                     # React + Vite
+├── gateway/                      # API Gateway NGINX
+├── infra/                        # MySQL, MongoDB, RabbitMQ, Prometheus, Grafana y la nube
+├── scripts/                      # Prueba del contrato, de la API publicada y jornada de fallas
+└── tests/carga/                  # Pruebas de carga con k6
 ```
 
 ## Forma de trabajo
@@ -209,7 +243,7 @@ GhostKitchen/
   - `main`: solo lo que entregamos. Cada entrega pasa de `develop` a `main` y se marca con un tag (`entrega-1`, `entrega-2`, `final`).
   - `develop`: donde juntamos el trabajo de todos.
   - `feature/...`, `docs/...`, `fix/...`: una rama por tarea. Sale de `develop` y vuelve a `develop` con un **pull request que revisa otro integrante**.
-- **Revisión automática:** desde la Entrega 2, GitHub Actions corre los tests en cada pull request.
+- **Revisión automática:** desde la Entrega 2, GitHub Actions corre los tests en cada pull request. Para la entrega final se sumaron el test de contrato de la API publicada (`contrato.yml`) y las pruebas de punta a punta con todo el sistema levantado (`e2e.yml`): la de la API y la de la pantalla en un navegador, con Playwright.
 - **Decisiones:** cada decisión importante va en un ADR. Si cambiamos de idea, hacemos un ADR nuevo y no borramos el viejo.
 - **Contraseñas y claves:** nunca en el repositorio. Van en el `.env` de cada integrante, que está en `.gitignore`; los nombres de las variables están en [Variables del `.env`](#variables-del-env).
 
@@ -219,6 +253,8 @@ GhostKitchen/
 | --- | --- |
 | [SPEC.md](SPEC.md) | Qué tiene que hacer el sistema: roles, funcionalidades, reglas y cómo sabemos que algo está terminado |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Cómo está armado: diagramas, servicios, datos, comunicación y cómo funciona cada paso |
-| [docs/adr/](docs/adr/README.md) | Las decisiones que tomamos y por qué (D1, D3, D5 y D8 en esta entrega) |
+| [docs/adr/](docs/adr/README.md) | Las decisiones que tomamos y por qué (D1 a D13) |
+| [docs/POSTMORTEM.md](docs/POSTMORTEM.md) | La jornada de fallas: qué apagamos, qué vio el usuario y qué aprendimos |
 | [docs/contracts/](docs/contracts/README.md) | El contrato de lo que publicamos, con ejemplos y errores |
+| [docs/pruebas/](docs/pruebas/README.md) | La colección de Postman que prueba la API de punta a punta (100 pruebas) y cómo correrla |
 | [services/](services/README.md) | Qué hace cada microservicio y de quién depende |

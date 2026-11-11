@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -21,19 +22,25 @@ import (
 const (
 	ColeccionCocinas = "cocinas"
 	ColeccionPlatos  = "platos"
+	ColeccionOutbox  = "outbox"
 )
+
+// RetencionOutbox es cuánto se guarda un evento ya publicado antes de que MongoDB lo borre
+// solo (índice TTL). Sirve para revisar qué se mandó; después ya no hace falta.
+const RetencionOutbox = 7 * 24 * time.Hour
 
 // Repositorio implementa repositories.Repositorio.
 type Repositorio struct {
 	cliente *mongo.Client
 	cocinas *mongo.Collection
 	platos  *mongo.Collection
+	outbox  *mongo.Collection
 }
 
 // Nuevo crea el repositorio sobre la base indicada.
 func Nuevo(cliente *mongo.Client, base string) *Repositorio {
 	db := cliente.Database(base)
-	return &Repositorio{cliente: cliente, cocinas: db.Collection(ColeccionCocinas), platos: db.Collection(ColeccionPlatos)}
+	return &Repositorio{cliente: cliente, cocinas: db.Collection(ColeccionCocinas), platos: db.Collection(ColeccionPlatos), outbox: db.Collection(ColeccionOutbox)}
 }
 
 // CrearIndices crea los índices que usan las consultas. Es idempotente.
@@ -45,6 +52,15 @@ func (r *Repositorio) CrearIndices(ctx context.Context) error {
 	_, err := r.platos.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "cocinaId", Value: 1}, {Key: "activo", Value: 1}, {Key: "_id", Value: 1}}},
 		{Keys: bson.D{{Key: "restauranteId", Value: 1}}},
+	})
+	if err != nil {
+		return envolver(err)
+	}
+	// Outbox: los pendientes se buscan por publicadoEn vacío, del más viejo al más nuevo; y
+	// los publicados se borran solos a los 7 días (TTL: solo actúa si publicadoEn es una fecha).
+	_, err = r.outbox.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "publicadoEn", Value: 1}, {Key: "creadoEn", Value: 1}}},
+		{Keys: bson.D{{Key: "publicadoEn", Value: 1}}, Options: options.Index().SetName("ttl_publicados").SetExpireAfterSeconds(int32(RetencionOutbox.Seconds()))},
 	})
 	return envolver(err)
 }
@@ -130,12 +146,6 @@ func (r *Repositorio) PaginaPlatos(ctx context.Context, page, pageSize int) ([]d
 	return platos, int(total), nil
 }
 
-// CantidadCocinas cuenta las cocinas guardadas.
-func (r *Repositorio) CantidadCocinas(ctx context.Context) (int, error) {
-	n, err := r.cocinas.CountDocuments(ctx, bson.D{})
-	return int(n), envolver(err)
-}
-
 // InsertarIniciales inserta sin pisar: si un documento ya existe (clave duplicada), lo deja como está.
 func (r *Repositorio) InsertarIniciales(ctx context.Context, cocinas []domain.Cocina, platos []domain.Plato) error {
 	// Sin orden (ordered=false), un duplicado no corta la inserción: MongoDB sigue con los
@@ -188,4 +198,130 @@ func envolver(err error) error {
 		return nil
 	}
 	return fmt.Errorf("%w: %v", domain.ErrNoDisponible, err)
+}
+
+// CrearCocina inserta una cocina nueva y su evento en una sola transacción.
+func (r *Repositorio) CrearCocina(ctx context.Context, c domain.Cocina, ev domain.Evento) error {
+	return r.enTransaccion(ctx, ev, func(sc mongo.SessionContext) error {
+		_, err := r.cocinas.InsertOne(sc, c)
+		return err
+	})
+}
+
+// ReemplazarCocina guarda la cocina entera solo si su versión sigue siendo versionAnterior,
+// junto con su evento. El filtro por versión y el reemplazo son una sola operación atómica
+// sobre el documento: si otra solicitud ya la cambió, no coincide ningún documento, la
+// transacción se cancela y no se guarda ni la cocina ni el evento.
+func (r *Repositorio) ReemplazarCocina(ctx context.Context, c domain.Cocina, versionAnterior int64, ev domain.Evento) error {
+	return r.enTransaccion(ctx, ev, func(sc mongo.SessionContext) error {
+		res, err := r.cocinas.ReplaceOne(sc, bson.D{{Key: "_id", Value: c.ID}, {Key: "version", Value: versionAnterior}}, c)
+		if err == nil && res.MatchedCount == 0 {
+			return domain.ErrConflicto
+		}
+		return err
+	})
+}
+
+// ListarPlatosDeCocinaTodos devuelve todos los platos de una cocina, activos o no (para el
+// panel de la cocina). Usa el mismo índice (cocinaId, activo, _id) por su primer campo.
+func (r *Repositorio) ListarPlatosDeCocinaTodos(ctx context.Context, cocinaID string) ([]domain.Plato, error) {
+	cur, err := r.platos.Find(ctx, bson.D{{Key: "cocinaId", Value: cocinaID}}, options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}))
+	if err != nil {
+		return nil, envolver(err)
+	}
+	platos := []domain.Plato{}
+	if err := cur.All(ctx, &platos); err != nil {
+		return nil, envolver(err)
+	}
+	return platos, nil
+}
+
+// CrearPlato inserta un plato nuevo y su evento en una sola transacción.
+func (r *Repositorio) CrearPlato(ctx context.Context, p domain.Plato, ev domain.Evento) error {
+	return r.enTransaccion(ctx, ev, func(sc mongo.SessionContext) error {
+		_, err := r.platos.InsertOne(sc, p)
+		return err
+	})
+}
+
+// ReemplazarPlato guarda el plato y su evento solo si su versión sigue siendo versionAnterior.
+func (r *Repositorio) ReemplazarPlato(ctx context.Context, p domain.Plato, versionAnterior int64, ev domain.Evento) error {
+	return r.enTransaccion(ctx, ev, func(sc mongo.SessionContext) error {
+		res, err := r.platos.ReplaceOne(sc, bson.D{{Key: "_id", Value: p.ID}, {Key: "version", Value: versionAnterior}}, p)
+		if err == nil && res.MatchedCount == 0 {
+			return domain.ErrConflicto
+		}
+		return err
+	})
+}
+
+// registroOutbox es como se guarda un evento en la colección outbox.
+type registroOutbox struct {
+	ID          string     `bson:"_id"`
+	Tipo        string     `bson:"tipo"`
+	AgregadoID  string     `bson:"agregadoId"`
+	Sobre       string     `bson:"sobre"` // el JSON tal cual se va a publicar
+	CreadoEn    time.Time  `bson:"creadoEn"`
+	PublicadoEn *time.Time `bson:"publicadoEn"`
+}
+
+// enTransaccion corre el cambio y guarda el evento en la misma transacción de MongoDB
+// (patrón outbox, ADR-005): o se guardan los dos, o ninguno. Por eso MongoDB corre como
+// replica set: sin eso no hay transacciones.
+//
+// WithTransaction reintenta sola si la transacción choca con otra (errores transitorios);
+// un error nuestro (ErrConflicto, clave duplicada) la cancela y se devuelve tal cual.
+func (r *Repositorio) enTransaccion(ctx context.Context, ev domain.Evento, cambio func(mongo.SessionContext) error) error {
+	sobre, err := ev.Sobre()
+	if err != nil {
+		return fmt.Errorf("armar el evento %s: %w", ev.Tipo, err)
+	}
+	sesion, err := r.cliente.StartSession()
+	if err != nil {
+		return envolver(err)
+	}
+	defer sesion.EndSession(ctx)
+	_, err = sesion.WithTransaction(ctx, func(sc mongo.SessionContext) (any, error) {
+		if err := cambio(sc); err != nil {
+			return nil, err
+		}
+		_, err := r.outbox.InsertOne(sc, registroOutbox{
+			ID: ev.EventoID, Tipo: ev.Tipo, AgregadoID: ev.AgregadoID, Sobre: string(sobre), CreadoEn: ev.OcurridoEn,
+		})
+		return nil, err
+	})
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, domain.ErrConflicto):
+		return domain.ErrConflicto
+	case mongo.IsDuplicateKeyError(err):
+		return domain.ErrYaExiste
+	default:
+		return envolver(err)
+	}
+}
+
+// Pendientes devuelve los eventos sin publicar, del más viejo al más nuevo.
+func (r *Repositorio) Pendientes(ctx context.Context, limite int) ([]domain.Pendiente, error) {
+	cur, err := r.outbox.Find(ctx, bson.D{{Key: "publicadoEn", Value: nil}},
+		options.Find().SetSort(bson.D{{Key: "creadoEn", Value: 1}, {Key: "_id", Value: 1}}).SetLimit(int64(limite)))
+	if err != nil {
+		return nil, envolver(err)
+	}
+	var regs []registroOutbox
+	if err := cur.All(ctx, &regs); err != nil {
+		return nil, envolver(err)
+	}
+	out := make([]domain.Pendiente, len(regs))
+	for i, reg := range regs {
+		out[i] = domain.Pendiente{EventoID: reg.ID, Tipo: reg.Tipo, Sobre: []byte(reg.Sobre)}
+	}
+	return out, nil
+}
+
+// MarcarPublicado anota cuándo RabbitMQ confirmó el evento.
+func (r *Repositorio) MarcarPublicado(ctx context.Context, eventoID string, cuando time.Time) error {
+	_, err := r.outbox.UpdateOne(ctx, bson.D{{Key: "_id", Value: eventoID}}, bson.D{{Key: "$set", Value: bson.D{{Key: "publicadoEn", Value: cuando.UTC()}}}})
+	return envolver(err)
 }

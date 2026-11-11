@@ -1,6 +1,6 @@
 # ADR-001 — Cómo separamos los servicios
 
-- **Estado:** Aceptada. Validada en la Entrega 2 con Búsqueda, Catálogo y el gateway (ver [Validación](#validación-entrega-2))
+- **Estado:** Aceptada. Validada en la Entrega 2 con Búsqueda, Catálogo y el gateway, y en la entrega final con los seis servicios (ver [Validación final](#validación-final))
 - **Fecha:** 2026-10-09; validada el 2026-10-16
 - **Responsable:** Guillermina Sánchez
 - **Decisión del enunciado:** D1 (criterios para separar los servicios, cómo se relacionan y de quién es cada dato)
@@ -8,7 +8,7 @@
 
 ## Contexto
 
-En GhostKitchen varios restaurantes **comparten los ingredientes de una misma cocina**, y nunca se puede vender más de lo que hay, aunque muchos pidan a la vez ([SPEC](../../SPEC.md), RN01 a RN05). Además el sistema tiene que:
+En GhostKitchen varios restaurantes **comparten los ingredientes de una misma cocina**, y nunca se puede vender más de lo que hay, aunque muchos pidan a la vez ([SPEC](../../SPEC.md)). Además el sistema tiene que:
 
 - buscar platos con filtros y sugerir la cocina más cercana;
 - reservar ingredientes por 10 minutos y liberarlos si se vence el tiempo;
@@ -20,14 +20,14 @@ El enunciado pide al menos 3 microservicios y un API Gateway.
 
 Para decidir cómo separar tuvimos en cuenta:
 
-1. **Lo que tiene que pasar "de una sola vez" va junto** (Clase 2). Reservar todos los ingredientes de un plato tiene que ser todo o nada.
-2. **Datos que se usan distinto van separados** (Clase 2). El catálogo se lee mucho y cambia poco; el stock cambia todo el tiempo y no se puede equivocar.
-3. **Si se cae algo secundario, se tiene que poder seguir pidiendo** (Clases 4 y 7). Por ejemplo, el mail o la búsqueda.
-4. **La búsqueda no tiene que cargar a la parte que vende** (Clase 5).
+1. **Lo que tiene que pasar "de una sola vez" va junto**. Reservar todos los ingredientes de un plato tiene que ser todo o nada.
+2. **Datos que se usan distinto van separados**. El catálogo se lee mucho y cambia poco; el stock cambia todo el tiempo y no se puede equivocar.
+3. **Si se cae algo secundario, se tiene que poder seguir pidiendo**. Por ejemplo, el mail o la búsqueda.
+4. **La búsqueda no tiene que cargar a la parte que vende**.
 
 ## Decisión
 
-Separamos el sistema en **6 microservicios** y un **API Gateway (NGINX)**. Cada servicio tiene su propia base y es el único que la usa (Clase 2).
+Separamos el sistema en **6 microservicios** y un **API Gateway (NGINX)**. Cada servicio tiene su propia base y es el único que la usa.
 
 | Servicio | De qué se encarga | Datos que son suyos | Lo que NO es suyo |
 | --- | --- | --- | --- |
@@ -45,7 +45,7 @@ El **gateway** no guarda datos del negocio. Las API keys de los grupos que nos c
 1. **Nadie entra a la base de otro.** Si un servicio necesita un dato ajeno, lo pide por API o lo recibe por un mensaje.
 2. **Las referencias entre servicios usan IDs** (`cocina_id`, `plato_id`, `pedido_id`), sin claves foráneas entre bases. Las respuestas y eventos también incluyen los datos necesarios para cada flujo. El servicio dueño valida los identificadores.
 3. **Las recetas están en Inventario.** Catálogo dice *qué se vende y cuánto sale*; Inventario dice *con qué se hace y si alcanza*. Así, reservar es una sola operación en una sola base.
-4. **El pedido guarda una copia** del nombre, el precio y el restaurante de cada plato, y del mail del cliente. Si después cambia el precio, el pedido queda con lo que pagó el cliente, y Notificaciones no tiene que preguntarle a Usuarios.
+4. **El pedido guarda una copia** del nombre, el precio y el restaurante de cada plato, del costo de envío, del mail del cliente y de la dirección de entrega. Si después cambia el precio o la tarifa, el pedido queda con lo que pagó el cliente, y Notificaciones no tiene que preguntarle a Usuarios.
 5. **El stock lo decide solo Inventario.** Búsqueda muestra si un plato está disponible, pero es orientativo.
 6. **El gateway verifica quién es el usuario; cada servicio decide qué puede hacer.**
 7. **Al grupo proveedor lo llama Pedidos**, nunca el frontend ni el gateway.
@@ -72,12 +72,14 @@ Separar los datos obliga a que algunos servicios guarden **copias** de datos aje
 
 | Copia | Quién la guarda | De quién es el dato | Cómo se actualiza | Si la copia está atrasada… |
 | --- | --- | --- | --- | --- |
-| Nombre y precio del plato, nombre del restaurante | Pedidos (en cada ítem) | Catálogo | Se copia **una vez**, al agregar al carrito | Es lo que queremos: el pedido conserva el precio que vio el cliente (RN15) |
+| Nombre y precio del plato | Pedidos (en cada ítem) | Catálogo | Se copia **una vez**, al agregar al carrito | Es lo que queremos: el pedido conserva el precio que vio el cliente |
+| Nombre de cada restaurante y costo de envío | Pedidos (en cada pedido) | Catálogo | Se leen de Catálogo **al confirmar**, sin caché | El pedido conserva la tarifa que se cobró; si el admin la cambia después, los pedidos ya hechos no cambian |
 | Mail del cliente | Pedidos (en cada pedido) | Usuarios | Viene en el token al confirmar | El mail va al correo que tenía al pedir |
+| Dirección de entrega | Pedidos (en cada pedido) | Usuarios (la del perfil) | **No se copia del perfil:** el cliente la manda al confirmar. El frontend propone la de su cuenta y la deja cambiar | No hay atraso posible: es un dato del pedido, no de la cuenta. Así se puede pedir a otro lugar, y la cocina ve a dónde despachar sin consultar a Usuarios. Es un dato personal: no va a logs, trazas ni eventos |
 | Localidad de la cocina | Pedidos (en cada pedido) | Catálogo | Se copia al crear el pedido, junto con los datos de los platos | Las métricas del admin usan la localidad que tenía la cocina cuando se hizo el pedido |
 | Localidad de cada cocina | Inventario | Catálogo | Mensajes `cocina.*` | Inventario valida referencias; los permisos operativos se basan en la cocina asignada al rol Cocina y la pertenencia del recurso |
 | De qué cocina es cada plato | Inventario | Catálogo | Mensajes `plato.*` | No se puede cargar la receta de ese plato hasta que llegue |
-| Platos, sedes y disponibilidad | Búsqueda (índice de Solr) | Catálogo e Inventario | Mensajes, con hasta 5 s de atraso; se puede reconstruir por API | La disponibilidad es orientativa (RN21): al reservar, Inventario controla el stock real |
+| Platos, sedes y disponibilidad | Búsqueda (índice de Solr) | Catálogo e Inventario | Mensajes, con hasta 5 s de atraso; se puede reconstruir por API | La disponibilidad es orientativa: al reservar, Inventario controla el stock real |
 | Mail del cliente y estado del pedido | Notificaciones | Pedidos | Mensaje `pedido.estado_cambiado` | No aplica: cada mensaje describe un cambio que ya pasó |
 
 ### Por qué el stock y las recetas no están en Catálogo
@@ -104,7 +106,7 @@ El que cocina todo es la cocina; los restaurantes son solo marcas. El pedido tie
 | **Recetas en Catálogo** | El plato y su receta juntos | Inventario necesitaría una copia de la receta, que podría estar desactualizada justo al reservar | La descartamos |
 | **Stock en Catálogo** | Todo en un lugar | Una base pensada para leer, usada para algo que cambia todo el tiempo | La descartamos |
 | **Stock en Pedidos** | Reservar y confirmar en una sola operación | Pedidos haría todo; el personal de cocina cargaría stock en el servicio de los clientes | La descartamos |
-| **Búsqueda dentro de Catálogo** | Un servicio menos | Las búsquedas competirían con la administración del catálogo, y el índice necesita datos de Catálogo **y** de Inventario, así que no es de ninguno de los dos. Separada, crece sola y si se cae no afecta a los pedidos (Clase 5) | La descartamos |
+| **Búsqueda dentro de Catálogo** | Un servicio menos | Las búsquedas competirían con la administración del catálogo, y el índice necesita datos de Catálogo **y** de Inventario, así que no es de ninguno de los dos. Separada, crece sola y si se cae no afecta a los pedidos | La descartamos |
 | **Un pedido por restaurante** | Cada marca maneja lo suyo | Los restaurantes no tienen gente propia: cocina todo la cocina | La descartamos |
 | **Mails dentro de Pedidos** | Un servicio menos | Si falla el correo, afecta a la confirmación de pedidos | La descartamos, pero es el **plan B** si nos cuesta mucho mantener 6 servicios |
 | **Lo que publicamos, en Pedidos** | Pedidos es el centro de la compra | Lo que publicamos es solo de lectura y esos datos ya están en Búsqueda; en Pedidos competiría con las confirmaciones ([ADR-008](ADR-008-contrato-propio.md)) | La descartamos |
@@ -136,9 +138,9 @@ El que cocina todo es la cocina; los restaurantes son solo marcas. El pedido tie
 
 ## Ajuste de roles (12/10/2026)
 
-Admin mantiene estructura y cuentas de su localidad (HU14–HU16) y consulta métricas (HU22). Cocina mantiene su menú e inventario (HU17–HU21), pedidos (HU23–HU25) e historial (HU27). HU26 se elimina porque queda integrada en HU18. Quien trabaja en cocina conoce platos y stock real; el admin administra estructura y no es cuello de botella para el trabajo diario.
+El admin mantiene las cocinas, los restaurantes y las cuentas de su localidad, y consulta las métricas. La cocina mantiene su menú, su inventario, sus pedidos y su historial. Cargar la receta de un plato quedó dentro de la administración del menú. Quien trabaja en cocina conoce platos y stock real; el admin administra estructura y no es cuello de botella para el trabajo diario.
 
-Se conservan los seis servicios, las bases y los eventos. Catálogo valida cocina_id para platos; Inventario para ingredientes, recetas y movimientos. Admin no administra menú ni stock. Rol incorrecto: 403; recurso de otra cocina: 404. El precio permanece congelado al agregar al carrito (RN15), y las reservas conservan sus ingredientes aunque cambie una receta.
+Se conservan los seis servicios, las bases y los eventos. Catálogo valida cocina_id para platos; Inventario para ingredientes, recetas y movimientos. Admin no administra menú ni stock. Rol incorrecto: 403; recurso de otra cocina: 404. El precio permanece congelado al agregar al carrito, y las reservas conservan sus ingredientes aunque cambie una receta.
 
 ## Validación (Entrega 2)
 
@@ -153,7 +155,7 @@ Con tres piezas funcionando (gateway, Búsqueda y Catálogo con MongoDB) revisam
 | El gateway no tiene lógica del negocio | Solo rutea, controla la API key (le pregunta a Búsqueda), limita y agrega el `X-Correlation-Id` | ✅ |
 | Lo que publicamos lo atiende Búsqueda ([ADR-008](ADR-008-contrato-propio.md)) | Las cinco operaciones del contrato 1.1.0 salen de Búsqueda sin consultar a otro servicio en cada solicitud | ✅ |
 
-**Diferencias con lo planeado, que no cambian los límites:**
+**Diferencias con lo planeado en la Entrega 2, que no cambiaron los límites** (las tres primeras ya se resolvieron, ver [Validación final](#validación-final)):
 
 - Búsqueda todavía **no recibe mensajes**: reconstruye el índice por API al arrancar y a pedido. Los mensajes de Catálogo e Inventario llegan con RabbitMQ ([ADR-006](ADR-006-busqueda.md)).
 - La **disponibilidad** de los platos sale de los datos iniciales hasta que exista Inventario; ante la duda, el plato figura como no disponible.
@@ -162,16 +164,21 @@ Con tres piezas funcionando (gateway, Búsqueda y Catálogo con MongoDB) revisam
 
 **Conclusión:** con lo implementado, ningún servicio necesitó entrar a la base de otro ni llamar de vuelta a quien lo llama. No hace falta reemplazar este ADR.
 
-## Cómo lo vamos a validar
+## Validación final
+
+Con los seis servicios funcionando:
+
+| Qué revisamos | Resultado | |
+| --- | --- | --- |
+| Cada servicio usa solo su base | Usuarios, Inventario y Pedidos tienen cada uno su base MySQL con un usuario que no puede entrar a las otras; Catálogo y Notificaciones, su base MongoDB | ✅ |
+| Búsqueda se mantiene al día por mensajes | Recibe los cambios de Catálogo e Inventario por RabbitMQ, con alerta si el atraso supera los 5 s ([ADR-006](ADR-006-busqueda.md)) | ✅ |
+| Nunca se vende de más | 200 clientes por el último plato: 1 ganador y 199 rechazos; en la prueba de carga, 20 aceptados con stock para 20 ([ADR-004](ADR-004-consistencia-y-concurrencia.md)) | ✅ |
+| Si se cae algo secundario, se sigue pidiendo | En la jornada de fallas, con RabbitMQ o el correo caídos los pedidos se siguieron confirmando ([POSTMORTEM](../POSTMORTEM.md)) | ✅ |
+
+Las **zonas** no se cargaron en Solr: la cocina más cercana se calcula sobre la ubicación de las cocinas, que es lo que pide el contrato.
+
+## Cómo lo validamos
 
 - **Entrega 2 (hecho, ver arriba):** revisar que ningún servicio necesite entrar a la base de otro. Si pasa, separamos mal y hacemos un ADR nuevo que reemplace a este (sin borrarlo).
-- **Entrega final:** con 200 personas reservando el último plato a la vez, **0 platos vendidos de más**. Y si tiramos Búsqueda o Notificaciones, los pedidos se siguen confirmando.
+- **Entrega final (hecho, ver arriba):** con 200 personas reservando el último plato a la vez, **0 platos vendidos de más**. Y con RabbitMQ o el correo caídos, los pedidos se siguieron confirmando.
 
-## Referencias
-
-- Clase 1: monolito y microservicios; un servicio por parte del negocio.
-- Clase 2: una base por servicio, transacciones entre servicios, saga y outbox.
-- Clase 4: mensajería; desacoplar lo que puede hacerse después.
-- Clase 5: el índice de búsqueda como copia derivada de los datos.
-- Clase 6: el gateway como única entrada; quién es se verifica en el borde, qué puede hacer lo decide cada servicio.
-- Clase 7: fallas parciales y aislamiento.

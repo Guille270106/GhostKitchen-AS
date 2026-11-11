@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.local
+
+# Resultados de Playwright (npm run test:e2e)
+test-results/
+playwright-report/

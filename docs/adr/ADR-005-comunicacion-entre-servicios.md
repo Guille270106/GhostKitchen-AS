@@ -1,6 +1,6 @@
 # ADR-005 — Cómo se comunican los servicios
 
-- **Estado:** Aceptada. Validada en la Entrega 2 la parte de llamadas directas y correlación (ver [Validación](#validación-entrega-2)); la mensajería se valida con Pedidos, Inventario y Notificaciones
+- **Estado:** Aceptada y validada. Las llamadas directas y la correlación, en la Entrega 2 (ver [Validación](#validación-entrega-2)); la mensajería (outbox, RabbitMQ, DLQ y mensajes repetidos), en la entrega final (ver [Validación final](#validación-entrega-final))
 - **Fecha:** 2026-10-09; validada el 2026-10-16
 - **Responsable:** Lucía Rucci
 - **Decisión del enunciado:** D5 (cuándo usar llamadas directas y cuándo mensajes, tiempos de espera, reintentos, eventos e idempotencia)
@@ -20,7 +20,7 @@ Con los servicios separados ([ADR-001](ADR-001-limites-de-los-servicios.md)), va
 
 ### 1. Cuándo usamos cada forma
 
-La regla sale de la Clase 4: síncrono cuando el resultado define la respuesta; asíncrono cuando el efecto puede terminar después.
+La regla que usamos: síncrono cuando el resultado define la respuesta; asíncrono cuando el efecto puede terminar después.
 
 | **Llamada directa (HTTP)** cuando… | **Mensaje (RabbitMQ)** cuando… |
 | --- | --- |
@@ -31,7 +31,7 @@ La regla sale de la Clase 4: síncrono cuando el resultado define la respuesta; 
 ### 2. Llamadas directas
 
 - Usamos **HTTP con JSON**. Los errores tienen un código fijo (por ejemplo `SIN_STOCK` o `RESERVA_VENCIDA`) para que el que llama sepa qué pasó.
-- **Tiempo total: 3 segundos.** Cada servicio usa el tiempo que **queda**, no empieza a contar de nuevo (`context.WithTimeout` en Go, Clase 7). Si no queda tiempo, no hace la llamada.
+- **Tiempo total: 3 segundos.** Cada servicio usa el tiempo que **queda**, no empieza a contar de nuevo (`context.WithTimeout` en Go). Si no queda tiempo, no hace la llamada.
 
 | Quién llama → a quién | Para qué | Espera máxima por intento | Reintentos máximos dentro del tiempo total |
 | --- | --- | --- | --- |
@@ -46,11 +46,11 @@ La regla sale de la Clase 4: síncrono cuando el resultado define la respuesta; 
 
 - **Esperar cada vez más entre reintentos** (100 ms, 200 ms, 400 ms…), con un poco de azar para que no reintenten todos juntos.
 - Los máximos no se suman como tiempos garantizados: autenticación, llamadas, esperas entre intentos y trabajo local comparten el mismo plazo de 3 s. Si el siguiente intento no entra en ese plazo, no se inicia. Una confirmación con resultado incierto continúa con su paso persistido en segundo plano y el cliente ve "Estamos confirmando tu pedido".
-- **Reintenta solo uno:** el servicio que hace la llamada. Ni el gateway ni el frontend reintentan, para no multiplicar los intentos (Clase 7).
+- **Reintenta solo uno:** el servicio que hace la llamada. Ni el gateway ni el frontend reintentan, para no multiplicar los intentos.
 - **No se reintenta** cuando el error es del negocio (sin stock, reserva vencida, datos mal cargados) ni cuando falta permiso: repetir no lo arregla.
-- **Circuit breaker:** si la mitad de las últimas llamadas a un servicio fallaron, dejamos de llamarlo 10 segundos y respondemos rápido con un error. Después probamos de nuevo con pocas llamadas. Hay uno **por operación** (reservar, descontar, consultar, proveedor), porque cada una falla distinto (Clase 7).
-- **Librerías:** la cátedra pidió usar librerías para el manejo de errores. Proponemos `context` de Go para los tiempos, `sony/gobreaker` para el circuit breaker y `cenkalti/backoff` para los reintentos con espera creciente. No las vimos en clase: se confirman en el ADR-010.
-- **Si una llamada no contesta a tiempo, no sabemos si se hizo o no** (Clase 7: un timeout no es un fracaso). Por eso, antes de repetir o deshacer, Pedidos **pregunta si se hizo**. Al cliente le mostramos "Estamos confirmando tu pedido", nunca un rechazo que no es cierto.
+- **Circuit breaker:** si la mitad de las últimas llamadas a un servicio fallaron, dejamos de llamarlo 10 segundos y respondemos rápido con un error. Después probamos de nuevo con pocas llamadas. Hay uno **por operación** (reservar, descontar, consultar, proveedor), porque cada una falla distinto.
+- **Librerías:** preferimos usar librerías conocidas en lugar de programar estos mecanismos a mano. Proponemos `context` de Go para los tiempos, `sony/gobreaker` para el circuit breaker y `cenkalti/backoff` para los reintentos con espera creciente. Se confirman en el ADR-010.
+- **Si una llamada no contesta a tiempo, no sabemos si se hizo o no** (un timeout no es un fracaso). Por eso, antes de repetir o deshacer, Pedidos **pregunta si se hizo**. Al cliente le mostramos "Estamos confirmando tu pedido", nunca un rechazo que no es cierto.
 - **No hay llamadas en círculo:** Catálogo e Inventario nunca llaman a Pedidos, e Inventario no llama a Catálogo.
 
 ### 3. Cómo evitamos hacer algo dos veces (idempotencia)
@@ -105,7 +105,7 @@ Todos los mensajes tienen la misma forma:
 - `secuencia` sirve para ignorar un mensaje viejo que llegó tarde.
 - `correlation_id` sirve para seguir una misma acción en los logs de todos los servicios.
 
-**Para no perder mensajes (outbox, Clases 2 y 4):** Catálogo, Inventario y Pedidos guardan el cambio y el mensaje **en la misma operación de su base**. Después, otro proceso lo manda a RabbitMQ y lo marca como enviado. Si RabbitMQ está caído, el mensaje queda guardado y sale cuando vuelve.
+**Para no perder mensajes (outbox):** Catálogo, Inventario y Pedidos guardan el cambio y el mensaje **en la misma operación de su base**. Después, otro proceso lo manda a RabbitMQ y lo marca como enviado. Si RabbitMQ está caído, el mensaje queda guardado y sale cuando vuelve.
 
 **Un mensaje puede llegar dos veces.** Por eso cada servicio que escucha:
 1. anota el `evento_id` como procesado junto con el cambio que hace;
@@ -123,7 +123,7 @@ El outbox publica mensajes persistentes en colas durables y espera la confirmaci
 
 **El mail es un caso especial**, porque no se puede deshacer. Notificaciones anota el mensaje como PENDIENTE, manda el mail, lo marca ENVIADO y recién ahí hace el ACK. Si se cae justo después de mandarlo, el mail puede llegar repetido. Lo aceptamos porque es mejor que perder un mail.
 
-Como un mail mandado por SMTP no se puede deshacer ni guardar en la misma transacción que la marca de ENVIADO, no se puede garantizar "exactamente una vez" (Clase 4). **El equipo acordó** priorizar que no se pierda ningún mail y aceptar ese caso puntual de repetido; quedó así en RN17 y HU13 del [SPEC](../../SPEC.md).
+Como un mail mandado por SMTP no se puede deshacer ni guardar en la misma transacción que la marca de ENVIADO, no se puede garantizar "exactamente una vez". **El equipo acordó** priorizar que no se pierda ningún mail y aceptar ese caso puntual de repetido; quedó así en el [SPEC](../../SPEC.md).
 
 ### 5. Comunicación con afuera
 
@@ -172,25 +172,43 @@ Lo que planeábamos validar ("agregar al carrito" de punta a punta y un mensaje 
 
 | Qué decía el ADR | Qué implementamos | Resultado |
 | --- | --- | --- |
-| Búsqueda → Catálogo para reconstruir: 5 s y 3 reintentos, fuera de una solicitud de usuario | 5 s por intento y 3 reintentos con espera de 0,5 s, 1 s y 2 s. Hoy reintenta ante cualquier respuesta que no sea `200`: es una lectura, así que repetirla es seguro (lo afinamos para no reintentar un `4xx`). Si falla, se conserva el índice anterior | ✅ |
+| Búsqueda → Catálogo para reconstruir: 5 s y 3 reintentos, fuera de una solicitud de usuario | 5 s por intento y 3 reintentos con espera de 0,5 s, 1 s y 2 s. Es una lectura, así que repetirla es seguro; no reintenta un `4xx`, que es una respuesta definitiva. Si falla, se conserva el índice anterior | ✅ |
 | Ninguna pantalla espera más de 3 s | Gateway: 1 s para conectar y 3 s para responder. Solr y MongoDB: 2 s. La verificación de la API key: 1 s | ✅ |
 | Reintenta uno solo | El gateway no reintenta; solo reintenta la reconstrucción, que es trabajo de fondo | ✅ |
 | `correlation_id` en los logs de todos los servicios | El gateway lo genera (o usa el del cliente), Búsqueda lo pasa a Catálogo en `X-Correlation-Id` y los tres lo registran. Además viaja la traza (`traceparent`) y Jaeger muestra una reconstrucción como una sola traza con spans de Búsqueda y Catálogo ([ADR-011](ADR-011-observabilidad.md)) | ✅ |
 | Las llamadas internas no salen por el gateway | `/internal/` está bloqueado en el gateway: responde `404` | ✅ |
-| Mensajes, outbox, idempotencia, DLQ | Sin cambios en la decisión; se implementan con RabbitMQ | Pendiente |
+| Mensajes, outbox, idempotencia, DLQ | Implementados en la entrega final (ver [Validación final](#validación-entrega-final)) | ✅ |
 
 **Lo que aprendimos:** el reintento con espera creciente alcanzó para la reconstrucción. Para las llamadas de Pedidos, que tienen el plazo de 3 s, vamos a usar librerías de circuit breaker y backoff ([ADR-010](ADR-010-resiliencia.md)) en lugar de programarlo a mano.
 
 **Conclusión:** la parte síncrona funciona como se decidió. No cambia nada del ADR.
 
-## Cómo lo vamos a validar
+### Búsqueda consume mensajes
 
-- **Entrega 2 (hecho con el flujo de búsqueda, ver arriba):** seguir un "agregar al carrito" de punta a punta con el mismo `correlation_id` en el gateway, Pedidos, Catálogo e Inventario. Y un test que mande dos veces el mismo mensaje de cambio de estado y verifique que llega un solo mail.
-- **Entrega final:** lo que no se pudo en la Entrega 2: "agregar al carrito" de punta a punta con el mismo `correlation_id` y el mensaje repetido que manda un solo mail. Además, si tiramos Inventario, Pedidos tiene que responder rápido "no podemos tomar pedidos ahora". Si tiramos RabbitMQ, no se tiene que perder ningún mensaje.
+- Lee `busqueda.indexador` de a un mensaje. Hace ack después de guardar en Solr; un mensaje que no cumple el contrato va directo a la DLQ, y uno que falla por Solr caído se reintenta con espera hasta que RabbitMQ lo manda a la DLQ al quinto intento.
+- Idempotencia sin tabla de mensajes, como decía el ADR: cada documento guarda una versión de Catálogo y otra de Inventario, y cada fuente cambia solo sus campos. Para no perder un cambio cuando escriben a la vez el lector y la reconstrucción, cada escritura usa el `_version_` de Solr (concurrencia optimista).
+- Un **ajuste**: un plato que llega antes que su cocina no se reintenta, se guarda inactivo y se completa con el mensaje de la cocina. Devolverlo a la cola podía dejarlo delante del mensaje de la cocina y trabar los dos.
+- Probado con RabbitMQ real (plato antes que la cocina, mensaje roto a la DLQ) y con Solr simulado (409 y reintento). Falta medir el atraso de punta a punta (`demora_ms` en el log) con todo el sistema levantado.
 
-## Referencias
+## Validación (entrega final)
 
-- Clase 2: saga coordinada (orquestación) o por reacciones (coreografía), outbox, idempotencia.
-- Clase 4: síncrono y asíncrono, RabbitMQ, una cola por servicio, ACK después del efecto, reintentos y DLQ.
-- Clase 6: el gateway como única entrada.
-- Clase 7: tiempo total de la operación, reintentos con espera creciente, claves de idempotencia, circuit breaker, "un timeout no es un fracaso".
+Con todos los servicios implementados se validó lo que en la Entrega 2 no se podía:
+
+| Qué decía el ADR | Qué implementamos | Resultado |
+| --- | --- | --- |
+| Pedidos coordina la confirmación (saga orquestada) | Cada paso queda guardado en `confirmacion`; si no se sabe cómo terminó un paso, se responde "Estamos confirmando tu pedido" y un proceso lo retoma cada 10 s | ✅ |
+| Toda escritura entre servicios lleva `Idempotency-Key` | Reservar, ajustar, liberar, descontar y devolver en Inventario, y la factura del proveedor, con la misma clave en cada reintento. Probado con dos confirmaciones a la vez del mismo carrito: un solo pedido y un solo descuento | ✅ |
+| Outbox: el cambio y su mensaje se guardan juntos | Pedidos (`pedido.estado_cambiado`), Catálogo (`cocina.*`, `plato.*`) e Inventario (`reserva.vencida`, `disponibilidad.cambiada`) guardan el mensaje en la misma transacción; un publicador lo manda y lo marca recién cuando RabbitMQ confirma | ✅ |
+| Una cola por consumidor, ACK después del efecto, DLQ | Búsqueda, Inventario, Pedidos y Notificaciones leen su cola de a un mensaje, confirman después de guardar, mandan a la DLQ lo roto y reintentan lo pasajero | ✅ |
+| Un mensaje repetido no hace dos veces lo mismo | Notificaciones: el mismo evento dos veces manda **un solo mail** (`services/notificaciones/prueba-mensaje-repetido.ps1`, con RabbitMQ y Mailpit reales). Pedidos: el mismo `reserva.vencida` dos veces no cambia nada | ✅ |
+| `correlation_id` de punta a punta | Pedidos lo recibe del gateway, lo registra, lo pasa a Catálogo, Inventario y el proveedor en `X-Correlation-Id`, y lo copia en el sobre de cada mensaje | ✅ |
+| Con RabbitMQ caído no se pierde nada | Jornada de fallas: los pedidos siguieron funcionando, los avisos esperaron en el outbox y salieron solos al volver ([POSTMORTEM](../POSTMORTEM.md)) | ✅ |
+| Con Inventario caído, Pedidos responde rápido | Jornada de fallas: agregar al carrito → `503` en 1,6 s; confirmar → "Estamos confirmando tu pedido" en 2,1 s, y se completó solo al volver | ✅ |
+
+**Lo que aprendimos:** un mail que cae en la DLQ queda guardado pero no se reenvía solo; anotamos como mejora un comando para reprocesarla (ver el POSTMORTEM).
+
+## Cómo lo validamos
+
+- **Entrega 2:** con el flujo de búsqueda (ver [Validación (Entrega 2)](#validación-entrega-2)).
+- **Entrega final:** con el flujo completo, los tests de cada servicio, la prueba de punta a punta (`services/pedidos/testdata/e2e.mjs`) y la jornada de fallas (ver [Validación (entrega final)](#validación-entrega-final)).
+

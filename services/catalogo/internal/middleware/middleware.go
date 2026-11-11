@@ -24,6 +24,11 @@ const HeaderCorrelacion = "X-Correlation-Id"
 
 const claveCorrelacion = "correlation_id"
 
+// Instancia es el nombre de esta copia de Catálogo (catalogo-1, catalogo-2). Si no está vacía,
+// cada respuesta la lleva en el header X-Instancia y el gateway la anota en su log: así se ve
+// qué copia atendió cada solicitud (ADR-012). La define main al arrancar.
+var Instancia string
+
 // claveContexto es un tipo propio para que ningún otro paquete pueda pisar ni leer por
 // error esta clave dentro de un context.Context.
 type claveContexto struct{}
@@ -45,6 +50,9 @@ func Correlacion() gin.HandlerFunc {
 		c.Set(claveCorrelacion, id)
 		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), claveContexto{}, id))
 		c.Header(HeaderCorrelacion, id)
+		if Instancia != "" {
+			c.Header("X-Instancia", Instancia)
+		}
 		trazas.MarcarCorrelacion(c.Request.Context(), id)
 		c.Next()
 	}
@@ -52,13 +60,6 @@ func Correlacion() gin.HandlerFunc {
 
 // IDCorrelacion devuelve el id de correlación de la solicitud.
 func IDCorrelacion(c *gin.Context) string { return c.GetString(claveCorrelacion) }
-
-// ConCorrelacion guarda un id de correlación en el contexto. Sirve para trabajos que no
-// nacen de una solicitud HTTP. Hoy Catálogo no lo usa: está para que el paquete sea igual
-// al de Búsqueda, donde lo usa la reconstrucción del índice al arrancar.
-func ConCorrelacion(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, claveContexto{}, id)
-}
 
 // IDDesdeContexto devuelve el id de correlación guardado en un context.Context.
 func IDDesdeContexto(ctx context.Context) string {

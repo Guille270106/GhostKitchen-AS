@@ -15,7 +15,7 @@ Es **solo de lectura**: desde afuera no se puede reservar, tocar el stock ni cre
 | **Versión vigente** | `1.1.0` (ruta `/v1`) |
 | **Contrato** | [`v1/openapi.yaml`](v1/openapi.yaml) (OpenAPI 3.0.3) |
 | **Mock** | `http://localhost:4010` (ver [Probar sin esperar al backend](#probar-sin-esperar-al-backend-mock)) |
-| **URL pública** | Se publica en la Entrega 2 (23/10/2026) y se agrega acá y en `servers` del contrato |
+| **URL pública** | `https://57-156-56-219.sslip.io/public` (con HTTPS). La API key se pide por privado |
 | **Historial** | [CHANGELOG.md](CHANGELOG.md) |
 | **Decisión de diseño** | [ADR-008](../adr/ADR-008-contrato-propio.md) |
 | **Responsable** | Lucía Rucci (ver [Contacto](#contacto)) |
@@ -26,6 +26,7 @@ Es **solo de lectura**: desde afuera no se puede reservar, tocar el stock ni cre
 | --- | --- | --- |
 | Mock local | `http://localhost:4010` | Ya disponible |
 | Nuestro sistema en local, detrás del gateway | `http://localhost:8080/public` | Entrega 2 |
+| **Producción en la nube** | `https://57-156-56-219.sslip.io/public` | Ya disponible |
 | Nube | *se agrega acá* | Entrega 2 |
 
 Todas las rutas empiezan con la versión: `{URL base}/v1/...`
@@ -300,6 +301,17 @@ Son comprobaciones de ejemplos y validación de solicitudes; no sustituyen los f
    - `503`.
 3. Hagan que el test falle si la versión pasa a `2.x`, porque eso significa que algo cambió de forma incompatible.
 4. En proximidad prueben cuerpos válidos, coordenadas/radio/campos/booleano inválidos y 413. En la implementación real, verifiquen distancia cliente-sede, límite inclusivo, resultados independientes, false sin Solr, cocina cerca del cliente y falla de Solr.
+
+## Cómo cuidamos que no cambie
+
+En **cada pull request** de nuestro repositorio corre un test de contrato (`.github/workflows/contrato.yml`). Levanta la misma configuración que está en la nube y le pide cada operación a la API real a través de Prism, que compara cada respuesta con `v1/openapi.yaml`. Si un cambio nuestro rompiera algo de lo que ustedes usan (un campo que falta, un tipo distinto, un código no documentado), el pull request queda en rojo y no llega a la URL pública.
+
+Para correrlo en local (desde la raíz del repositorio, con un `.env` que tenga `DOMINIO_PUBLICO` y `PUBLIC_API_KEYS`):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.nube.yml -f docker-compose.contrato.yml up -d --build --wait contrato-proxy memcached
+node scripts/contrato/probar-contrato.mjs
+```
 
 ## Versiones
 

@@ -46,3 +46,69 @@ func TestContiene(t *testing.T) {
 		}
 	}
 }
+
+func TestContieneConPrefijo(t *testing.T) {
+	plato := "Hamburguesa doble con queso"
+	casos := map[string]bool{
+		"hambur":           true, // la última palabra, como comienzo
+		"HAMBÚR":           true, // sin mayúsculas ni acentos
+		"hamburguesas":     true, // la palabra entera, por su raíz
+		"doble hambur":     true,
+		"hambur doble":     false, // solo la última puede estar a medias
+		"doble queso hamb": true,
+		"hamb doble":       false, // solo la última puede estar a medias
+		"ha":               false, // menos de 3 letras: no cuenta como comienzo
+		"pizza":            false,
+		"":                 true,
+	}
+	for consulta, quiero := range casos {
+		if got := ContieneConPrefijo(plato, consulta); got != quiero {
+			t.Errorf("%q: %v, esperaba %v", consulta, got, quiero)
+		}
+	}
+}
+
+func TestTyposConPrefijo(t *testing.T) {
+	for _, c := range []struct {
+		texto, consulta string
+		quiere          bool
+	}{
+		{"Sorrentinos", "sorentinos", true},
+		{"Sorrentinos", "sorrenttinos", true},
+		{"Sorrentinos", "sorrantinos", true},
+		{"Sorrentinos", "sorret ninos", false},
+		{"Hamburguesa", "hambur", true},
+		{"Sorrentinos de pollo", "sorentinos pol", true},
+		{"Pan", "paz", false},
+		{"Sorrentinos", "sxxentinos", false},
+		{"Pollo", "pollozz", false},
+	} {
+		if got := ContieneConPrefijo(c.texto, c.consulta); got != c.quiere {
+			t.Errorf("%q en %q: %v, esperaba %v", c.consulta, c.texto, got, c.quiere)
+		}
+	}
+}
+
+// Una letra de diferencia en una palabra corta es otro plato: no se toma como typo.
+func TestPalabrasCortasNoSeConfunden(t *testing.T) {
+	for _, c := range []struct{ texto, consulta string }{
+		{"Salmón roll x 10", "pollo"},
+		{"Balde de pollo x 8", "roll"},
+		{"Tostado de jamón y queso en pan de miga", "mega"},
+		{"Café en grano para preparar en casa", "papa"},
+		{"Cheesecake de frutos rojos", "cafe"},
+	} {
+		if ContieneConPrefijo(c.texto, c.consulta) {
+			t.Errorf("%q no tendría que encontrar %q", c.consulta, c.texto)
+		}
+	}
+	for _, c := range []struct{ texto, consulta string }{
+		{"Empanadas de carne x 6", "empanda"},
+		{"Milanesa a caballo", "milaneza"},
+		{"Hamburguesa doble", "hamburgesa"},
+	} {
+		if !ContieneConPrefijo(c.texto, c.consulta) {
+			t.Errorf("%q tendría que encontrar %q", c.consulta, c.texto)
+		}
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -23,11 +24,22 @@ import (
 type Catalogo struct {
 	svc  *services.Catalogo
 	ping func(context.Context) error
+	// fuente lee directo de MongoDB, sin caché. La usan las rutas internas con las que otros
+	// servicios toman una decisión (el precio al agregar al carrito, la cocina de una cuenta):
+	// ahí no puede haber un dato viejo de la caché (ADR-007).
+	fuente *services.Catalogo
 }
 
 // Nuevo crea los handlers.
 func Nuevo(svc *services.Catalogo, ping func(context.Context) error) *Catalogo {
-	return &Catalogo{svc: svc, ping: ping}
+	return &Catalogo{svc: svc, ping: ping, fuente: svc}
+}
+
+// ConFuente indica de dónde leen las rutas internas de un plato o una cocina (MongoDB sin
+// caché). Sin llamarla, leen de lo mismo que las públicas.
+func (h *Catalogo) ConFuente(fuente *services.Catalogo) *Catalogo {
+	h.fuente = fuente
+	return h
 }
 
 // Registrar agrega las rutas. Las de /internal/ solo se usan dentro de la red de Docker:
@@ -43,6 +55,10 @@ func (h *Catalogo) Registrar(r gin.IRoutes) {
 
 	r.GET("/internal/cocinas", h.todasLasCocinas)
 	r.GET("/internal/platos", h.paginaPlatos)
+	// Un plato o una cocina, leídos de la fuente de verdad (sin caché). Responden lo mismo que
+	// las públicas: lo desactivado da 404.
+	r.GET("/internal/platos/:id", h.obtenerPlatoFuente)
+	r.GET("/internal/cocinas/:id", h.obtenerCocinaFuente)
 }
 
 // preparado atiende GET /ready: MongoDB responde en menos de 1 s. /health, en cambio, solo
@@ -83,6 +99,24 @@ func (h *Catalogo) menu(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"cocina": gin.H{"id": cocina.ID, "nombre": cocina.Nombre}, "items": platos})
+}
+
+func (h *Catalogo) obtenerPlatoFuente(c *gin.Context) {
+	p, err := h.fuente.ObtenerPlato(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		responderError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, p)
+}
+
+func (h *Catalogo) obtenerCocinaFuente(c *gin.Context) {
+	cocina, err := h.fuente.ObtenerCocina(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		responderError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, cocina)
 }
 
 func (h *Catalogo) obtenerPlato(c *gin.Context) {
@@ -149,13 +183,44 @@ func responderError(c *gin.Context, err error) {
 	}
 }
 
+// titulos es el título legible de cada código, en castellano: el mismo formato que Búsqueda,
+// Pedidos e Inventario. Si falta uno, se usa uno general según el código HTTP.
+var titulos = map[string]string{
+	"COCINA_NO_ENCONTRADA":      "Cocina no encontrada",
+	"RESTAURANTE_NO_ENCONTRADO": "Restaurante no encontrado",
+	"PLATO_NO_ENCONTRADO":       "Plato no encontrado",
+	"COCINA_LLENA":              "La cocina ya tiene 4 restaurantes",
+	"COCINA_REPETIDA":           "Cocina repetida",
+	"RESTAURANTE_REPETIDO":      "Restaurante repetido",
+	"CONFLICTO":                 "Conflicto",
+	"DATOS_INVALIDOS":           "Datos inválidos",
+	"PARAMETRO_INVALIDO":        "Parámetro inválido",
+	"NO_AUTENTICADO":            "No autenticado",
+	"SIN_PERMISO":               "Sin permiso",
+	"OTRA_COCINA":               "Es de otra cocina",
+	"OTRA_LOCALIDAD":            "Es de otra localidad",
+	"SIN_RECETA":                "El plato no tiene receta",
+	"INVENTARIO_NO_DISPONIBLE":  "Inventario no disponible",
+	"SERVICIO_NO_DISPONIBLE":    "Servicio no disponible",
+}
+
+// titulosPorEstado se usa si un código no está en titulos.
+var titulosPorEstado = map[int]string{400: "Datos inválidos", 401: "No autenticado", 403: "Sin permiso",
+	404: "No encontrado", 409: "Conflicto", 503: "Servicio no disponible"}
+
 // responderProblema escribe el error en formato Problem Details (RFC 9457), con el
 // correlationId para que quien llama pueda encontrar la solicitud en nuestros logs.
+// "type" termina en el código en minúsculas y con guiones (SIN_RECETA -> sin-receta) y
+// "title" va en castellano, igual que en el resto de los servicios.
 func responderProblema(c *gin.Context, estado int, codigo, detalle string) {
+	titulo, ok := titulos[codigo]
+	if !ok {
+		titulo = titulosPorEstado[estado]
+	}
 	c.Header("Content-Type", "application/problem+json")
 	c.AbortWithStatusJSON(estado, gin.H{
-		"type":          "https://ghostkitchen.dev/errores/" + codigo,
-		"title":         http.StatusText(estado),
+		"type":          "https://ghostkitchen.dev/errores/" + strings.ToLower(strings.ReplaceAll(codigo, "_", "-")),
+		"title":         titulo,
 		"status":        estado,
 		"code":          codigo,
 		"detail":        detalle,

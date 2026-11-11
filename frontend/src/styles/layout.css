@@ -1,0 +1,109 @@
+/* Barra superior: franja roja solida, como los sitios de delivery de antes */
+.topbar { background: var(--red); color: #fff; position: sticky; top: 0; z-index: 50; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+.nav-shell { width: calc(100% - 2 * var(--gutter)); height: 64px; margin: auto; display: flex; align-items: center; gap: 32px; }
+.logo-button { display: flex; }
+.logo-wrap { display: flex; align-items: center; gap: 8px; font-family: var(--font-title); font-weight: 900; font-size: 22px; white-space: nowrap; }
+.logo-wrap > span > span { color: var(--red); }
+.topbar .logo-wrap > span, .topbar .logo-wrap > span > span { color: #fff; }
+.ghost-logo { width: 42px; height: 42px; flex: 0 0 auto; }
+.topbar .ghost-logo { background: #fff; border-radius: 50%; padding: 3px; width: 40px; height: 40px; }
+.desktop-nav { display: flex; align-items: stretch; gap: 4px; align-self: stretch; }
+.desktop-nav a { display: flex; align-items: center; padding: 0 12px; font-weight: 700; font-size: 15px; color: rgba(255,255,255,.85); border-bottom: 3px solid transparent; }
+.desktop-nav a:hover { color: #fff; background: rgba(0,0,0,.08); }
+.desktop-nav a.active { color: #fff; border-bottom-color: #fff; }
+.nav-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.location { height: 38px; padding: 0 12px; border-radius: 4px; display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 700; background: rgba(255,255,255,.16); color: #fff; border: 0; cursor: pointer; }
+.location:hover { background: rgba(255,255,255,.26); }
+.gk-select-header .gk-select-trigger { height: 38px; background: rgba(255,255,255,.16); border-color: transparent; color: #fff; font-weight: 700; }
+.gk-select-header .gk-select-trigger:hover { background: rgba(255,255,255,.26); border-color: transparent; }
+.gk-select.gk-select-header .gk-select-trigger > svg, .gk-select.gk-select-header .gk-select-caret { color: #fff; }
+.gk-select-header.is-open .gk-select-trigger { box-shadow: 0 0 0 2px rgba(255,255,255,.5); border-color: transparent; }
+.gk-select-header .gk-select-list { color: var(--ink); }
+.user-chip { display: flex; align-items: center; gap: 9px; height: 38px; padding: 0 4px 0 10px; border-radius: 4px; background: rgba(255,255,255,.16); }
+.user-chip strong, .user-chip small { display: block; line-height: 1.15; }
+.user-chip strong { font-size: 13px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-chip small { font-size: 11px; opacity: .8; }
+.user-chip button { border: 0; background: rgba(255,255,255,.15); color: #fff; width: 30px; height: 30px; border-radius: 3px; display: grid; place-items: center; }
+.user-chip button:hover { background: rgba(255,255,255,.3); }
+.topbar .login-link { min-height: 38px; background: #fff; color: var(--red); border-color: #fff; }
+.cart-button { height: 38px; padding: 0 12px; border-radius: 4px; background: #fff; color: var(--red); display: flex; align-items: center; gap: 6px; position: relative; font-weight: 700; }
+.cart-button span { min-width: 20px; height: 20px; padding: 0 5px; display: grid; place-items: center; background: var(--red); color: #fff; border-radius: 10px; font-size: 11px; font-weight: 900; }
+.cart-label { font-style: normal; font-size: 14px; }
+.mobile-menu, .mobile-panel, .bottom-nav { display: none; }
+
+/* Pie de pagina */
+.site-footer { background: #2b2f36; color: #c8ccd2; margin-top: 60px; font-size: 14px; }
+.footer-grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 30px; padding: 40px 0 30px; }
+.footer-grid h4 { color: #fff; font-size: 15px; margin-bottom: 12px; }
+.footer-grid ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.footer-grid a:hover { color: #fff; text-decoration: underline; }
+.footer-brand .logo-wrap { color: #fff; margin-bottom: 10px; }
+.footer-brand .logo-wrap > span > span { color: #fb7185; }
+.footer-brand .ghost-logo { background: #fff; border-radius: 50%; padding: 3px; }
+.footer-brand p { max-width: 280px; margin: 0; line-height: 1.5; }
+.footer-bottom { border-top: 1px solid #3d424a; padding: 16px 0; font-size: 13px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+/* Panel de trabajo (restaurante y admin) */
+.workspace { min-height: calc(100vh - 64px); display: grid; grid-template-columns: 220px 1fr; background: var(--canvas); }
+.workspace-sidebar { background: #2b2f36; color: #c8ccd2; padding: 20px 12px; display: flex; flex-direction: column; position: sticky; top: 64px; height: calc(100vh - 64px); }
+.sidebar-brand { margin: 0 0 20px; padding: 10px; border-radius: 4px; background: rgba(255,255,255,.06); display: flex; align-items: center; gap: 10px; color: #fff; }
+.sidebar-brand > span { width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 4px; background: var(--red); color: white; font-weight: 900; font-size: 13px; }
+.sidebar-brand strong, .sidebar-brand small { display: block; }
+.sidebar-brand strong { font-size: 14px; }
+.sidebar-brand small { color: #9aa0a8; font-size: 12px; }
+.workspace-sidebar nav { display: grid; gap: 2px; }
+.workspace-sidebar nav a, .sidebar-help { border: 0; background: none; min-height: 42px; border-radius: 4px; display: flex; align-items: center; gap: 11px; padding: 0 12px; font-size: 14px; text-align: left; color: #c8ccd2; }
+.workspace-sidebar nav a:hover { background: rgba(255,255,255,.06); color: #fff; }
+.workspace-sidebar nav a.active { background: var(--red); color: white; font-weight: 700; }
+.sidebar-help { margin-top: auto; color: #9aa0a8; font-size: 13px; }
+.sidebar-help:hover { color: #fff; }
+.workspace-main { padding: 32px; min-width: 0; }
+
+@media (max-width: 900px) {
+  .desktop-nav, .location, .location-select { display: none; }
+  .user-chip div { display: none; }
+  .footer-grid { grid-template-columns: 1fr 1fr; }
+  .workspace { grid-template-columns: 72px 1fr; }
+  .workspace-sidebar { padding: 16px 8px; }
+  .sidebar-brand { padding: 6px; justify-content: center; }
+  .sidebar-brand div, .workspace-sidebar nav a span, .sidebar-help span { display: none; }
+  .workspace-sidebar nav a, .sidebar-help { justify-content: center; padding: 0; }
+  /* Cartel con el nombre de cada ícono (solo acá, porque con la pantalla ancha el nombre ya se ve). */
+  .workspace-sidebar nav a { position: relative; }
+  .workspace-sidebar nav a::after { content: attr(data-nombre); position: absolute; left: calc(100% + 12px); top: 50%; z-index: 50; transform: translate(-4px, -50%); padding: 7px 11px; border-radius: 6px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap; box-shadow: 0 6px 18px rgba(0,0,0,.22); opacity: 0; pointer-events: none; transition: opacity .12s ease, transform .12s ease; }
+  .workspace-sidebar nav a::before { content: ""; position: absolute; left: calc(100% + 6px); top: 50%; z-index: 50; transform: translateY(-50%); border: 6px solid transparent; border-right-color: var(--ink); border-left: 0; opacity: 0; pointer-events: none; transition: opacity .12s ease; }
+  .workspace-sidebar nav a:hover::after, .workspace-sidebar nav a:focus-visible::after { opacity: 1; transform: translate(0, -50%); }
+  .workspace-sidebar nav a:hover::before, .workspace-sidebar nav a:focus-visible::before { opacity: 1; }
+  .workspace-main { padding: 24px 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-sidebar nav a::after, .workspace-sidebar nav a::before { transition: none; }
+}
+
+@media (max-width: 620px) {
+  .nav-shell { height: 56px; gap: 10px; }
+  .logo-wrap { font-size: 19px; }
+  .topbar .ghost-logo { width: 34px; height: 34px; }
+  .user-chip, .topbar .login-link { display: none; }
+  .cart-button { padding: 0 10px; }
+  .cart-label { display: none; }
+  .mobile-menu { display: grid; place-items: center; border: 0; background: none; color: #fff; }
+  .mobile-panel { display: grid; position: absolute; left: 12px; right: 12px; top: 60px; padding: 8px; background: white; color: var(--ink); border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 6px 16px rgba(0,0,0,.15); }
+  .mobile-panel a, .mobile-panel button { border: 0; background: none; text-align: left; padding: 12px; font-size: 15px; }
+  .bottom-nav { position: fixed; display: grid; grid-template-columns: repeat(4, 1fr); z-index: 60; bottom: 0; left: 0; right: 0; height: 62px; background: white; border-top: 1px solid var(--line); }
+  .bottom-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--muted); font-size: 11px; font-weight: 700; }
+  .bottom-nav a.active { color: var(--red); }
+  .footer-grid { grid-template-columns: 1fr; gap: 22px; }
+  .site-footer { margin-top: 30px; }
+  .workspace { display: block; }
+  .workspace-sidebar { height: 58px; position: fixed; top: auto; z-index: 55; bottom: 0; left: 0; right: 0; padding: 4px; }
+  .sidebar-brand, .sidebar-help { display: none; }
+  .workspace-sidebar nav { grid-auto-flow: column; height: 100%; }
+  .workspace-sidebar nav a { justify-content: center; }
+  /* En el celular el menú es una barra abajo: el cartel aparece arriba del ícono. */
+  .workspace-sidebar nav a::after { left: 50%; top: auto; bottom: calc(100% + 12px); transform: translate(-50%, 4px); }
+  .workspace-sidebar nav a::before { left: 50%; top: auto; bottom: calc(100% + 6px); transform: translateX(-50%); border: 6px solid transparent; border-top-color: var(--ink); border-bottom: 0; }
+  .workspace-sidebar nav a:hover::after, .workspace-sidebar nav a:focus-visible::after { transform: translate(-50%, 0); }
+  .workspace-main { padding: 22px 12px 86px; }
+}

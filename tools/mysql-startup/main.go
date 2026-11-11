@@ -1,5 +1,5 @@
 // mysql-startup aplica las migraciones antes de ejecutar el servicio.
-// Sin comando sirve como trabajo de migración de Compose durante la ronda 1.
+// Sin comando solo aplica las migraciones y termina.
 package main
 
 import (

@@ -1,10 +1,12 @@
 # ADR-013 — Capacidad y costos
 
-- **Estado:** Primera versión: método, escenarios, hipótesis y estimación inicial. Los resultados de la prueba de carga se agregan para la presentación final
+- **Estado:** Aceptada. Mediciones locales completadas y costo del despliegue en la nube calculado
 - **Fecha:** 2026-10-16
 - **Responsable:** Valentina Rey
 - **Decisión del enunciado:** D13 (resultados de las pruebas de carga, principal límite identificado, alternativa de escalado y estimación de costos)
 - **Relacionado con:** [ADR-003](ADR-003-persistencia.md) · [ADR-007](ADR-007-cache.md) · [ADR-011](ADR-011-observabilidad.md) · [ADR-012](ADR-012-balanceo-de-carga.md) · [SPEC](../../SPEC.md) (atributos de calidad)
+
+- **Última actualización:** 2026-11-09
 
 ## Contexto
 
@@ -13,7 +15,7 @@ El enunciado pide un test de carga ejecutado, con resultados, análisis de capac
 - 200 clientes queriendo el último plato en 10 s → **0 platos vendidos de más**;
 - con 100 usuarios a la vez, **agregar al carrito < 500 ms** y **buscar < 300 ms** (p95).
 
-En la Entrega 2 funcionan Búsqueda, Catálogo y el gateway. Inventario y Pedidos llegan después, así que esta versión define **cómo** vamos a medir y qué esperamos encontrar; los números se completan cuando el flujo principal exista.
+En la Entrega 2 solo funcionaban Búsqueda, Catálogo y el gateway, así que esa versión definió **cómo** medir. Los números de abajo son de la entrega final, con el flujo completo.
 
 ## Decisión
 
@@ -31,6 +33,37 @@ En la Entrega 2 funcionan Búsqueda, Catálogo y el gateway. Inventario y Pedido
 | 4 | **Caída de una copia de Catálogo** durante el escenario 2 | 100 usuarios | Errores visibles y tiempo hasta que NGINX la saca | Con balanceo |
 
 El escenario 1 le pega **directo a Búsqueda** dentro de la red de Docker (`http://busqueda:8083/v1`), sin pasar por el gateway: el límite de 60 solicitudes por minuto por clave cortaría la prueba y estaríamos midiendo el límite, no el sistema. El límite del gateway se prueba aparte (el 429 ya está probado). El script es [`tests/carga/api-publica.js`](../../tests/carga/api-publica.js).
+
+### Resultados locales del 9 de noviembre de 2026
+
+Usamos k6 0.54.0 y bases descartables en Docker local. Docker tenía 12 CPU lógicas y 7,54 GiB de RAM asignadas durante las corridas. Los comandos y las condiciones de repetición quedan en la [guía de carga](../../tests/carga/README.md).
+
+| Escenario | Base | Solicitudes | Solicitudes/s | p50 (ms) | p95 (ms) | p99 (ms) | Errores inesperados |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 · API publicada, directo a Búsqueda | b25025f | 102.692 | 310,28 | 2,80 | 10,11 | 18,44 | 0 |
+| 3 · Agregar al carrito por el gateway | 2f37248 | 200 | 20 programadas | 19,22 | 34,63 | 42,83 | 0 |
+
+En el escenario 1, buscar platos dio **13,82 ms de p95** en 25.673 consultas y cumplió el objetivo de 300 ms. Se usaron Búsqueda, Solr y el seed de Catálogo, con caché deshabilitada y sin la integración de disponibilidad de Inventario.
+
+En el escenario 3, **20 carritos fueron aceptados y 180 recibieron SIN_STOCK**. Inventario terminó con 20 unidades reservadas y cero disponibles. La carga fue escalonada a 20 solicitudes por segundo durante 10 segundos. El resultado verifica que el carrito no excedió el stock en ese patrón. El escenario separado de 100 usuarios concurrentes sobre el carrito y el conteo de reintentos por deadlock quedan sin medir en esta corrida.
+
+### Escenarios 2 y 4 · Catálogo y caída
+
+Base a769d3b, 100 usuarios virtuales durante tres minutos por caso, a través del gateway. Los comandos de MongoDB incluyen la preparación de menús de k6.
+
+| Configuración | Solicitudes | Solicitudes/s | p50 (ms) | p95 (ms) | p99 (ms) | Errores | Mongo find + aggregate | Aciertos de menú |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Sin caché, una copia | 17.900 | 99,31 | 4,02 | 13,44 | 24,76 | 0 | 35.842 | 0 |
+| Sin caché, dos copias | 17.900 | 99,27 | 3,95 | 14,05 | 31,69 | 0 | 35.843 | 0 |
+| Con caché, una copia | 17.900 | 99,39 | 3,62 | 11,66 | 23,67 | 0 | 67 | 17.879 |
+| Con caché, dos copias | 17.900 | 99,41 | 3,38 | 12,49 | 23,41 | 0 | 82 | 17.872 |
+| Con caché, caída de una de dos copias | 17.936 | 99,08 | 3,25 | 10,32 | 20,79 | 0 | 66 | 17.870 |
+
+Con ambas copias activas, cada una atendió 8.950 solicitudes en los casos estables. Después de apagar una copia, el log del gateway registró 8.815 respuestas exitosas de la restante. El último intento observado hacia la IP apagada ocurrió 83 segundos después del inicio del apagado. Hubo solicitudes de hasta aproximadamente un segundo durante la falla. El tiempo observado corresponde al último intento registrado hacia esa IP.
+
+### Límite observado y alternativa
+
+La mayor presión medida fue la cantidad de comandos a MongoDB para leer menús sin caché. Con una copia, Memcached redujo los comandos de 35.842 a 67 con el mismo volumen de solicitudes. Sumar una segunda copia repartió el tráfico sin reducir esa carga de MongoDB. Mantener la caché compartida reduce esas lecturas y mantener dos copias permite sostener el servicio ante la caída de una. La carga aplicada no identificó un punto de saturación del sistema. El bloqueo del ingrediente más demandado sigue siendo una hipótesis para una prueba con más concurrencia efectiva.
 
 ### Cómo registramos los resultados
 
@@ -51,7 +84,7 @@ Por escenario: fecha y versión (commit), máquina usada, tabla de p50/p95/p99, 
 | Bloqueos en Inventario | No se escala con más copias del servicio, porque el cuello está en la fila: lotes de stock por ingrediente o reservas por cocina en tablas separadas. Lo evaluamos solo si los números lo piden |
 | Gateway | Una segunda instancia detrás de un balanceador del proveedor de nube |
 
-### Estimación de costos (primera versión)
+### Estimación de costos
 
 Para la presentación final hay que desplegar en la nube con una URL pública. Sumamos la memoria aproximada de cada contenedor:
 
@@ -66,7 +99,9 @@ Para la presentación final hay que desplegar en la nube con una URL pública. S
 | NGINX, Memcached, Mailpit | 0,1–0,2 GB |
 | **Total** | **≈ 2,5–3,5 GB** |
 
-Con margen, alcanza **una máquina virtual de 2 vCPU y 4 GB de RAM** corriendo Docker Compose. Como referencia, en DigitalOcean un Droplet Basic de 2 vCPU y 4 GiB cuesta **USD 24 por mes** y el de 4 vCPU y 8 GiB, **USD 48 por mes** ([precios](https://www.digitalocean.com/pricing/droplets), consultados el 16/10/2026). Para las semanas de la presentación serían unos USD 24–48, más el tráfico, que con nuestro volumen es despreciable. El proveedor y el tamaño final se eligen al desplegar, y esta estimación se corrige con la memoria real que midamos.
+Esta tabla estima la memoria para el entorno completo. El [despliegue en la nube](../../infra/nube/README.md) usa Azure for Students, región Chile Central, una VM Standard B2als v2 con 2 vCPU, 4 GiB de RAM y 2 GiB de swap. Publica solo la API de lectura. Las corridas locales de este ADR se realizaron en un entorno distinto.
+
+La guía del despliegue registra un costo aproximado de USD 0,053 por hora encendida, unos USD 38 por mes de uso continuo con el crédito estudiantil. Al detener la VM quedan los cargos de disco e IP según esa guía. Para completar el gasto efectivamente facturado faltan las horas del período y el desglose de Azure Cost Management.
 
 ## Alternativas que pensamos
 
@@ -80,17 +115,11 @@ Con margen, alcanza **una máquina virtual de 2 vCPU y 4 GB de RAM** corriendo D
 ## Consecuencias
 
 - Los objetivos del SPEC se convierten en umbrales que la prueba verifica.
-- Hasta que existan Inventario y Pedidos, solo podemos medir lecturas.
+- El entorno local permite medir el carrito con Inventario y Pedidos. El despliegue público cubre las lecturas.
 - Una sola máquina en la nube es un punto único de falla; lo aceptamos para el trabajo.
 
-## Cómo lo vamos a validar
+## Cómo lo validamos
 
-- **Entrega 2:** dejar listo el escenario 1 y correrlo contra la API publicada en local.
-- **Presentación final:** los cuatro escenarios con sus resultados en este ADR, el principal límite con evidencia del tablero y la estimación de costos con la memoria real.
+- **Entrega 2 (hecho):** el escenario 1 quedó listo y se corrió contra la API publicada en local.
+- **Entrega final (hecho):** escenarios 1 a 4 corridos en local, con los resultados de arriba. Para la presentación falta una captura del tablero durante una corrida.
 
-## Referencias
-
-- Clase 6: réplicas y balanceo para atender más tráfico.
-- Clase 3: medir antes y después de una caché.
-- Clase 7: verificar la resiliencia bajo carga.
-- Clase 2: bloqueos y concurrencia en la base relacional.

@@ -1,0 +1,24 @@
+@import url("https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&family=Nunito:wght@700;800;900&display=swap");
+
+:root {
+  --red: #e11d48;
+  --red-dark: #be123c;
+  --red-soft: #fff1f2;
+  --red-line: #fecdd3;
+  --ink: #262b33;
+  --muted: #6b7280;
+  --line: #dfe1e5;
+  --surface: #ffffff;
+  --canvas: #f4f4f2;
+  --green: #15803d;
+  --green-soft: #ecfdf3;
+  --amber: #b45309;
+  --amber-soft: #fff7ed;
+  --blue: #2563eb;
+  --blue-soft: #eff6ff;
+  --shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  --radius: 6px;
+  --gutter: 40px; /* margen lateral comun: encabezado, contenido y pie */
+  --font-title: "Nunito", "Trebuchet MS", sans-serif;
+  --font-body: "Lato", "Helvetica Neue", Arial, sans-serif;
+}

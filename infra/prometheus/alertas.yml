@@ -1,0 +1,63 @@
+# Alertas del ADR-011 (sección 5). Alertamos sobre lo que afecta al usuario, no sobre cada
+# error suelto. Los umbrales son iniciales: se revisan con la prueba de carga (ADR-013).
+# Se ven en Prometheus (http://localhost:9090/alerts) y en el panel "Alertas activas" de Grafana.
+groups:
+  - name: ghostkitchen
+    rules:
+      - alert: MuchosErrores5xx
+        # Más de 5 % de respuestas 5xx en un servicio, sostenido 5 minutos. Con menos de
+        # 0,1 solicitudes por segundo no se evalúa: dos errores sueltos no son una caída.
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{status=~"5.."}[5m]))
+            / sum by (job) (rate(http_requests_total[5m]))
+          ) > 0.05
+          and sum by (job) (rate(http_requests_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severidad: alta
+        annotations:
+          resumen: "{{ $labels.job }}: más de 5 % de errores 5xx"
+          detalle: "{{ $labels.job }} responde 5xx en el {{ $value | humanizePercentage }} de las solicitudes."
+
+      - alert: BusquedaLenta
+        # p95 de Búsqueda por encima del objetivo de 300 ms durante 10 minutos.
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="busqueda"}[5m]))) > 0.3
+        for: 10m
+        labels:
+          severidad: media
+        annotations:
+          resumen: "Búsqueda: p95 mayor a 300 ms"
+          detalle: "El p95 de Búsqueda es {{ $value | humanizeDuration }}."
+
+      - alert: ServicioCaido
+        # Prometheus no puede leer /metrics de una copia durante 1 minuto: el proceso no responde.
+        expr: up{job!="prometheus"} == 0
+        for: 1m
+        labels:
+          severidad: alta
+        annotations:
+          resumen: "{{ $labels.job }} ({{ $labels.instance }}) no responde"
+          detalle: "Prometheus no puede leer {{ $labels.instance }} hace más de 1 minuto."
+
+      - alert: MensajesEnDLQ
+        # Hay mensajes en una cola de mensajes fallidos durante 5 minutos (ADR-005).
+        expr: sum by (queue) (rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}) > 0
+        for: 5m
+        labels:
+          severidad: media
+        annotations:
+          resumen: "Hay mensajes en {{ $labels.queue }}"
+          detalle: "{{ $value }} mensajes no se pudieron procesar y esperan en {{ $labels.queue }}."
+
+      - alert: IndiceAtrasado
+        # El p95 del atraso entre el cambio y el índice supera los 5 s aceptados (ADR-006).
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(busqueda_indice_atraso_seconds_bucket[5m]))) > 5
+        for: 5m
+        labels:
+          severidad: media
+        annotations:
+          resumen: "La búsqueda está atrasada más de 5 s"
+          detalle: "El 95 % de los cambios tarda hasta {{ $value | humanizeDuration }} en llegar al índice."

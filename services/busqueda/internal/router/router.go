@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"ghostkitchen/busqueda/internal/metricas"
 	"ghostkitchen/busqueda/internal/middleware"
 	"ghostkitchen/busqueda/internal/trazas"
 )
@@ -25,7 +26,9 @@ func Nuevo(log *slog.Logger, grupos ...Registrador) *gin.Engine {
 	r := gin.New()
 	// Primero la traza (crea el span), después el id de correlación (lo anota en el span)
 	// y el log (que escribe ambos ids).
-	r.Use(trazas.Middleware(), middleware.Correlacion(), middleware.Log(log), gin.Recovery())
+	// Las métricas van primero: así cuentan también las solicitudes que terminan en panic.
+	r.Use(metricas.Middleware(), trazas.Middleware(), middleware.Correlacion(), middleware.Log(log), gin.Recovery())
+	r.GET(metricas.Ruta, metricas.Handler())
 	r.HandleMethodNotAllowed = true
 
 	for _, g := range grupos {

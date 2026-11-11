@@ -1,0 +1,435 @@
+openapi: 3.0.3
+info:
+  title: API de Emisión de Comprobantes
+  version: 1.1.0
+  description: |
+    Capacidad publicada por el sistema Agencia de Viajes.
+    Recibe el email del destinatario y una lista de ítems con descripción y precio,
+    genera la factura en PDF y **siempre** la envía por correo a ese email.
+
+    - Moneda: todos los importes están expresados en pesos argentinos (ARS).
+    - Redondeo: los precios con más de 2 decimales se redondean a 2 (el 5 redondea
+      hacia arriba). La respuesta devuelve los precios ya redondeados y el total es su suma.
+    - Importe máximo: ningún precio ni el total pueden superar 9999999999.99 (responde 422).
+    - Envío asíncrono: `POST` responde con `estadoEnvio: PENDIENTE`; luego pasa a
+      `ENVIADO` o `FALLIDO`, consultable con `GET /v1/comprobantes/{comprobanteId}`.
+    - Autenticación: header `X-API-Key`. Cada grupo obtiene la suya con
+      `POST /v1/api-keys` y la recibe por correo en el email que indique.
+    - Idempotencia: header `Idempotency-Key` obligatorio en la emisión.
+    - Errores: `application/problem+json` (RFC 9457).
+
+    Historial y política de versionado: `docs/contracts/README.md`.
+servers:
+  - url: https://68-211-124-251.sslip.io
+    description: Producción (VM en Azure, Chile Central).
+  - url: http://localhost:4010
+    description: Mock local (Prism)
+security:
+  - ApiKeyAuth: []
+paths:
+  /v1/api-keys:
+    post:
+      operationId: obtenerApiKey
+      summary: Genera una API Key para un grupo y la envía por correo
+      description: |
+        No requiere autenticación: es como se obtiene la API Key. La clave **no** viene en
+        la respuesta: se envía por correo al `email` indicado, así se comprueba que el email
+        es del grupo. Guardarla en la configuración del proyecto, nunca en el repositorio.
+
+        - El primer registro asocia el `grupo` con el `email`.
+        - Volver a registrar el mismo grupo con el mismo email envía una clave nueva (por
+          ejemplo, si se perdió la anterior). Las claves anteriores siguen vigentes.
+        - El mismo grupo con otro email responde `409`.
+        - Límite: 5 registros válidos por hora por IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudApiKey'
+            examples:
+              basico:
+                value:
+                  grupo: grupo-7
+                  email: contacto@grupo7.example
+      responses:
+        '202':
+          description: La API Key se generó y se envió por correo al email indicado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistroAceptado'
+              example:
+                grupo: grupo-7
+                email: contacto@grupo7.example
+                mensaje: Te enviamos la API Key a contacto@grupo7.example. Si no llega en unos minutos, revisá la carpeta de spam.
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '409':
+          $ref: '#/components/responses/GrupoRegistrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+  /v1/comprobantes:
+    post:
+      operationId: emitirComprobante
+      summary: Emite un comprobante y lo envía por correo
+      description: |
+        Genera la factura en PDF y encola su envío por correo al `email` indicado.
+        La respuesta no espera el envío: devuelve `estadoEnvio: PENDIENTE`.
+
+        Reintentar con la misma `Idempotency-Key` y el mismo cuerpo devuelve `200` con el
+        comprobante ya emitido y **no** reenvía el correo.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudComprobante'
+            examples:
+              basico:
+                $ref: '#/components/examples/SolicitudBasica'
+      responses:
+        '201':
+          description: Comprobante emitido; el envío por correo quedó pendiente.
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL del comprobante creado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comprobante'
+              examples:
+                emitido:
+                  $ref: '#/components/examples/ComprobantePendiente'
+        '200':
+          description: Reintento con la misma Idempotency-Key y el mismo cuerpo. Devuelve el comprobante ya emitido, con su estado de envío actual, sin reenviar el correo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comprobante'
+              examples:
+                yaEmitido:
+                  $ref: '#/components/examples/ComprobanteEnviado'
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '409':
+          $ref: '#/components/responses/ConflictoIdempotencia'
+        '422':
+          $ref: '#/components/responses/ReglaIncumplida'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+  /v1/comprobantes/{comprobanteId}:
+    get:
+      operationId: obtenerComprobante
+      summary: Obtiene un comprobante y el estado de su envío por correo
+      parameters:
+        - $ref: '#/components/parameters/ComprobanteId'
+      responses:
+        '200':
+          description: Comprobante encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comprobante'
+              examples:
+                enviado:
+                  $ref: '#/components/examples/ComprobanteEnviado'
+                fallido:
+                  $ref: '#/components/examples/ComprobanteFallido'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Identificador único de la operación generado por el consumidor (se recomienda UUID). Se conserva 7 días.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+      example: 3f1c2a9e-8b7d-4e21-9c55-0a1b2c3d4e5f
+    ComprobanteId:
+      name: comprobanteId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    SolicitudApiKey:
+      type: object
+      additionalProperties: false
+      required: [grupo, email]
+      properties:
+        grupo:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{2,49}$'
+          description: Nombre del grupo consumidor, entre 3 y 50 caracteres (minúsculas, números y guiones). Separa sus comprobantes de los de otros grupos.
+          example: grupo-7
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Email del grupo. Ahí se envía la API Key.
+          example: contacto@grupo7.example
+    RegistroAceptado:
+      type: object
+      required: [grupo, email, mensaje]
+      properties:
+        grupo:
+          type: string
+        email:
+          type: string
+          format: email
+        mensaje:
+          type: string
+    SolicitudComprobante:
+      type: object
+      additionalProperties: false
+      required: [email, items]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Destinatario del correo con la factura en PDF.
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Item'
+    Item:
+      type: object
+      additionalProperties: false
+      required: [descripcion, precio]
+      properties:
+        descripcion:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: Entrada general x2
+        precio:
+          type: number
+          format: double
+          minimum: 0
+          description: Importe de la línea en ARS (si hay cantidades, el consumidor envía el importe ya multiplicado). Si tiene más de 2 decimales se redondea a 2 (10.005 → 10.01).
+          example: 30000
+    Comprobante:
+      type: object
+      required: [id, numero, email, items, total, fechaEmision, estadoEnvio]
+      properties:
+        id:
+          type: string
+          format: uuid
+        numero:
+          type: string
+          description: Número correlativo del comprobante.
+          example: B-0001-00000042
+        email:
+          type: string
+          format: email
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Item'
+        total:
+          type: number
+          format: double
+          description: Suma de los precios de los ítems ya redondeados a 2 decimales, en ARS.
+        fechaEmision:
+          type: string
+          format: date-time
+        estadoEnvio:
+          type: string
+          enum: [PENDIENTE, ENVIADO, FALLIDO]
+          description: |
+            - `PENDIENTE`: el correo está encolado o en reintento.
+            - `ENVIADO`: el servidor de correo aceptó el mensaje.
+            - `FALLIDO`: se agotaron los reintentos; el comprobante sigue emitido.
+    Problema:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        errores:
+          type: array
+          items:
+            type: object
+            properties:
+              campo:
+                type: string
+              mensaje:
+                type: string
+  responses:
+    SolicitudInvalida:
+      description: El cuerpo no respeta el esquema (incluye campos no definidos). No reintentar sin corregir.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://agencia-viajes.example/errores/solicitud-invalida
+            title: Solicitud inválida
+            status: 400
+            errores:
+              - campo: items[0].precio
+                mensaje: debe ser mayor o igual a 0
+    NoAutenticado:
+      description: Falta la API Key o es inválida. Se obtiene con POST /v1/api-keys.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://agencia-viajes.example/errores/no-autenticado
+            title: No autenticado
+            status: 401
+    ConflictoIdempotencia:
+      description: La Idempotency-Key ya fue usada con un cuerpo distinto. Generar una clave nueva.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://agencia-viajes.example/errores/conflicto-idempotencia
+            title: Clave de idempotencia reutilizada
+            status: 409
+    ReglaIncumplida:
+      description: La solicitud es válida en forma pero incumple una regla. El total es igual a cero, o un precio o el total superan 9999999999.99 (el máximo admitido).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://agencia-viajes.example/errores/regla-incumplida
+            title: Regla de negocio incumplida
+            status: 422
+            detail: El total del comprobante debe ser mayor a cero.
+    GrupoRegistrado:
+      description: El grupo ya está registrado con otro email. Usar el email con el que se registró o elegir otro nombre de grupo.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://agencia-viajes.example/errores/grupo-registrado
+            title: Grupo ya registrado
+            status: 409
+    NoEncontrado:
+      description: No existe un comprobante con ese id para este consumidor.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://agencia-viajes.example/errores/no-encontrado
+            title: Comprobante no encontrado
+            status: 404
+    DemasiadasSolicitudes:
+      description: Se superó el límite de solicitudes. Reintentar luego del tiempo indicado en Retry-After.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://agencia-viajes.example/errores/demasiadas-solicitudes
+            title: Demasiadas solicitudes
+            status: 429
+    NoDisponible:
+      description: Servicio temporalmente no disponible. Reintentar después de Retry-After. En la emisión, con la misma Idempotency-Key, sin riesgo de duplicar.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://agencia-viajes.example/errores/no-disponible
+            title: Servicio no disponible
+            status: 503
+  examples:
+    SolicitudBasica:
+      value:
+        email: ana.perez@example.com
+        items:
+          - descripcion: Entrada general x2
+            precio: 30000
+          - descripcion: Cargo por servicio
+            precio: 1500
+    ComprobantePendiente:
+      value:
+        id: 6b0c1d2e-3f40-4a5b-8c6d-7e8f90a1b2c3
+        numero: B-0001-00000042
+        email: ana.perez@example.com
+        items:
+          - descripcion: Entrada general x2
+            precio: 30000
+          - descripcion: Cargo por servicio
+            precio: 1500
+        total: 31500
+        fechaEmision: '2026-10-22T15:30:00Z'
+        estadoEnvio: PENDIENTE
+    ComprobanteEnviado:
+      value:
+        id: 6b0c1d2e-3f40-4a5b-8c6d-7e8f90a1b2c3
+        numero: B-0001-00000042
+        email: ana.perez@example.com
+        items:
+          - descripcion: Entrada general x2
+            precio: 30000
+          - descripcion: Cargo por servicio
+            precio: 1500
+        total: 31500
+        fechaEmision: '2026-10-22T15:30:00Z'
+        estadoEnvio: ENVIADO
+    ComprobanteFallido:
+      value:
+        id: 6b0c1d2e-3f40-4a5b-8c6d-7e8f90a1b2c3
+        numero: B-0001-00000042
+        email: ana.perez@example.com
+        items:
+          - descripcion: Entrada general x2
+            precio: 30000
+          - descripcion: Cargo por servicio
+            precio: 1500
+        total: 31500
+        fechaEmision: '2026-10-22T15:30:00Z'
+        estadoEnvio: FALLIDO

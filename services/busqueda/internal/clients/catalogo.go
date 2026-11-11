@@ -5,6 +5,7 @@ package clients
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,7 +18,8 @@ import (
 	"ghostkitchen/busqueda/internal/middleware"
 )
 
-// CocinaCatalogo es una cocina tal como la devuelve Catálogo en /internal/cocinas.
+// CocinaCatalogo es una cocina tal como la devuelve Catálogo en /internal/cocinas, y como
+// viaja en los mensajes cocina.*.
 // Es un tipo del cliente y no domain.Sede a propósito: si Catálogo cambia su JSON, se ajusta
 // acá y el dominio de Búsqueda no se entera.
 type CocinaCatalogo struct {
@@ -30,6 +32,7 @@ type CocinaCatalogo struct {
 	TiempoEntregaMax int              `json:"tiempoEntregaMax"`
 	CostoEnvio       int              `json:"costoEnvio"`
 	Activa           bool             `json:"activa"`
+	Version          int64            `json:"version"`
 	Restaurantes     []struct {
 		ID     string `json:"id"`
 		Nombre string `json:"nombre"`
@@ -37,7 +40,8 @@ type CocinaCatalogo struct {
 	} `json:"restaurantes"`
 }
 
-// PlatoCatalogo es un plato tal como lo devuelve Catálogo en /internal/platos.
+// PlatoCatalogo es un plato tal como lo devuelve Catálogo en /internal/platos, y como viaja
+// en los mensajes plato.*.
 type PlatoCatalogo struct {
 	ID            string    `json:"id"`
 	CocinaID      string    `json:"cocinaId"`
@@ -50,6 +54,7 @@ type PlatoCatalogo struct {
 	Moneda        string    `json:"moneda"`
 	FotoURL       string    `json:"fotoUrl"`
 	Activo        bool      `json:"activo"`
+	Version       int64     `json:"version"`
 	ActualizadoEn time.Time `json:"actualizadoEn"`
 }
 
@@ -64,25 +69,37 @@ type PaginaPlatos struct {
 // y 3 reintentos con espera creciente (ADR-005), separado del plazo de 3 s del usuario.
 //
 // Es el único punto de la cadena Búsqueda → Catálogo → MongoDB que reintenta: "reintenta
-// uno solo, el que llama a la dependencia" (ADR-010, Clase 7). Si también reintentaran
+// uno solo, el que llama a la dependencia" (ADR-010). Si también reintentaran
 // Catálogo o el gateway, cada falla se multiplicaría en muchos intentos.
 type Catalogo struct {
+	lector
+}
+
+// NuevoCatalogo crea el cliente. base es, por ejemplo, http://catalogo:8082.
+func NuevoCatalogo(base string) *Catalogo {
+	return &Catalogo{nuevoLector("catalogo", base)}
+}
+
+// lector hace GET con reintentos a la API interna de otro servicio. Lo comparten los clientes
+// de Catálogo y de Inventario.
+type lector struct {
+	nombre    string
 	base      string
 	http      *http.Client
 	reintento []time.Duration
 }
 
-// NuevoCatalogo crea el cliente. base es, por ejemplo, http://catalogo:8082.
-func NuevoCatalogo(base string) *Catalogo {
-	return &Catalogo{
-		base: strings.TrimRight(base, "/"),
+func nuevoLector(nombre, base string) lector {
+	return lector{
+		nombre: nombre,
+		base:   strings.TrimRight(base, "/"),
 		// otelhttp crea un span por llamada y agrega el header traceparent: así la traza
-		// sigue en Catálogo. Los parámetros de estas rutas (page, pageSize) no son sensibles.
+		// sigue en el otro servicio. Los parámetros de estas rutas (page, pageSize) no son sensibles.
 		http: &http.Client{
 			Timeout: 5 * time.Second,
 			Transport: otelhttp.NewTransport(http.DefaultTransport,
 				otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
-					return "catalogo " + r.Method + " " + r.URL.Path
+					return nombre + " " + r.Method + " " + r.URL.Path
 				})),
 		},
 		reintento: []time.Duration{500 * time.Millisecond, time.Second, 2 * time.Second},
@@ -105,13 +122,18 @@ func (c *Catalogo) Platos(ctx context.Context, page, pageSize int) (PaginaPlatos
 	return r, err
 }
 
+// errDefinitivo marca una respuesta 4xx de la otra API: no se reintenta.
+var errDefinitivo = errors.New("respuesta definitiva, no se reintenta")
+
 // obtener hace un GET con reintentos. Repetirlo es seguro porque es una lectura: no cambia
-// nada en Catálogo, así que no hace falta clave de idempotencia.
-func (c *Catalogo) obtener(ctx context.Context, ruta string, destino any) error {
+// nada en el otro servicio, así que no hace falta clave de idempotencia.
+func (c *lector) obtener(ctx context.Context, ruta string, destino any) error {
 	var ultimo error
 	for intento := 0; ; intento++ {
 		ultimo = c.unaVez(ctx, ruta, destino)
-		if ultimo == nil || intento >= len(c.reintento) {
+		// Un 4xx es una respuesta definitiva (la ruta no existe, el pedido está mal): repetirlo da
+		// lo mismo y solo suma carga. Se reintenta solo lo pasajero: sin respuesta, 5xx o 429.
+		if ultimo == nil || errors.Is(ultimo, errDefinitivo) || intento >= len(c.reintento) {
 			break
 		}
 		select {
@@ -123,14 +145,14 @@ func (c *Catalogo) obtener(ctx context.Context, ruta string, destino any) error 
 		}
 	}
 	if ultimo != nil {
-		return fmt.Errorf("catálogo %s: %w", ruta, ultimo)
+		return fmt.Errorf("%s %s: %w", c.nombre, ruta, ultimo)
 	}
 	return nil
 }
 
 // unaVez hace un solo intento. El límite de 5 s lo pone http.Client.Timeout y cubre toda la
 // llamada, incluida la lectura del cuerpo.
-func (c *Catalogo) unaVez(ctx context.Context, ruta string, destino any) error {
+func (c *lector) unaVez(ctx context.Context, ruta string, destino any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+ruta, nil)
 	if err != nil {
 		return err
@@ -146,6 +168,9 @@ func (c *Catalogo) unaVez(ctx context.Context, ruta string, destino any) error {
 	if resp.StatusCode != http.StatusOK {
 		// Se vacía el cuerpo para que la conexión vuelva al pool y el reintento la reuse.
 		_, _ = io.Copy(io.Discard, resp.Body)
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
+			return fmt.Errorf("respondió %d: %w", resp.StatusCode, errDefinitivo)
+		}
 		return fmt.Errorf("respondió %d", resp.StatusCode)
 	}
 	return json.NewDecoder(resp.Body).Decode(destino)

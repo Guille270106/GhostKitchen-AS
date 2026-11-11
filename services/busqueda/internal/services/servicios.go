@@ -11,10 +11,11 @@ import (
 
 	"ghostkitchen/busqueda/internal/domain"
 	"ghostkitchen/busqueda/internal/geo"
+	"ghostkitchen/busqueda/internal/metricas"
 	"ghostkitchen/busqueda/internal/repositories"
 )
 
-// CoberturaKm es el radio que cubre una cocina (RN24).
+// CoberturaKm es el radio que cubre una cocina.
 const CoberturaKm = 25.0
 
 // Busqueda reúne las operaciones que usa la API publicada.
@@ -35,7 +36,7 @@ func (b *Busqueda) ListarSedes(ctx context.Context) ([]domain.Sede, error) {
 }
 
 // SedeCercana devuelve la sede activa más cercana y su distancia redondeada a 0,1 km.
-// Si ninguna está a 25 km o menos, devuelve domain.ErrSinCobertura (RN24).
+// Si ninguna está a 25 km o menos, devuelve domain.ErrSinCobertura.
 func (b *Busqueda) SedeCercana(ctx context.Context, punto domain.Ubicacion) (domain.Sede, float64, error) {
 	sede, ok, err := b.repo.SedeMasCercana(ctx, punto)
 	if err != nil {
@@ -82,6 +83,7 @@ func (b *Busqueda) BuscarPlatos(ctx context.Context, f domain.FiltroPlatos) (Res
 	if platos == nil {
 		platos = []domain.Plato{}
 	}
+	metricas.RegistrarBusqueda(f.Texto, total)
 	return ResultadoPlatos{
 		Sede:        sede.Ref(),
 		Items:       platos,

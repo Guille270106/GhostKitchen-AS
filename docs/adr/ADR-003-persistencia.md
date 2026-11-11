@@ -1,6 +1,6 @@
 # ADR-003 — Qué base de datos usa cada servicio
 
-- **Estado:** Aceptada para Catálogo y Búsqueda, validada en la Entrega 2 (ver [Validación](#validación-entrega-2)). MySQL se valida con Inventario y Pedidos
+- **Estado:** Aceptada y validada: MongoDB y Solr en la Entrega 2; MySQL con Usuarios, Inventario y Pedidos en la entrega final (ver [Validación final](#validación-final))
 - **Fecha:** 2026-10-09; validada el 2026-10-16
 - **Responsable:** Valentina Rey
 - **Decisión del enunciado:** D3 (qué almacenamiento usa cada servicio, cómo se usan los datos y qué limitaciones aceptamos)
@@ -10,7 +10,7 @@
 
 Cada servicio tiene su propia base ([ADR-001](ADR-001-limites-de-los-servicios.md)), así que cada uno puede elegir la que más le sirve. El enunciado pide usar al menos una base relacional y una no relacional, y tener al menos una operación que no pueda duplicar ni perder datos.
 
-La pregunta no es "¿SQL o NoSQL?", sino **qué necesita cada servicio** (Clase 2). Para cada uno miramos:
+La pregunta no es "¿SQL o NoSQL?", sino **qué necesita cada servicio**. Para cada uno miramos:
 
 - cómo son los datos;
 - qué consultas se hacen;
@@ -31,7 +31,7 @@ La pregunta no es "¿SQL o NoSQL?", sino **qué necesita cada servicio** (Clase 
 
 Así cumplimos con una base **relacional (MySQL)** y una **no relacional (MongoDB)**. La operación que **no puede duplicar ni perder información** es **reservar, descontar y devolver stock** en Inventario, sobre MySQL (el detalle va en el ADR-004).
 
-**Una base por servicio, pero en pocas instancias.** En local levantamos **un solo MySQL** con tres bases y **un solo MongoDB** con dos bases. Cada servicio tiene un usuario que solo puede entrar a su base. La Clase 2 permite esto: lo importante es que **ningún servicio entre a la base de otro**.
+**Una base por servicio, pero en pocas instancias.** En local levantamos **un solo MySQL** con tres bases y **un solo MongoDB** con dos bases. Cada servicio tiene un usuario que solo puede entrar a su base. Lo importante no es tener una instancia por servicio, sino que **ningún servicio entre a la base de otro**.
 
 ### Por qué cada una
 
@@ -61,8 +61,8 @@ Así cumplimos con una base **relacional (MySQL)** y una **no relacional (MongoD
 #### Catálogo → MongoDB + Memcached
 
 - **Qué pasa:** se lee mucho ("el menú de esta cocina", "este plato") y cambia por Admin (cocinas/restaurantes) y por Cocina (platos propios).
-- **Por qué MongoDB:** una cocina con sus restaurantes es un documento: se lee siempre junta y tiene como máximo 4 restaurantes, así que los guardamos adentro de la cocina (Clase 2). Además, el límite de 4 se controla en **una sola operación** sobre ese documento, sin transacciones. Los platos van en otra colección, porque se consultan solos y son muchos.
-- **Caché:** Memcached guarda las lecturas más comunes para no ir siempre a la base. Lo comparten las 2 copias de Catálogo. No es la fuente de la verdad: si se borra, no se pierde nada (Clase 3).
+- **Por qué MongoDB:** una cocina con sus restaurantes es un documento: se lee siempre junta y tiene como máximo 4 restaurantes, así que los guardamos adentro de la cocina. Además, el límite de 4 se controla en **una sola operación** sobre ese documento, sin transacciones. Los platos van en otra colección, porque se consultan solos y son muchos.
+- **Caché:** Memcached guarda las lecturas más comunes para no ir siempre a la base. Lo comparten las 2 copias de Catálogo. No es la fuente de la verdad: si se borra, no se pierde nada.
 
 #### Notificaciones → MongoDB
 
@@ -82,7 +82,7 @@ Así cumplimos con una base **relacional (MySQL)** y una **no relacional (MongoD
 | `inventario_db` | `ingrediente` (total y reservado), `receta`, `reserva`, `reserva_item` (ingredientes y cantidades que apartó cada reserva), `movimiento`, copias de cocinas y platos, `outbox`, `mensajes_procesados` | `CHECK (reservado >= 0)` y `CHECK (reservado <= total)`; `UNIQUE` de la reserva por carrito |
 | `pedidos_db` | `carrito`, `carrito_item`, `confirmacion`, `pedido`, `pedido_item`, `historial`, `outbox`, `mensajes_procesados` | Un solo carrito activo por cliente (`UNIQUE` sobre una columna que solo tiene valor si el carrito está activo); `version` en `pedido` |
 | `notificaciones_db` | `envios` | `unique` en el id del mensaje |
-| Solr | `platos`, `cocinas`, `zonas` | Solo los campos necesarios para buscar, filtrar y mostrar (Clase 5) |
+| Solr | `platos`, `cocinas`, `zonas` | Solo los campos necesarios para buscar, filtrar y mostrar |
 
 ## Alternativas que pensamos
 
@@ -112,7 +112,7 @@ Así cumplimos con una base **relacional (MySQL)** y una **no relacional (MongoD
 - No se pueden hacer JOIN entre servicios: si una pantalla necesita datos de varios, se piden por API.
 - Hay datos repetidos a propósito (la copia del plato en el pedido, los datos en la búsqueda).
 - MongoDB tiene que correr en un modo especial (replica set) para poder usar transacciones en Catálogo.
-- Cuando muchos reservan el mismo ingrediente, MySQL se puede poner lento. Lo vamos a medir en el test de carga.
+- Cuando muchos reservan el mismo ingrediente, MySQL se puede poner lento. Lo medimos en la prueba de carga ([ADR-013](ADR-013-capacidad-y-costos.md)).
 - Sin backups en el entorno académico.
 
 ## Validación (Entrega 2)
@@ -125,31 +125,30 @@ Así cumplimos con una base **relacional (MySQL)** y una **no relacional (MongoD
 | Platos por cocina y activo; platos por restaurante | Índices `{cocinaId, activo, _id}` y `{restauranteId}`, creados al arrancar Catálogo (si ya existen, no pasa nada) | ✅ |
 | Una base por servicio | `catalogo_db` con su propio usuario (`catalogo`, solo `readWrite` sobre esa base), creado por el script de inicio de MongoDB. La contraseña sale del `.env` | ✅ |
 | Búsqueda en Solr, como copia que se puede reconstruir | Cores `cocinas` y `platos`, armados desde la API de Catálogo; si se borran, se reconstruyen al arrancar o con `POST /internal/reindexar` | ✅ |
-| Solo los campos necesarios en Solr (Clase 5) | Los platos guardan lo que se busca, filtra o muestra; los nombres del restaurante y la cocina se copian para no consultar a Catálogo en cada búsqueda ([ADR-006](ADR-006-busqueda.md)) | ✅ |
+| Solo los campos necesarios en Solr | Los platos guardan lo que se busca, filtra o muestra; los nombres del restaurante y la cocina se copian para no consultar a Catálogo en cada búsqueda ([ADR-006](ADR-006-busqueda.md)) | ✅ |
 | Si se cae la base, el servicio lo dice | MongoDB caído → Catálogo responde `503` en menos de 2 s y su `/ready` falla | ✅ |
 
-**Lo que cambió o se posterga:**
+**Lo que cambió o se postergó en la Entrega 2:**
 
-- **Replica set de MongoDB:** todavía no hace falta. El límite de 4 restaurantes se controla en una sola operación sobre el documento, y Catálogo no usa transacciones. Lo activamos cuando sumemos el *outbox*, que sí necesita guardar el cambio y el mensaje juntos.
-- **Memcached:** se suma con la caché ([ADR-007](ADR-007-cache.md)).
-- **Zonas en Solr:** todavía no; la cocina más cercana usa la ubicación de las cocinas.
-- **MySQL (Inventario, Pedidos, Usuarios) y MongoDB de Notificaciones:** no están implementados. La prueba de reservas al mismo tiempo, que era la validación principal de MySQL, pasa a cuando exista Inventario y se define junto con la consistencia ([ADR-004](README.md)).
-- **Migraciones:** se mantiene la idea de archivos SQL que cada servicio ejecuta al iniciar; se implementan con el primer servicio que use MySQL.
+- **Replica set de MongoDB:** de un solo miembro (`rs0`), para el *outbox* de Catálogo, que guarda el cambio y el mensaje en una misma transacción. El límite de 4 restaurantes sigue sin necesitar transacciones: se controla en una sola operación sobre el documento. Un solo miembro no da alta disponibilidad (si MongoDB cae, Catálogo no escribe); lo aceptamos para el alcance del TP.
+- **Memcached:** se sumó con la caché ([ADR-007](ADR-007-cache.md)).
+- **Zonas en Solr:** no se cargaron; la cocina más cercana usa la ubicación de las cocinas.
+- **MySQL (Inventario, Pedidos, Usuarios) y MongoDB de Notificaciones:** se implementaron en la entrega final (ver abajo).
+- **Migraciones:** archivos SQL versionados en `services/<servicio>/migrations`, que cada servicio aplica al arrancar ([guía de MySQL](../../infra/mysql/README.md)).
 
-**Conclusión:** MongoDB para Catálogo y Solr para Búsqueda funcionan como se planeó. La elección de MySQL no cambió, pero queda sin validar con datos reales.
+**Conclusión de la Entrega 2:** MongoDB para Catálogo y Solr para Búsqueda funcionaron como se planeó.
 
-## Pendiente
+## Validación final
 
-- Confirmar los índices con los tests de carga ([ADR-013](ADR-013-capacidad-y-costos.md)).
-- Migraciones SQL y prueba de reservas al mismo tiempo, con Inventario.
+| Qué revisamos | Resultado | |
+| --- | --- | --- |
+| Reservar es todo o nada en MySQL | 200 clientes por el último plato: 1 ganador, 199 `SIN_STOCK` y ninguna reserva parcial ([ADR-004](ADR-004-consistencia-y-concurrencia.md)) | ✅ |
+| Cada servicio solo entra a su base | Usuarios, Inventario y Pedidos tienen un usuario MySQL cada uno, sin permisos sobre las otras bases | ✅ |
+| Tests contra la base real | Usuarios, Inventario y Pedidos tienen tests de integración contra MySQL en Docker; Catálogo, contra MongoDB y Memcached | ✅ |
+| Rendimiento con muchos pidiendo lo mismo | Agregar al carrito con 200 clientes por el mismo plato: 0 platos vendidos de más ([ADR-013](ADR-013-capacidad-y-costos.md)) | ✅ |
 
-## Cómo lo vamos a validar
+## Cómo lo validamos
 
-- **Entrega 2 (hecho en parte, ver arriba):** Catálogo con MongoDB y Búsqueda con Solr funcionando. Las reservas al mismo tiempo pasan a la entrega final, con Inventario.
-- **Entrega final:** el test de carga tiene que dar 0 platos vendidos de más, y agregar al carrito tiene que tardar menos de 500 ms con 100 usuarios a la vez.
+- **Entrega 2 (hecho):** Catálogo con MongoDB y Búsqueda con Solr funcionando.
+- **Entrega final (hecho):** la prueba de carga dio 0 platos vendidos de más ([ADR-013](ADR-013-capacidad-y-costos.md)).
 
-## Referencias
-
-- Clase 2: una base por servicio y sus variantes, cómo elegir entre SQL y NoSQL, embeber o referenciar en MongoDB, atomicidad por documento.
-- Clase 3: la caché no es la fuente de la verdad.
-- Clase 5: el índice de búsqueda como copia que se puede reconstruir.

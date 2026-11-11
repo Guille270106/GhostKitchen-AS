@@ -1,0 +1,75 @@
+# Solo pruebas: no utiliza .env ni los volúmenes del proyecto.
+#   docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml up -d --build --wait pedidos comprobantes-mock
+#   docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml run --rm --build pruebas
+#   docker compose -p gk-pedidos-check -f services/pedidos/testdata/compose.yml down -v
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: test-root
+      USUARIOS_DB_PASSWORD: test-usuarios
+      INVENTARIO_DB_PASSWORD: test-inventario
+      PEDIDOS_DB_PASSWORD: test-pedidos
+    volumes:
+      - test-data:/var/lib/mysql
+      - ../../../infra/mysql/01-bases.sh:/docker-entrypoint-initdb.d/01-bases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=test-root mysql --protocol=TCP -h 127.0.0.1 -uroot -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+  pedidos:
+    build:
+      context: ../../..
+      dockerfile: services/pedidos/Dockerfile
+    environment:
+      DB_PASSWORD: test-pedidos
+      DB_USER: pedidos
+      DB_NAME: pedidos_db
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8085/ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  # RabbitMQ descartable para los tests del publicador y del consumidor.
+  rabbitmq:
+    image: rabbitmq:3.13.7-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: prueba
+      RABBITMQ_DEFAULT_PASS: prueba
+    healthcheck:
+      # Como el usuario rabbitmq: si lo corre root, la cookie de Erlang queda sin permisos.
+      test: ["CMD", "su-exec", "rabbitmq", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+  # Mock del grupo proveedor (Grupo 4), desde la copia de su contrato: el test de contrato
+  # le manda lo que arma nuestro adaptador, y Prism lo valida contra su OpenAPI.
+  comprobantes-mock:
+    image: stoplight/prism:5
+    command: mock -h 0.0.0.0 -p 4010 -m false /contrato/comprobantes-v1.yaml
+    volumes:
+      - ../../../docs/contracts/proveedor:/contrato:ro
+  pruebas:
+    build:
+      context: ../../..
+      dockerfile: services/pedidos/Dockerfile
+      target: build
+    environment:
+      TEST_MYSQL: "1"
+      TEST_PROVEEDOR_URL: http://comprobantes-mock:4010
+      TEST_RABBITMQ_URL: amqp://prueba:prueba@rabbitmq:5672/
+      CGO_ENABLED: "0"
+    command: ["go", "test", "-count=1", "-v", "./..."]
+    depends_on:
+      pedidos:
+        condition: service_healthy
+      comprobantes-mock:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+volumes:
+  test-data:

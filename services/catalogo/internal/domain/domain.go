@@ -24,7 +24,7 @@ type Restaurante struct {
 	Activo bool   `json:"activo" bson:"activo"`
 }
 
-// MaxRestaurantes por cocina (RN20).
+// MaxRestaurantes por cocina.
 const MaxRestaurantes = 4
 
 // Cocina es una cocina fantasma con sus restaurantes adentro (se leen siempre juntos).
@@ -33,7 +33,7 @@ const MaxRestaurantes = 4
 // pocos (como máximo 4), no existen sin su cocina y siempre se leen junto con ella, así una
 // sola lectura trae todo. Además, MongoDB cambia un documento de forma atómica, así que
 // cuando existan las escrituras el límite de 4 se podrá controlar en una sola operación,
-// sin transacciones (ADR-003, Clase 2).
+// sin transacciones (ADR-003).
 //
 // Version es la versión del documento (los datos iniciales arrancan en 1). Está pensada para
 // que una copia, como el índice de Búsqueda, nunca guarde un dato más viejo encima de uno

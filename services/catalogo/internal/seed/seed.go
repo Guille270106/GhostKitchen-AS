@@ -31,7 +31,7 @@ type platoSeed struct {
 	Activo        bool     `json:"activo"`
 }
 
-// Leer arma las cocinas y platos de ejemplo y valida las reglas básicas (RN18–RN20).
+// Leer arma las cocinas y platos de ejemplo y valida las reglas básicas (cada cocina con hasta 4 restaurantes).
 func Leer(ahora time.Time) ([]domain.Cocina, []domain.Plato, error) {
 	var cocinas []domain.Cocina
 	if err := leerJSON("datos/cocinas.json", &cocinas); err != nil {
@@ -46,7 +46,7 @@ func Leer(ahora time.Time) ([]domain.Cocina, []domain.Plato, error) {
 	for i := range cocinas {
 		c := &cocinas[i]
 		if len(c.Restaurantes) > domain.MaxRestaurantes {
-			return nil, nil, fmt.Errorf("seed: la cocina %s tiene más de %d restaurantes (RN20)", c.ID, domain.MaxRestaurantes)
+			return nil, nil, fmt.Errorf("seed: la cocina %s tiene más de %d restaurantes", c.ID, domain.MaxRestaurantes)
 		}
 		for _, r := range c.Restaurantes {
 			if _, repetido := cocinaDe[r.ID]; repetido {

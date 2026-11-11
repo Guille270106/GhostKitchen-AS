@@ -8,19 +8,36 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-const BASE = __ENV.BASE || 'http://busqueda:8083/v1';
+const BASE = (__ENV.BASE || 'http://busqueda:8083/v1').replace(/\/+$/, '');
+const humo = __ENV.HUMO === '1';
+const operaciones = ['sedes', 'buscar', 'cercana', 'proximidad'];
+const tasaErrores = humo ? 'rate==0' : 'rate<0.01';
+http.setResponseCallback(http.expectedStatuses(200));
 
 export const options = {
-  stages: [
-    { duration: '2m', target: 100 },
-    { duration: '3m', target: 100 },
-    { duration: '30s', target: 0 },
-  ],
+  scenarios: {
+    api_publica: humo
+      ? { executor: 'shared-iterations', vus: 1, iterations: 4, maxDuration: '30s' }
+      : {
+          executor: 'ramping-vus',
+          startVUs: 10,
+          stages: [
+            { duration: '2m', target: 100 },
+            { duration: '3m', target: 100 },
+            { duration: '30s', target: 0 },
+          ],
+        },
+  },
+  summaryTrendStats: ['avg', 'med', 'p(95)', 'p(99)', 'max'],
   thresholds: {
     'http_req_duration{operacion:buscar}': ['p(95)<300'],
     'http_req_duration{operacion:cercana}': ['p(95)<300'],
     'http_req_duration{operacion:proximidad}': ['p(95)<300'],
-    http_req_failed: ['rate<0.01'],
+    http_req_failed: [tasaErrores],
+    ...Object.fromEntries(operaciones.map((operacion) => [
+      `http_req_failed{operacion:${operacion}}`, [tasaErrores],
+    ])),
+    ...(humo ? { checks: ['rate==1'] } : {}),
   },
 };
 
@@ -32,14 +49,25 @@ const puntos = [[-31.4262, -64.1883], [-31.3682, -64.2318], [-31.2958, -64.2951]
 function alAzar(lista) { return lista[Math.floor(Math.random() * lista.length)]; }
 
 export default function () {
-  const sede = alAzar(sedes);
-  const q = alAzar(textos);
-  const [lat, lng] = alAzar(puntos);
+  const sede = humo ? sedes[__ITER] : alAzar(sedes);
+  const q = humo ? textos[__ITER] : alAzar(textos);
+  const [lat, lng] = humo ? puntos[__ITER] : alAzar(puntos);
   const corr = { 'X-Correlation-Id': `k6-${__VU}-${__ITER}` };
+
+  const listado = http.get(`${BASE}/sedes`, { headers: corr, tags: { operacion: 'sedes' } });
+  check(listado, { 'sedes 200': (r) => r.status === 200 });
+  if (humo) {
+    check(listado, {
+      'sede de prueba indexada': (r) => r.status === 200 && r.json('items').some((item) => item.id === sede),
+    });
+  }
 
   const r1 = http.get(`${BASE}/sedes/${sede}/platos?q=${encodeURIComponent(q)}&pageSize=10`,
     { headers: corr, tags: { operacion: 'buscar' } });
   check(r1, { 'buscar 200': (r) => r.status === 200 });
+  if (humo) {
+    check(r1, { 'búsqueda devuelve una página': (r) => r.status === 200 && Array.isArray(r.json('items')) });
+  }
 
   const r2 = http.get(`${BASE}/sedes/cercana?lat=${lat}&lng=${lng}`,
     { headers: corr, tags: { operacion: 'cercana' } });

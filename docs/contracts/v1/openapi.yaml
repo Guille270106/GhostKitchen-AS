@@ -25,6 +25,8 @@ info:
   contact:
     name: Equipo GhostKitchen (ver docs/contracts/README.md, sección Contacto)
 servers:
+  - url: https://57-156-56-219.sslip.io/public
+    description: Producción en la nube (Azure). Pedí tu API key por privado
   - url: http://localhost:4010
     description: Mock local (Prism) — `docker compose up contract-mock`
   - url: http://localhost:8080/public

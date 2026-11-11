@@ -1,0 +1,54 @@
+# Despliegue en la nube: solo la capacidad publicada (/public/v1), con HTTPS.
+# Se usa JUNTO con docker-compose.yml, que tiene la definición de cada servicio:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.nube.yml up -d --build caddy memcached
+#
+# Levanta Caddy y lo que necesita el gateway para /public/v1: Búsqueda, Solr, las 2 copias de
+# Catálogo, MongoDB, Memcached y Jaeger. Usuarios, Pedidos, Inventario, Notificaciones, RabbitMQ
+# y el frontend NO se levantan: la API publicada no los usa. Los pasos están en infra/nube/README.md.
+services:
+  # La única puerta desde internet: HTTPS automático (Let's Encrypt) en el dominio de la máquina.
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: ghostkitchen-caddy
+    environment:
+      DOMINIO_PUBLICO: ${DOMINIO_PUBLICO:?Completá DOMINIO_PUBLICO en .env (por ejemplo 57-156-56-219.sslip.io)}
+    volumes:
+      - ./infra/nube/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data        # los certificados: así no se piden de nuevo en cada reinicio
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      gateway:
+        condition: service_started
+    restart: unless-stopped
+
+  # En la nube no se publica ningún otro puerto en la máquina: a todo se llega por Caddy.
+  # (Igual el firewall de Azure solo deja entrar 22, 80 y 443.)
+  gateway:
+    ports: !reset []
+  solr:
+    ports: !reset []
+  mongo:
+    ports: !reset []
+  jaeger:
+    ports: !reset []
+
+  # Sin Inventario ni RabbitMQ: Búsqueda arma el índice al arrancar, con la disponibilidad de
+  # los datos de ejemplo, y Catálogo guarda sus eventos sin publicarlos.
+  busqueda:
+    environment:
+      INVENTARIO_URL: ""
+      RABBITMQ_URL: ""
+  catalogo-1:
+    environment:
+      RABBITMQ_URL: ""
+  catalogo-2:
+    environment:
+      RABBITMQ_URL: ""
+
+volumes:
+  caddy-data:
+  caddy-config:

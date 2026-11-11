@@ -1,0 +1,11 @@
+# Carga los tableros de /var/lib/grafana/dashboards al arrancar. Están en el repo
+# (infra/grafana/dashboards): un cambio hecho en la pantalla de Grafana no se guarda; para
+# cambiar el tablero, se exporta el JSON y se reemplaza el archivo.
+apiVersion: 1
+providers:
+  - name: ghostkitchen
+    folder: GhostKitchen
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
