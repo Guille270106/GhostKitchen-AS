@@ -29,6 +29,7 @@ func TestMySQLConfirmacionCompleta(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	conf.DireccionEntrega = "Av. Vélez Sársfield 1600, 3°B"
 	t.Cleanup(func() {
 		db.Exec("DELETE FROM confirmacion WHERE cliente_id=?", cliente.UsuarioID)
 		db.Exec("DELETE FROM comprobante WHERE pedido_id=?", conf.PedidoID)
@@ -79,5 +80,9 @@ func TestMySQLConfirmacionCompleta(t *testing.T) {
 	vacio, _ := carritos.Obtener(ctx, cliente.UsuarioID)
 	if leida.Estado != domain.ConfirmacionCompletada || err != nil || creado.Total != 24000 || !vacio.Vacio() || vacio.ID == c.ID {
 		t.Fatal(leida.Estado, err, creado.Total, vacio)
+	}
+	// La dirección de entrega se guarda en la confirmación y llega al pedido (con tildes y °).
+	if leida.DireccionEntrega != conf.DireccionEntrega || creado.DireccionEntrega != conf.DireccionEntrega {
+		t.Fatalf("dirección: confirmación %q, pedido %q", leida.DireccionEntrega, creado.DireccionEntrega)
 	}
 }

@@ -30,6 +30,11 @@ function OrderCard({ pedido, onCancel, onConfirmDelivery, busy }) {
           <p>
             {pedido.cocinaNombre} · Pedido #{pedido.codigo} · {formatRelative(pedido.creadoEn)}
           </p>
+          {pedido.direccion && (
+            <p className="order-address">
+              <Icon name="pin" size={15} /> Entregar en {pedido.direccion}
+            </p>
+          )}
         </div>
         <div className="eta">
           <small>Total</small>

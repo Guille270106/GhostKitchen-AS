@@ -74,3 +74,10 @@
 }
 /* Sin foto en Catálogo: un recuadro con las iniciales, del mismo tamaño que la foto. */
 .cart-line .cart-photo { width: 64px; height: 60px; font-size: 15px; }
+
+/* Dirección de entrega en el resumen: viaja con el pedido y la ve la cocina. */
+.delivery-field { display: block; margin: 4px 0 16px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 13px; font-weight: 700; }
+.delivery-field > span { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.delivery-field input { display: block; width: 100%; height: 42px; border: 1px solid #c9ccd1; border-radius: 4px; padding: 0 12px; background: #fff; font-size: 14px; font-weight: 400; }
+.delivery-field input:focus { outline: 0; border-color: var(--red); }
+.delivery-field small { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; font-weight: 400; }

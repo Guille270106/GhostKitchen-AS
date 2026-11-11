@@ -407,19 +407,30 @@ func TestConfirmarPorHTTP(t *testing.T) {
 		return h
 	}
 
-	// Sin clave: 400. Con el carrito vacío: 409.
+	const conDireccion = `{"direccionEntrega":"  Obispo Trejo   242, 3°B "}`
+
+	// Sin clave: 400. Sin dirección (o en blanco, o sin cuerpo): 400. Con el carrito vacío: 409.
 	h := servidor(t, nil)
-	if w, m := pedir(h, "POST", "/pedidos", "", cliente); w.Code != 400 || m["code"] != "IDEMPOTENCY_KEY_INVALIDA" {
+	if w, m := pedir(h, "POST", "/pedidos", conDireccion, cliente); w.Code != 400 || m["code"] != "IDEMPOTENCY_KEY_INVALIDA" {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if w, m := pedir(h, "POST", "/pedidos", "", conClave("k-1")); w.Code != 409 || m["code"] != "CARRITO_VACIO" {
+	for _, cuerpo := range []string{`{}`, `{"direccionEntrega":"   "}`} {
+		if w, m := pedir(h, "POST", "/pedidos", cuerpo, conClave("k-1")); w.Code != 400 || m["code"] != "DIRECCION_INVALIDA" {
+			t.Fatal(cuerpo, w.Code, w.Body.String())
+		}
+	}
+	if w, m := pedir(h, "POST", "/pedidos", "", conClave("k-1")); w.Code != 400 || m["code"] != "DATOS_INVALIDOS" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w, m := pedir(h, "POST", "/pedidos", conDireccion, conClave("k-1")); w.Code != 409 || m["code"] != "CARRITO_VACIO" {
 		t.Fatal(w.Code, w.Body.String())
 	}
 
 	// Con un plato en el carrito: 201 con el pedido en RECIBIDO y su Location.
 	pedir(h, "POST", "/carrito/items", `{"platoId":"p17","cantidad":2}`, cliente)
-	w, m := pedir(h, "POST", "/pedidos", "", conClave("k-2"))
+	w, m := pedir(h, "POST", "/pedidos", conDireccion, conClave("k-2"))
 	if w.Code != 201 || m["estado"] != "RECIBIDO" || m["total"] != 24000.0 || m["clienteEmail"] != "c@ejemplo.com" ||
+		m["direccionEntrega"] != "Obispo Trejo 242, 3°B" ||
 		!strings.HasPrefix(w.Header().Get("Location"), "/pedidos/") {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -427,7 +438,7 @@ func TestConfirmarPorHTTP(t *testing.T) {
 	// Inventario no contesta: 202 "Estamos confirmando tu pedido", y se puede consultar.
 	h = servidorConConsumo(t, nil, ConsumoMock{err: domain.ErrInventarioCaido})
 	pedir(h, "POST", "/carrito/items", `{"platoId":"p17","cantidad":1}`, cliente)
-	w, m = pedir(h, "POST", "/pedidos", "", conClave("k-3"))
+	w, m = pedir(h, "POST", "/pedidos", conDireccion, conClave("k-3"))
 	if w.Code != 202 || m["estado"] != "CONFIRMANDO" || m["mensaje"] != "Estamos confirmando tu pedido" {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -457,7 +468,7 @@ func TestConfirmarConInventarioLentoPorHTTP(t *testing.T) {
 		conClave[k] = v
 	}
 	inicio := time.Now()
-	w, m := pedir(h, "POST", "/pedidos", "", conClave)
+	w, m := pedir(h, "POST", "/pedidos", `{"direccionEntrega":"Obispo Trejo 242"}`, conClave)
 	if tardo := time.Since(inicio); tardo >= 3*time.Second {
 		t.Fatal("la respuesta tiene que llegar antes de los 3 s:", tardo)
 	}

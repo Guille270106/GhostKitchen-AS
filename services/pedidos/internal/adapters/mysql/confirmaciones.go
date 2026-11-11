@@ -17,7 +17,7 @@ type ConfirmacionesMySQL struct {
 	DB *sql.DB
 }
 
-const columnasConfirmacion = `id,cliente_id,cliente_email,clave,carrito_id,reserva_id,cocina_id,pedido_id,items,estado,paso,motivo,creada_en,costo_envio`
+const columnasConfirmacion = `id,cliente_id,cliente_email,clave,carrito_id,reserva_id,cocina_id,pedido_id,items,estado,paso,motivo,creada_en,costo_envio,direccion_entrega`
 
 // Iniciar guarda la confirmación. Si choca con una clave o un carrito ya usados, devuelve la
 // que ya estaba: así un doble clic, o dos solicitudes a la vez, terminan en la misma.
@@ -28,9 +28,9 @@ func (repo ConfirmacionesMySQL) Iniciar(ctx context.Context, c domain.Confirmaci
 	}
 	ahora := time.Now().UTC()
 	_, err = conexionPedidos(ctx, repo.DB).ExecContext(ctx, `INSERT INTO confirmacion
- (id,cliente_id,cliente_email,clave,carrito_id,reserva_id,cocina_id,pedido_id,items,estado,paso,creada_en,actualizada_en,costo_envio)
- VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		c.ID, c.ClienteID, c.ClienteEmail, c.Clave, c.CarritoID, c.ReservaID, c.CocinaID, c.PedidoID, items, c.Estado, c.Paso, ahora, ahora, c.CostoEnvio)
+ (id,cliente_id,cliente_email,clave,carrito_id,reserva_id,cocina_id,pedido_id,items,estado,paso,creada_en,actualizada_en,costo_envio,direccion_entrega)
+ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		c.ID, c.ClienteID, c.ClienteEmail, c.Clave, c.CarritoID, c.ReservaID, c.CocinaID, c.PedidoID, items, c.Estado, c.Paso, ahora, ahora, c.CostoEnvio, nuloSiVacio(c.DireccionEntrega))
 
 	// 1062 = clave duplicada: ya existía una con esa clave o con ese carrito.
 	var errMySQL *driver.MySQLError
@@ -169,12 +169,14 @@ func escanear(fila interface{ Scan(...any) error }) (domain.Confirmacion, error)
 	var items []byte
 	var motivo sql.NullString
 	var envio sql.NullInt64
+	var direccion sql.NullString
 	err := fila.Scan(&c.ID, &c.ClienteID, &c.ClienteEmail, &c.Clave, &c.CarritoID, &c.ReservaID, &c.CocinaID,
-		&c.PedidoID, &items, &c.Estado, &c.Paso, &motivo, &c.CreadaEn, &envio)
+		&c.PedidoID, &items, &c.Estado, &c.Paso, &motivo, &c.CreadaEn, &envio, &direccion)
 	if err != nil {
 		return domain.Confirmacion{}, err
 	}
 	c.Motivo = motivo.String
+	c.DireccionEntrega = direccion.String
 	if envio.Valid {
 		c.CostoEnvio = &envio.Int64
 	}

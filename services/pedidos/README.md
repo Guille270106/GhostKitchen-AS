@@ -66,7 +66,7 @@ Todas las respuestas del carrito traen:
 
 | Ruta en el gateway | Para qué |
 | --- | --- |
-| `POST /api/v1/pedidos` | Confirmar el carrito. Pide el header `Idempotency-Key` |
+| `POST /api/v1/pedidos` | Confirmar el carrito: `{"direccionEntrega": "Obispo Trejo 242, 3°B"}`. Pide el header `Idempotency-Key` |
 | `GET /api/v1/confirmaciones/{id}` | Ver cómo va una confirmación que respondió 202 |
 | `GET /api/v1/pedidos/{id}` | Ver el pedido |
 
@@ -83,6 +83,9 @@ Confirmar toca Pedidos e Inventario, así que no entra en una sola transacción:
 | `409 CARRITO_VENCIDO` | La reserva venció: no se descontó nada, la confirmación queda FALLIDA y el carrito vacío |
 | `409 CARRITO_VACIO` | No hay platos para confirmar |
 | `400 IDEMPOTENCY_KEY_INVALIDA` | Falta el header o no es válido |
+| `400 DIRECCION_INVALIDA` | Falta la dirección de entrega, está en blanco o tiene más de 255 caracteres |
+
+**La dirección de entrega viaja con el pedido.** El cliente la manda al confirmar en `direccionEntrega`; el frontend la completa con la que cargó al registrarse y la deja cambiar (por ejemplo, para pedir a otro lugar). Pedidos le saca los espacios de más, rechaza caracteres de control, la guarda en la confirmación (así la recuperación crea el pedido con la misma) y la copia al pedido (`direccion_entrega`, migración 000012). La responden el detalle, "Mis pedidos" y el tablero de la cocina, que la necesita para despachar. Repetir la confirmación con la misma `Idempotency-Key` devuelve el pedido con la dirección de la primera vez. Los pedidos anteriores a la migración no tienen dirección (`direccionEntrega` no viene): no se completa con la dirección de hoy de la cuenta. Es un dato personal: no se escribe en logs, trazas ni eventos.
 
 **Descuento real en Inventario:** `docker-compose.yml` usa `CONSUMO_INVENTARIO: real`, así que confirmar descuenta el stock de verdad (`POST /reservas/{id}/consumir`). Con `simulado` Pedidos no llama a Inventario: siempre sale bien y no descuenta nada (sirve para probar Pedidos solo; los tests de `testdata/` lo usan así).
 

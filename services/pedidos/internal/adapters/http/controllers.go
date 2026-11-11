@@ -215,13 +215,20 @@ type ConfirmacionController struct {
 	Service application.ConfirmacionService
 }
 
-// Confirmar es "Confirmar pedido". Pide el header Idempotency-Key: si el cliente aprieta dos
+// Confirmar es "Confirmar pedido". Recibe {"direccionEntrega": "..."} y pide el header Idempotency-Key: si el cliente aprieta dos
 // veces (o el navegador reintenta), la misma clave devuelve el mismo pedido.
 //   - 201: el pedido quedó creado en RECIBIDO.
 //   - 202: "Estamos confirmando tu pedido": no sabemos todavía si Inventario descontó; se sigue
 //     en segundo plano. Se consulta en GET /confirmaciones/{id}.
 func (c ConfirmacionController) Confirmar(ctx *gin.Context) {
-	resultado, err := c.Service.Confirmar(ctx.Request.Context(), identidad(ctx), ctx.GetHeader("Idempotency-Key"))
+	var datos struct {
+		DireccionEntrega string `json:"direccionEntrega"`
+	}
+	if !leerJSON(ctx, &datos) {
+		fallo(ctx, http.StatusBadRequest, "DATOS_INVALIDOS", `Enviá {"direccionEntrega": "calle y número"}`)
+		return
+	}
+	resultado, err := c.Service.Confirmar(ctx.Request.Context(), identidad(ctx), ctx.GetHeader("Idempotency-Key"), datos.DireccionEntrega)
 	if err != nil {
 		responderError(ctx, err)
 		return

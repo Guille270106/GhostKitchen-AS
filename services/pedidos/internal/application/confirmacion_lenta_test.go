@@ -51,7 +51,7 @@ func confirmarConPlazo(svc ConfirmacionService, clave string) (ResultadoConfirma
 	conPlazo, cancelar := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancelar()
 	inicio := time.Now()
-	r, err := svc.Confirmar(conPlazo, clienteConfirma, clave)
+	r, err := svc.Confirmar(conPlazo, clienteConfirma, clave, direccionPrueba)
 	return r, err, time.Since(inicio)
 }
 

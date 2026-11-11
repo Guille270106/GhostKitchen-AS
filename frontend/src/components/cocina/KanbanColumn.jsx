@@ -1,5 +1,6 @@
 import { estadoLabel, formatPrice, formatRelative, formatTime } from "../../utils/formatters";
 import Button from "../common/Button";
+import Icon from "../common/Icon";
 
 // Columna del tablero de la cocina. Cada tarjeta es un pedido completo con formato de comanda:
 // los platos van agrupados por restaurante para armar una bolsa por marca.
@@ -17,6 +18,11 @@ function KanbanColumn({ title, tone, action, pedidos, onAdvance, onReject, busyI
             Pedido #{pedido.codigo} · {estadoLabel(pedido.estado).toUpperCase()} · {formatTime(pedido.creadoEn)}
           </p>
           <p className="ticket-sub">{formatRelative(pedido.creadoEn)}</p>
+          {/* Adónde se despacha: la dirección que el cliente confirmó con el pedido. */}
+          <p className={`ticket-address ${pedido.direccion ? "" : "is-missing"}`}>
+            <Icon name="pin" size={15} />
+            <span>{pedido.direccion || "Sin dirección (pedido anterior a guardarla)"}</span>
+          </p>
 
           {pedido.restaurantes.map((grupo) => (
             <div className="ticket-brand" key={grupo.restauranteId}>

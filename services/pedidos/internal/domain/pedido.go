@@ -117,24 +117,27 @@ type CambioEstado struct {
 // Pedido es el agregado. Sus campos se exportan para leerlos y guardarlos, pero el estado
 // y la versión solo se cambian con sus métodos.
 type Pedido struct {
-	ID            string         `json:"id"`
-	ClienteID     string         `json:"clienteId"`
-	ClienteEmail  string         `json:"clienteEmail"`
-	CocinaID      string         `json:"cocinaId"`
-	Estado        Estado         `json:"estado"`
-	Items         []Item         `json:"items"`
-	Total         int64          `json:"total"` // suma de los platos, sin envío
+	ID           string `json:"id"`
+	ClienteID    string `json:"clienteId"`
+	ClienteEmail string `json:"clienteEmail"`
+	CocinaID     string `json:"cocinaId"`
+	Estado       Estado `json:"estado"`
+	Items        []Item `json:"items"`
+	Total        int64  `json:"total"` // suma de los platos, sin envío
 	// CostoEnvio es el envío que se cobró, copiado de la cocina al confirmar. Si después la cocina
 	// cambia su tarifa, el pedido no cambia. Es nil en los pedidos anteriores a guardarlo: ese dato
 	// no se inventa con la tarifa de hoy.
 	CostoEnvio *int64 `json:"costoEnvio"`
 	// TotalConEnvio es lo que pagó el cliente: platos + envío (nil si no se guardó el envío).
 	TotalConEnvio *int64 `json:"totalConEnvio"`
-	Moneda        string         `json:"moneda"`
-	Version       int64          `json:"version"`
-	CreadoEn      time.Time      `json:"creadoEn"`
-	ActualizadoEn time.Time      `json:"actualizadoEn"`
-	Historial     []CambioEstado `json:"historial,omitempty"`
+	// DireccionEntrega es adónde va el pedido, copiada al confirmar. Vacía en los pedidos
+	// anteriores a guardarla: no se completa con la dirección de hoy de la cuenta.
+	DireccionEntrega string         `json:"direccionEntrega,omitempty"`
+	Moneda           string         `json:"moneda"`
+	Version          int64          `json:"version"`
+	CreadoEn         time.Time      `json:"creadoEn"`
+	ActualizadoEn    time.Time      `json:"actualizadoEn"`
+	Historial        []CambioEstado `json:"historial,omitempty"`
 	// Comprobante es cómo va la factura (L15). Solo viene en el detalle del pedido.
 	Comprobante *Comprobante `json:"comprobante,omitempty"`
 }

@@ -110,6 +110,8 @@ function usuarioParaPantallas(usuario, localidadId = null) {
     cocinaId: usuario.cocinaAsignadaId || null,
     localidad: usuario.localidad || null,
     localidadId,
+    // La del registro: el carrito la propone como dirección de entrega.
+    direccion: usuario.direccion || "",
   };
 }
 
@@ -509,9 +511,13 @@ const esperar = (ms) => new Promise((resolver) => window.setTimeout(resolver, ms
 //   - 201: el pedido quedó creado.
 //   - 202: "Estamos confirmando tu pedido" (Inventario no contestó a tiempo). Se consulta cómo
 //     va, hasta 20 s; si todavía no terminó, se avisa y el pedido aparece en "Mis pedidos".
-export async function confirmCart() {
+// direccion es adónde se lleva el pedido: viaja con el pedido y la ve la cocina.
+export async function confirmCart({ direccion } = {}) {
   const clave = crypto.randomUUID();
-  const respuesta = await pedir("POST", "/pedidos", { headers: { "Idempotency-Key": clave } });
+  const respuesta = await pedir("POST", "/pedidos", {
+    headers: { "Idempotency-Key": clave },
+    cuerpo: { direccionEntrega: String(direccion || "").trim() },
+  });
   if (respuesta?.confirmacionId) {
     for (let i = 0; i < 10; i++) {
       await esperar(2000);
@@ -560,6 +566,8 @@ function pedidoParaPantallas(p, cocina) {
     codigo,
     cocinaId: p.cocinaId,
     cocinaNombre: cocina?.nombre || p.cocinaId,
+    // Vacía en los pedidos anteriores a guardar la dirección.
+    direccion: p.direccionEntrega || "",
     creadoEn: Date.parse(p.creadoEn),
     estado: p.estado,
     items,
