@@ -30,7 +30,7 @@ El gateway **no tiene reglas del negocio**: solo manda, verifica, limita y repar
 | `/api/v1/carrito...`, `/api/v1/pedidos...` y `/api/v1/confirmaciones/{id}` | Pedidos | Sí (Pedidos controla que sean los datos del cliente) |
 | `/api/v1/cocina/pedidos...` | Pedidos | Sí (Pedidos controla que sea la cocina del pedido) |
 | `GET /api/v1/admin/metricas[?cocinaId=]` | Pedidos | Sí (Pedidos controla que sea admin y que la cocina sea de su localidad) |
-| `/internal/...` y cualquier otra ruta | — | Responde `404` |
+| `/internal/...` y cualquier otra ruta | — | Responde `404` en JSON (`NO_ENCONTRADO`), igual que Caddy en la nube |
 
 Notificaciones no tiene rutas: solo escucha mensajes. El frontend llama al gateway a través del servidor de Vite (`GATEWAY_URL`), así que no hace falta CORS.
 
@@ -48,13 +48,17 @@ Esas líneas están en [`identidad.conf`](identidad.conf), que se incluye en cad
 - **Límite:** NGINX usa un balde que se vacía a 1 solicitud por segundo (`rate=60r/m`) con `burst=59`: una clave puede hacer 60 solicitudes seguidas y después 1 por segundo. Por eso `Retry-After` es 1. Solo envía `RateLimit-Limit: 60` (y `RateLimit-Remaining: 0` en el `429`), porque NGINX no calcula lo que queda en las respuestas exitosas.
 - Sin clave, cuenta por IP con el mismo límite, y responde `401`. No confía en un `X-Forwarded-For` mandado por el cliente.
 - `POST /public/v1/proximidad` conserva el cuerpo JSON, con un máximo de 64 KiB (`413` si se pasa). No se registran cuerpos con coordenadas.
-- Los errores salen con formato Problem Details (`401`, `413`, `429`, `503`).
+- Los errores salen con formato Problem Details (`401`, `404`, `413`, `429`, `503`).
 
 ## Dos copias de Catálogo
 
 `upstream catalogo` reparte por turnos entre `catalogo-1` y `catalogo-2`. Si una copia falla 3 veces en 10 s, NGINX la saca 10 s y después la vuelve a probar. Una lectura que falla se reintenta una vez en la otra copia, dentro de los 3 s (`proxy-comun.conf`); las escrituras no se reintentan. Detalle en el [ADR-012](../docs/adr/ADR-012-balanceo-de-carga.md).
 
 El gateway usa el DNS interno de Docker (`resolver 127.0.0.11`) y `resolve` en cada `upstream`, así vuelve a buscar la dirección de cada servicio cada 10 s. Si un servicio se recrea con otra IP (por ejemplo con `docker compose up --build`), el gateway la sigue sin reiniciarse.
+
+## Headers de seguridad
+
+Todas las respuestas llevan `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` y `Referrer-Policy: no-referrer` ([`seguridad.conf`](seguridad.conf)). El archivo se incluye en cada location que responde, porque en NGINX una location con su propio `add_header` no hereda los del nivel `server`.
 
 ## Logs y trazas
 
@@ -68,6 +72,8 @@ El gateway usa el DNS interno de Docker (`resolver 127.0.0.11`) y `resolve` en c
 | Usuarios | `503` a los 300 ms en las rutas privadas; las públicas siguen andando |
 | Un servicio de destino | Falla su ruta con `503` y Problem Details; el gateway nunca devuelve una lista vacía ni simula un éxito |
 | Una copia de Catálogo | NGINX la saca un rato y sigue con la otra |
+
+El gateway tiene healthcheck en Docker Compose (`/health`, cada 5 s), así `docker compose ps` muestra si está sano.
 
 ## Cómo lo probamos
 

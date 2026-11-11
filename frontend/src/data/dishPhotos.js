@@ -4,6 +4,7 @@
 // es mejor que una foto de otra comida. Si la cocina carga una foto (fotoUrl), se usa esa.
 // Algunas fotos son ilustrativas: no todas pertenecen a la marca del menú. Las de Wikimedia Commons
 // tienen licencia libre (CC0 o Creative Commons) y guardan "autor" y "licencia" para citarlas.
+// Sin foto a propósito (no había una que mostrara ese plato): Veggie burger (la foto es una hamburguesa de carne); Pizza calabresa picante (la foto es una pizza de jamón y morrones); Sundae de dulce de leche (la foto es una copa de frutilla); Brownie con helado (la foto es una porción de torta, sin helado); Donas glaseadas (la foto es una berlinesa con dulce de leche); Iced latte (la foto es un café caliente).
 export const dishPhotos = {
   "p1": {
     "plato": "Mega doble",
@@ -16,12 +17,6 @@ export const dishPhotos = {
     "foto": "/images/platos/p2-cheese-bacon.webp",
     "fuente": "https://barrio.ar/mostaza-burgers",
     "imagenOriginal": "https://cdn.myportfolio.com/165fa14f-ffc8-4ae0-92a9-c7ecb33f89c9/aa8dd416-8052-4cfb-ad2f-3cbc7798829d_rw_3840.jpg?h=5ebb18d4eda005998878f5b3e588df1d"
-  },
-  "p3": {
-    "plato": "Veggie burger",
-    "foto": "/images/platos/p3-crispy-onion.webp",
-    "fuente": "https://www.talabat.com/oman/restaurant/765556/panken-buraimi-industrial?aid=2709",
-    "imagenOriginal": "https://images.deliveryhero.io/image/global-menu-service/TB_OM/vendor/765556/PRODUCT/5de520a8-d9e4-4f58-9197-e1e0ed850f63.jpg"
   },
   "p4": {
     "plato": "Papas medianas",
@@ -67,12 +62,6 @@ export const dishPhotos = {
     "autor": "N i c o l a from Fiumicino (Rome), Italy",
     "licencia": "CC BY 2.0"
   },
-  "p11": {
-    "plato": "Pizza calabresa picante",
-    "foto": "/images/platos/p10-especial-de-jama3n-y-morrones.webp",
-    "fuente": "https://www.timeout.com/es/buenos-aires/kentucky-pizzeria-iconica-buenos-aires-cerveza-imperial",
-    "imagenOriginal": "https://media.timeout.com/images/106284541/image.webp"
-  },
   "p12": {
     "plato": "Empanadas de carne x 6",
     "foto": "/images/platos/p12-empanadas-de-carne-x-6.webp",
@@ -91,12 +80,6 @@ export const dishPhotos = {
     "foto": "/images/platos/p14-cuarto-de-helado.webp",
     "fuente": "https://cdn.pedix.app/49DPjhacOaWFpaSbwIwq/products/vBvqj1oriUzdrAxcVC1b-.png?size=1600x1600",
     "imagenOriginal": "https://cdn.pedix.app/49DPjhacOaWFpaSbwIwq/products/vBvqj1oriUzdrAxcVC1b-.png?size=1600x1600"
-  },
-  "p15": {
-    "plato": "Sundae de dulce de leche",
-    "foto": "/images/platos/p13-copa-frutilla-a-la-crema.webp",
-    "fuente": "https://wall.alphacoders.com/big.php?i=397257",
-    "imagenOriginal": "https://images7.alphacoders.com/397/397257.jpg"
   },
   "p16": {
     "plato": "Palito bombón x 6",
@@ -124,12 +107,6 @@ export const dishPhotos = {
     "fuente": "https://commons.wikimedia.org/wiki/File:Nachos-cheese_(cropped).jpg",
     "autor": "chee.hong from Kuala Lumpur, Malaysia",
     "licencia": "CC BY 2.0"
-  },
-  "p20": {
-    "plato": "Brownie con helado",
-    "foto": "/images/platos/p27-torta-de-chocolate.webp",
-    "fuente": "https://cakerswarehouse.com.au/products/cake-mix-millionaires-mud-1kg",
-    "imagenOriginal": "https://cakerswarehouse.com.au/cdn/shop/products/Millionaires_Mud_Cakers_Warehouse_1200x1200.png?v=1569305293"
   },
   "p21": {
     "plato": "Sorrentinos de jamón y queso",
@@ -282,23 +259,11 @@ export const dishPhotos = {
     "foto": "/images/platos/p44-milanesa-de-berenjena.webp",
     "fuente": "Aportada por el equipo (foto de internet, ilustrativa)"
   },
-  "p45": {
-    "plato": "Donas glaseadas x 6",
-    "foto": "/images/platos/p37-donas-de-dulce-de-leche-x-3.webp",
-    "fuente": "https://pide.dunkin.cl/pedir/ZMGYr2bCBuPMv8FQ5/manjar-azucarado",
-    "imagenOriginal": "https://tofuu.getjusto.com/orioneat-local/resized2/wfu9xnNNPYuu5MHat-1000-x.webp"
-  },
   "p46": {
     "plato": "Dona de chocolate",
     "foto": "/images/platos/p36-donas-glaseadas-x-3.webp",
     "fuente": "https://news.dunkindonuts.com/file?fid=56bc83deacae6e3eab4f75c7",
     "imagenOriginal": "https://iprsoftwaremedia.com/285/files/201602/56bc83deacae6e3eab4f75c7_Chocolate_Frosted_Donut/Chocolate_Frosted_Donut_mid.jpg"
-  },
-  "p47": {
-    "plato": "Iced latte",
-    "foto": "/images/platos/p38-cafa-con-leche.webp",
-    "fuente": "https://dunkin.cl/productos-nueva/",
-    "imagenOriginal": "https://dunkin.cl/wp-content/uploads/2025/09/HOT-LATTE_Dunkin_Chile.png"
   },
   "p48": {
     "plato": "Munchkins x 12",

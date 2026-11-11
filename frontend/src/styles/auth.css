@@ -15,18 +15,11 @@
 .auth-box .btn { margin-top: 8px; }
 .auth-toggle { text-align: center; margin-top: 18px !important; font-size: 14px; }
 .auth-toggle a { color: var(--red); font-weight: 600; }
-.demo-accounts { margin-top: 26px; border: 1px dashed var(--line); border-radius: 6px; padding: 14px; display: grid; gap: 8px; background: var(--canvas); }
-.demo-accounts > strong { font-size: 13px; }
-.demo-accounts > small { color: var(--muted); font-size: 12px; margin-top: -4px; }
-.demo-accounts button { display: flex; justify-content: space-between; align-items: center; gap: 10px; border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 9px 11px; text-align: left; font-size: 13px; font-weight: 600; }
-.demo-accounts button:hover { border-color: #fda4af; }
-.demo-accounts button small { color: var(--muted); font-weight: 400; font-size: 12px; }
 
 @media (max-width: 620px) {
   .auth-page { display: block; }
   .auth-visual { display: none; }
   .auth-form { padding: 28px 18px; min-height: calc(100vh - 64px); }
-  .demo-accounts button { flex-direction: column; align-items: flex-start; gap: 2px; }
 }
 
 /* En login y registro, el footer sigue al bloque de imagen y formulario. */

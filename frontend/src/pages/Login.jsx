@@ -4,7 +4,6 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import AuthLayout from "../components/auth/AuthLayout";
 import Button from "../components/common/Button";
 import { useSession } from "../context/SessionContext";
-import { CUENTAS_DEMO } from "../data/visual";
 import { homeForRole } from "../utils/auth";
 
 import "../styles/auth.css";
@@ -56,16 +55,6 @@ function Login() {
         ¿Todavía no tenés cuenta? <Link to="/registro">Registrate</Link>
       </p>
 
-      <div className="demo-accounts">
-        <strong>Cuentas de demostración</strong>
-        <small>Completa el email; la contraseña de los admins es la de ADMIN_PASSWORD del .env.</small>
-        {CUENTAS_DEMO.map((cuenta) => (
-          <button key={cuenta.email} type="button" onClick={() => setForm({ ...form, email: cuenta.email })}>
-            <span>{cuenta.rol}</span>
-            <small>{cuenta.email}</small>
-          </button>
-        ))}
-      </div>
     </AuthLayout>
   );
 }
