@@ -3,11 +3,42 @@ package notificaciones
 import (
 	"context"
 	"fmt"
+	"mime"
 	"net"
 	"net/mail"
 	"net/smtp"
+	"strings"
 	"time"
 )
+
+// TextoDelMail arma el asunto y el cuerpo del aviso: el pedido con su código corto (los primeros 8
+// caracteres, igual que en la pantalla) y el estado en palabras, no el código interno.
+func TextoDelMail(p Pendiente) (asunto, cuerpo string) {
+	codigo := strings.ToUpper(p.PedidoID)
+	if len(codigo) > 8 {
+		codigo = codigo[:8]
+	}
+	estado, detalle := "cambió de estado", ""
+	switch p.EstadoPedido {
+	case "RECIBIDO":
+		estado, detalle = "fue recibido", "La cocina lo está revisando. Mientras no lo acepte, podés cancelarlo."
+	case "ACEPTADO":
+		estado, detalle = "fue aceptado", "La cocina ya lo tiene en su lista."
+	case "EN_PREPARACION":
+		estado, detalle = "está en preparación", "La cocina está cocinando tu pedido."
+	case "LISTO":
+		estado, detalle = "está listo", "En un rato sale para tu casa."
+	case "EN_CAMINO":
+		estado, detalle = "está en camino", "Cuando lo recibas, confirmalo en Mis pedidos."
+	case "ENTREGADO":
+		estado, detalle = "fue entregado", "¡Que lo disfrutes! La factura te llega en otro mail."
+	case "CANCELADO":
+		estado, detalle = "fue cancelado", "Los ingredientes que tenía reservados volvieron a la cocina."
+	}
+	asunto = fmt.Sprintf("Tu pedido #%s %s", codigo, estado)
+	cuerpo = fmt.Sprintf("Hola,\r\n\r\nTu pedido #%s %s. %s\r\n\r\nGhostKitchen", codigo, estado, detalle)
+	return asunto, cuerpo
+}
 
 // Mailpit envía por SMTP a un servidor local de pruebas sin autenticación.
 type Mailpit struct {
@@ -47,8 +78,10 @@ func (m Mailpit) Enviar(ctx context.Context, p Pendiente) error {
 		return err
 	}
 	destinatario := mail.Address{Address: p.Destinatario}
-	_, err = fmt.Fprintf(w, "From: %s\r\nTo: %s\r\nSubject: Estado de tu pedido\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nTu pedido %s cambio de estado a %s.\r\n",
-		m.Remitente.String(), destinatario.String(), p.PedidoID, p.EstadoPedido)
+	asunto, cuerpo := TextoDelMail(p)
+	// El asunto lleva tildes: va codificado (RFC 2047) para que se vea bien en cualquier correo.
+	_, err = fmt.Fprintf(w, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n",
+		m.Remitente.String(), destinatario.String(), mime.QEncoding.Encode("utf-8", asunto), cuerpo)
 	if err != nil {
 		return err
 	}
