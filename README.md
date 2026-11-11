@@ -224,6 +224,7 @@ GhostKitchen/
 │   ├── ARCHITECTURE.md           # Arquitectura: diagramas, servicios, datos, comunicación
 │   ├── POSTMORTEM.md             # Informe de la jornada de fallas
 │   ├── adr/                      # Decisiones arquitectónicas (D1 a D13)
+│   ├── pruebas/                  # Colección de Postman: la API de punta a punta por el gateway
 │   └── contracts/                # Capacidad publicada: contrato OpenAPI v1 + guía + CHANGELOG
 ├── services/                     # Un microservicio por carpeta, cada uno con su README
 │   └── usuarios/  catalogo/  busqueda/  inventario/  pedidos/  notificaciones/
@@ -255,4 +256,5 @@ GhostKitchen/
 | [docs/adr/](docs/adr/README.md) | Las decisiones que tomamos y por qué (D1 a D13) |
 | [docs/POSTMORTEM.md](docs/POSTMORTEM.md) | La jornada de fallas: qué apagamos, qué vio el usuario y qué aprendimos |
 | [docs/contracts/](docs/contracts/README.md) | El contrato de lo que publicamos, con ejemplos y errores |
+| [docs/pruebas/](docs/pruebas/README.md) | La colección de Postman que prueba la API de punta a punta (100 pruebas) y cómo correrla |
 | [services/](services/README.md) | Qué hace cada microservicio y de quién depende |
